@@ -8,8 +8,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="grid min-h-dvh place-items-center bg-ink px-4">
-    <form method="POST" action="{{ route('login') }}" class="w-full max-w-sm rounded-[28px] bg-paper p-7">
+<body class="grid min-h-dvh place-items-center px-4">
+    <form method="POST" action="{{ route('login') }}" class="w-full max-w-sm rounded-[28px] bg-white/75 p-7 shadow-[0_30px_80px_-40px_rgba(23,19,43,.4)] ring-1 ring-white backdrop-blur-xl">
         @csrf
         <p class="font-display text-xl font-black">SIREN</p>
         <h1 class="mt-1 text-lg font-bold">관리 화면 로그인</h1>

@@ -33,7 +33,7 @@
                   aria-label="{{ $s->code }}구역 {{ $s->tier }}석 {{ number_format($s->price) }}원, {{ $soldOut ? '매진' : '잔여 '.number_format($s->remaining()).'석' }}"
                   @unless ($soldOut)
                       @click="pick({{ $s->id }})" @keydown.enter.prevent="pick({{ $s->id }})" @keydown.space.prevent="pick({{ $s->id }})"
-                      :fill="selected === {{ $s->id }} ? '#FFD23F' : '{{ $event->theme_color }}'"
+                      :fill="selected === {{ $s->id }} ? '#17132B' : '{{ $event->theme_color }}'"
                       :fill-opacity="selected === {{ $s->id }} ? 1 : {{ $opacity }}"
                   @endunless
               @endif
@@ -42,6 +42,6 @@
         @php($r = [90, 135, 176][$s->ring] ?? 176)
         <text x="{{ round(200 + $r * cos($mid), 1) }}" y="{{ round(204 + $r * sin($mid), 1) }}" text-anchor="middle"
               font-family="Unbounded" font-size="10" font-weight="700" pointer-events="none"
-              fill="{{ $soldOut ? '#8A84A3' : '#17132B' }}">{{ $s->code }}</text>
+              fill="{{ $soldOut ? '#8A84A3' : '#17132B' }}" @if ($interactive && ! $soldOut) :fill="selected === {{ $s->id }} ? '#ffffff' : '#17132B'" @endif>{{ $s->code }}</text>
     @endforeach
 </svg>

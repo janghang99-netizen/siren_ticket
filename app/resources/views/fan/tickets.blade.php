@@ -8,14 +8,14 @@
     <h1 class="mt-2 text-2xl font-black">내 티켓</h1>
 
     @if (session('just_bought'))
-        <p role="status" class="mt-4 rounded-2xl bg-pick px-4 py-3 text-sm font-bold animate-rise">
+        <p role="status" class="mt-4 rounded-2xl bg-white/80 px-4 py-3 text-sm font-bold ring-1 ring-ink/10 animate-rise">
             {{ session('just_bought') }}장 예매했어요. 공연 날 입구에서 이 화면을 보여 주세요.
         </p>
     @endif
 
     @forelse ($tickets as $t)
         <article class="stub mt-5 shadow-sm animate-rise" style="--cut: 196px; animation-delay: {{ $loop->index * 60 }}ms">
-            <div class="h-[196px] overflow-hidden rounded-t-[18px] px-5 pt-5 text-paper" style="background: linear-gradient(160deg, {{ $t->event->theme_color }}, #17132B 85%)">
+            <div class="fandom-gradient h-[196px] overflow-hidden rounded-t-[18px] px-5 pt-5 text-white" style="--theme: {{ $t->event->theme_color }}">
                 <p class="eyebrow !text-paper/60">{{ $t->event->venue }} · {{ $t->section->tier }}석</p>
                 <h2 class="mt-2 truncate text-2xl font-black">{{ $t->event->artist }}</h2>
                 <p class="num mt-1 text-sm text-paper/80">{{ $t->event->starts_at->format('Y.m.d') }} {{ $days[$t->event->starts_at->dayOfWeek] }} {{ $t->event->starts_at->format('H:i') }}</p>

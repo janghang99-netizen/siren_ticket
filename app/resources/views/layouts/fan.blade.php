@@ -12,9 +12,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="min-h-dvh">
+<body class="min-h-dvh" @hasSection('theme') style="--theme: @yield('theme')" @endif>
     <div class="mx-auto flex min-h-dvh max-w-md flex-col">
-        <header class="sticky top-0 z-30 flex items-center justify-between bg-paper/85 px-4 py-3 backdrop-blur">
+        <header class="sticky top-0 z-30 flex items-center justify-between bg-white/40 px-4 py-3 backdrop-blur-xl">
             <a href="{{ route('home') }}" class="flex items-baseline gap-2" aria-label="SIREN 홈">
                 <span class="font-display text-lg font-black tracking-tight">SIREN</span>
                 <span class="text-xs font-semibold text-mist">티켓 · 매장주문</span>
@@ -24,7 +24,7 @@
 
         <main class="flex-1 px-4">
             @if (session('status'))
-                <p role="status" class="mb-3 mt-2 rounded-2xl bg-pick px-4 py-3 text-sm font-bold">{{ session('status') }}</p>
+                <p role="status" class="mb-3 mt-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-bold ring-1 ring-ink/10 backdrop-blur">{{ session('status') }}</p>
             @endif
             @error('rule')
                 <p role="alert" class="mb-3 mt-2 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">{{ $message }}</p>

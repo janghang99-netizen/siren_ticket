@@ -1,6 +1,7 @@
 @extends('layouts.fan')
 @section('title', $store->name)
 @section('tab', 'home')
+@section('theme', $event->theme_color)
 
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 @php($menu = $store->products->map(fn ($p) => [

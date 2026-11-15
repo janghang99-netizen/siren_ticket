@@ -1,6 +1,7 @@
 @extends('layouts.fan')
 @section('title', '공연장 매장')
 @section('tab', 'home')
+@section('theme', $event->theme_color)
 
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 
@@ -11,7 +12,7 @@
 
     @if ($ticket)
         <div class="mt-5 flex items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-paper">
-            <span class="num rounded-lg bg-pick px-2 py-1 text-sm font-black text-ink">{{ $ticket->section->code }}</span>
+            <span class="num rounded-lg bg-white px-2 py-1 text-sm font-black text-ink">{{ $ticket->section->code }}</span>
             <p class="text-sm"><b>{{ $ticket->seatLabel() }}</b> 티켓으로 주문해요</p>
         </div>
     @else

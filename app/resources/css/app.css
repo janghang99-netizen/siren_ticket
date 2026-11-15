@@ -7,14 +7,17 @@
 
 /*
  * SIREN — 디자인 토큰
- * 포스터 종이(라일락) 위에 잉크, 응원봉 바이올렛, 픽업 옐로.
+ * 아이돌마다 팬덤 색이 다르므로 특정 색 하나를 브랜드로 쓰지 않는다.
+ *  - 바탕: 여러 파스텔이 섞인 연한 그라데이션 (공연 화면은 그 팬덤 색 --theme 이 은은하게 섞임)
+ *  - 버튼·칩·막대: 무채색(잉크·흰 유리)만. 색은 공연 히어로·티켓처럼 팬덤 색이 주인공인 곳에만.
+ *  - 픽업 옐로(pick)는 "받아 가세요" 상태 신호로만, signal 은 오류·취소로만.
  * Unbounded 는 숫자·코드·좌석에만 (포스터 타이포), 본문은 Pretendard.
  */
 @theme {
-    --color-paper: #F1EEF8;
-    --color-paper-deep: #E4DFF1;
+    --color-paper: #F6F4FA;
+    --color-paper-deep: #E9E6F0;
     --color-ink: #17132B;
-    --color-stick: #6C4BFF;
+    --color-stick: #3B3650;      /* 무채색 강조 (예전 바이올렛 → 잉크 계열) */
     --color-pick: #FFD23F;
     --color-signal: #FF5A5F;
     --color-mist: #8A84A3;
@@ -37,12 +40,22 @@
 
 @layer base {
     html { -webkit-tap-highlight-color: transparent; }
+    /* 연한 다색 그라데이션 바탕. --theme(공연 팬덤 색)이 있으면 위쪽에 은은하게 섞인다 */
     body {
-        @apply bg-paper text-ink font-sans antialiased;
+        @apply text-ink font-sans antialiased;
         word-break: keep-all;
+        --theme: #C9B8FF;
+        background-color: #F7F5FB;
+        background-image:
+            radial-gradient(75% 50% at 50% -8%, color-mix(in oklab, var(--theme) 55%, transparent) 0%, transparent 72%),
+            radial-gradient(60% 45% at -5% 10%, #FFC4DE 0%, transparent 70%),
+            radial-gradient(55% 45% at 105% 22%, #C4DAFF 0%, transparent 70%),
+            radial-gradient(60% 50% at 90% 98%, #C3F0DC 0%, transparent 70%),
+            radial-gradient(55% 50% at 0% 95%, #FFDABB 0%, transparent 70%);
+        background-attachment: fixed;
     }
     :focus-visible {
-        outline: 3px solid var(--color-stick);
+        outline: 3px solid var(--color-ink);
         outline-offset: 2px;
         border-radius: 6px;
     }
@@ -77,9 +90,34 @@
         @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 font-semibold transition
                active:scale-[.98] disabled:opacity-40 disabled:pointer-events-none;
     }
-    .btn-ink { @apply bg-ink text-paper hover:bg-black; }
-    .btn-stick { @apply bg-stick text-white hover:brightness-110; }
-    .btn-ghost { @apply bg-white/70 text-ink ring-1 ring-ink/10 hover:bg-white; }
+    /* 버튼은 무채색만: 잉크(주 동작) · 흰 유리(보조) */
+    .btn-ink { @apply bg-ink text-white hover:bg-black; }
+    .btn-stick { @apply bg-white/80 text-ink ring-1 ring-ink/15 backdrop-blur hover:bg-white; }
+    .btn-ghost { @apply bg-white/60 text-ink ring-1 ring-ink/10 backdrop-blur hover:bg-white; }
+
+    /* 유리 카드: 바탕 그라데이션이 비치게 (입력칸은 또렷하게 유지) */
+    main .bg-white:not(.field):not(input):not(select):not(textarea) {
+        background-color: rgb(255 255 255 / .66);
+        -webkit-backdrop-filter: blur(16px) saturate(1.2);
+        backdrop-filter: blur(16px) saturate(1.2);
+    }
+
+    /* 팬덤 색 그라데이션 (공연 히어로·티켓 스텁). --theme 을 축으로 핑크·하늘을 섞는다 */
+    .fandom-gradient {
+        background: linear-gradient(135deg,
+            color-mix(in oklab, var(--theme) 88%, #FFB3D1) 0%,
+            var(--theme) 45%,
+            color-mix(in oklab, var(--theme) 55%, #8FC8FF) 100%);
+    }
+    .fandom-soft {
+        background:
+            radial-gradient(80% 60% at 100% 0%, color-mix(in oklab, #FFB8D6 70%, transparent) 0%, transparent 70%),
+            radial-gradient(70% 55% at 0% 100%, color-mix(in oklab, #A9D2FF 70%, transparent) 0%, transparent 70%),
+            linear-gradient(160deg,
+                color-mix(in oklab, var(--theme) 40%, white) 0%,
+                rgb(255 255 255 / .82) 55%,
+                color-mix(in oklab, var(--theme) 25%, #E3F1FF) 100%);
+    }
 
     .field {
         @apply w-full rounded-2xl border-0 bg-white px-4 py-3.5 text-base ring-1 ring-ink/10

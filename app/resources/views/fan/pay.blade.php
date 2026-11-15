@@ -21,7 +21,7 @@
         </div>
     </div>
 
-    <p class="mt-4 rounded-2xl bg-pick/40 px-4 py-3 text-sm">
+    <p class="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm ring-1 ring-ink/10">
         개발용 결제 화면이에요. 실제 서비스에서는 이 자리에 결제사 결제창이 열립니다.
         {{ config('siren.pending_ttl_minutes') }}분 안에 결제하지 않으면 주문이 취소돼요.
     </p>

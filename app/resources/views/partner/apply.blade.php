@@ -10,7 +10,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 @php($cycle = \App\Models\Vendor::CYCLES[$settings['default_settlement_cycle']] ?? '2주마다')
-<body class="min-h-dvh bg-paper">
+<body class="min-h-dvh">
 <div class="mx-auto max-w-3xl px-5 py-10">
     <a href="{{ route('home') }}" class="font-display text-lg font-black">SIREN</a>
     <h1 class="mt-4 text-3xl font-black">공연장 매장 입점 신청</h1>

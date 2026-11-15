@@ -30,7 +30,7 @@
             ['partner.settlements', '정산 내역', 'partner.settlements*'],
         ];
 @endphp
-<body class="min-h-dvh bg-paper">
+<body class="min-h-dvh">
 <div class="lg:grid lg:min-h-dvh lg:grid-cols-[232px_1fr]">
     <aside class="bg-ink text-paper lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         <div class="flex items-center justify-between px-5 py-4 lg:block lg:py-6">
@@ -50,7 +50,7 @@
                         <form method="POST" action="{{ route('partner.stores.switch', $s->id) }}">
                             @csrf
                             <button @class(['w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold transition',
-                                            'bg-pick text-ink' => $s->id === $store->id,
+                                            'bg-white text-ink' => $s->id === $store->id,
                                             'text-paper/70 hover:bg-paper/10' => $s->id !== $store->id])
                                     @if ($s->id === $store->id) aria-current="true" @endif>
                                 {{ $s->name }}
@@ -88,7 +88,7 @@
         </div>
 
         @if (session('status'))
-            <p role="status" class="mb-5 rounded-2xl bg-pick/60 px-4 py-3 text-sm font-semibold">{{ session('status') }}</p>
+            <p role="status" class="mb-5 rounded-2xl bg-white/80 px-4 py-3 text-sm font-semibold ring-1 ring-ink/10 backdrop-blur">{{ session('status') }}</p>
         @endif
         @error('rule')
             <p role="alert" class="mb-5 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">{{ $message }}</p>

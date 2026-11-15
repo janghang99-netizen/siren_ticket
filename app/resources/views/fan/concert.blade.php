@@ -1,6 +1,7 @@
 @extends('layouts.fan')
 @section('title', $event->artist)
 @section('tab', 'home')
+@section('theme', $event->theme_color)
 
 @php($days = ['일', '월', '화', '수', '목', '금', '토'])
 @php($sections = $event->sections->map(fn ($s) => [
@@ -54,9 +55,9 @@
                 <li>
                     <button type="button" @click="s.left && pick(s.id)" :disabled="!s.left"
                             class="w-full rounded-xl px-2 py-2.5 text-left ring-1 transition"
-                            :class="selected === s.id ? 'bg-pick ring-ink' : 'bg-white ring-ink/10 hover:ring-stick/50'">
+                            :class="selected === s.id ? 'bg-ink text-white ring-ink' : 'bg-white ring-ink/10 hover:ring-ink/40'">
                         <span class="num block font-bold" x-text="s.code"></span>
-                        <span class="block text-xs" :class="s.left ? 'text-mist' : 'text-signal font-semibold'"
+                        <span class="block text-xs" :class="selected === s.id ? 'text-white/70' : (s.left ? 'text-mist' : 'text-signal font-semibold')"
                               x-text="s.left ? s.tier + '석 · ' + won(s.left) + '석' : '매진'"></span>
                     </button>
                 </li>
