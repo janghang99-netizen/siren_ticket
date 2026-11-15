@@ -55,11 +55,22 @@
     {{-- 현장 카드 단말기 (준비 단계) --}}
     <section class="mb-5 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
         <h2 class="text-sm font-bold">현장 카드 단말기 <span class="font-normal text-mist">· POS 카드결제에 단말기·승인번호를 남겨 단말기 매출과 대사해요</span></h2>
-        <ul class="mt-2 flex flex-wrap gap-2 text-sm">
+        <ul class="mt-2 divide-y divide-ink/5 text-sm">
             @forelse ($terminals as $t)
-                <li class="chip bg-paper">{{ $t->provider }} · <span class="num">{{ $t->tid }}</span>{{ $t->label ? ' · '.$t->label : '' }}</li>
+                <li @class(['flex flex-wrap items-center gap-2 py-2', 'opacity-50' => ! $t->is_active])>
+                    <span class="num w-36 shrink-0 font-bold">{{ $t->tid }}</span>
+                    <form method="POST" action="{{ route('admin.terminals.update', $t->id) }}" class="flex flex-1 flex-wrap items-center gap-2">
+                        @csrf @method('PUT')
+                        <input name="provider" value="{{ $t->provider }}" maxlength="30" required class="field !w-28 !py-1.5" aria-label="{{ $t->tid }} 밴사">
+                        <input name="label" value="{{ $t->label }}" maxlength="60" class="field !w-40 !py-1.5" placeholder="이름" aria-label="{{ $t->tid }} 이름">
+                        <button class="btn-ghost !px-3 !py-1.5 text-xs">저장</button>
+                    </form>
+                    <span @class(['chip text-xs', 'bg-stick/10 text-stick' => $t->is_active, 'bg-ink/10' => ! $t->is_active])>{{ $t->is_active ? '사용 중' : '사용 중지' }}</span>
+                    <form method="POST" action="{{ route('admin.terminals.toggle', $t->id) }}">@csrf @method('PATCH')<button class="btn-ghost !px-3 !py-1.5 text-xs">{{ $t->is_active ? '사용 중지' : '다시 사용' }}</button></form>
+                    <form method="POST" action="{{ route('admin.terminals.destroy', $t->id) }}" onsubmit="return confirm('단말기를 지울까요? 결제 기록이 있으면 사용 중지만 돼요.')">@csrf @method('DELETE')<button class="px-2 text-xs font-semibold text-signal">삭제</button></form>
+                </li>
             @empty
-                <li class="text-mist">등록된 단말기가 없어요.</li>
+                <li class="py-2 text-mist">등록된 단말기가 없어요. 업체도 '카드 단말기' 화면에서 직접 등록할 수 있어요.</li>
             @endforelse
         </ul>
         <form method="POST" action="{{ route('admin.stores.terminals', $store->id) }}" class="mt-3 flex flex-wrap gap-2">

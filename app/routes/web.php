@@ -140,6 +140,15 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
 });
 
 // 입점업체 혜택: 우리 쿠폰(업체 부담) · 매장 스탬프
+// 매장별 현장 카드 단말기 — 업체는 자기 매장 모두
+Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->controller(\App\Http\Controllers\TerminalController::class)->group(function () {
+    Route::get('/terminals', 'index')->name('terminals');
+    Route::post('/terminals', 'store')->name('terminals.store');
+    Route::put('/terminals/{terminal}', 'update')->name('terminals.update');
+    Route::patch('/terminals/{terminal}/toggle', 'toggle')->name('terminals.toggle');
+    Route::delete('/terminals/{terminal}', 'destroy')->name('terminals.destroy');
+});
+
 Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->controller(\App\Http\Controllers\PartnerBenefitController::class)->group(function () {
     Route::get('/coupons', 'coupons')->name('coupons');
     Route::get('/coupons/new', 'couponCreate')->name('coupons.create');
@@ -209,7 +218,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::get('/vendors/{vendor}/documents/{type}', 'vendorDocument')->name('vendors.document');
     Route::post('/vendors/{vendor}/adjustments', 'adjustmentStore')->name('vendors.adjustments');
     Route::put('/vendors/{vendor}/integration', 'integrationSave')->name('vendors.integration');
-    Route::post('/stores/{store:id}/terminals', 'terminalStore')->name('stores.terminals');
+    Route::post('/stores/{store:id}/terminals', [\App\Http\Controllers\TerminalController::class, 'store'])->name('stores.terminals');
+    Route::put('/terminals/{terminal}', [\App\Http\Controllers\TerminalController::class, 'update'])->name('terminals.update');
+    Route::patch('/terminals/{terminal}/toggle', [\App\Http\Controllers\TerminalController::class, 'toggle'])->name('terminals.toggle');
+    Route::delete('/terminals/{terminal}', [\App\Http\Controllers\TerminalController::class, 'destroy'])->name('terminals.destroy');
 
     Route::get('/audit', 'audit')->name('audit');
 

@@ -206,6 +206,56 @@ class StoreOperationsTest extends TestCase
         $this->actingAs($stranger, 'web')->get($res->json('ticket_url'))->assertForbidden();
     }
 
+    public function test_vendor_manages_terminals_for_every_own_store(): void
+    {
+        $this->actingAs($this->staff, 'web');
+        // 업체의 매장 모두가 한 화면에
+        $this->get(route('partner.terminals'))->assertOk()->assertSee('아레나 커피')->assertSee('오븐 베이커리')->assertSee('카드 결제 불가');
+
+        foreach ([$this->store, $this->other] as $i => $s) {
+            $this->post(route('partner.terminals.store'), ['store_id' => $s->id, 'provider' => 'ksnet', 'tid' => 'T-00'.$i, 'label' => '1번 카운터'])->assertSessionHas('status');
+        }
+        $t = \App\Models\StoreTerminal::where('tid', 'T-000')->first();
+        $this->assertSame('KSNET', $t->provider);   // 대문자로 정리
+        $this->assertSame(2, \App\Models\StoreTerminal::count());
+
+        // TID 중복 · 이상한 문자 거절
+        $this->post(route('partner.terminals.store'), ['store_id' => $this->store->id, 'provider' => 'NICE', 'tid' => 'T-000'])->assertSessionHasErrors('tid');
+        $this->post(route('partner.terminals.store'), ['store_id' => $this->store->id, 'provider' => 'NICE', 'tid' => 'T 00 1'])->assertSessionHasErrors('tid');
+
+        // 수정 · 사용 중지 → 현장판매에서 빠짐 · 다시 사용
+        $this->put(route('partner.terminals.update', $t), ['provider' => 'NICE', 'label' => '2번 카운터']);
+        $this->assertSame(['NICE', '2번 카운터'], [$t->fresh()->provider, $t->fresh()->label]);
+        $this->post(route('partner.stores.switch', $this->store->id));
+        $this->patch(route('partner.terminals.toggle', $t));
+        $this->get(route('partner.pos.screen'))->assertViewHas('terminals', fn ($list) => $list->isEmpty());
+        $this->postJson(route('partner.pos'), ['pay_method' => 'pos_card', 'terminal_id' => $t->id, 'card_approval_no' => '1', 'items' => [['product_id' => $this->coffee->id, 'qty' => 1]]])->assertStatus(422);
+        $this->patch(route('partner.terminals.toggle', $t));
+        $this->get(route('partner.pos.screen'))->assertViewHas('terminals', fn ($list) => $list->pluck('tid')->all() === ['T-000']);
+
+        // 결제 기록이 있으면 삭제 대신 사용 중지
+        $this->postJson(route('partner.pos'), ['pay_method' => 'pos_card', 'terminal_id' => $t->id, 'card_approval_no' => '777', 'items' => [['product_id' => $this->coffee->id, 'qty' => 1]]])->assertOk();
+        $this->delete(route('partner.terminals.destroy', $t))->assertSessionHas('status');
+        $this->assertFalse($t->fresh()->is_active);
+        // 기록 없는 단말기는 삭제
+        $other = \App\Models\StoreTerminal::where('tid', 'T-001')->first();
+        $this->delete(route('partner.terminals.destroy', $other));
+        $this->assertNull($other->fresh());
+        $this->assertDatabaseHas('audit_logs', ['action' => 'terminal.created']);
+
+        // 남의 매장에는 등록·수정 불가
+        $strangerStore = Store::create(['vendor_id' => Vendor::create(['name' => '남', 'state' => 'approved'])->id, 'code' => 'z', 'name' => '남의 매장']);
+        $this->post(route('partner.terminals.store'), ['store_id' => $strangerStore->id, 'provider' => 'KIS', 'tid' => 'X-1'])->assertForbidden();
+        $foreign = \App\Models\StoreTerminal::create(['store_id' => $strangerStore->id, 'provider' => 'KIS', 'tid' => 'X-2']);
+        $this->patch(route('partner.terminals.toggle', $foreign))->assertForbidden();
+
+        // 운영사는 어느 매장이든
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $this->actingAs($admin, 'web')->post(route('admin.stores.terminals', $strangerStore->id), ['provider' => 'KIS', 'tid' => 'X-3'])->assertSessionHas('status');
+        $this->patch(route('admin.terminals.toggle', $foreign->id))->assertSessionHas('status');
+        $this->assertFalse($foreign->fresh()->is_active);
+    }
+
     public function test_uploaded_image_is_resized_to_webp(): void
     {
         if (! function_exists('imagewebp')) {

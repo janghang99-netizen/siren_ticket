@@ -30,6 +30,7 @@
         : [
             ['partner.board', '주문보드', 'partner.board'],
             ['partner.pos.screen', '현장판매', 'partner.pos.screen'],
+            ['partner.terminals', '카드 단말기', 'partner.terminals*'],
             ['partner.products', '상품', 'partner.products*'],
             ['partner.production', '생산관리', 'partner.production*'],
             ['partner.inventory', '재고 원장', 'partner.inventory*'],

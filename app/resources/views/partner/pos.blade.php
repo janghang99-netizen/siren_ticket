@@ -177,7 +177,7 @@
                 <select x-model.number="terminalId" class="field !py-2.5" aria-label="카드 단말기" :disabled="!terminals.length">
                     <template x-for="t in terminals" :key="t.id"><option :value="t.id" x-text="(t.label || t.tid) + ' · ' + t.provider"></option></template>
                 </select>
-                <p x-show="!terminals.length" class="text-xs font-semibold text-signal">등록된 카드 단말기가 없어요. 운영사에 단말기 등록을 요청해 주세요.</p>
+                <p x-show="!terminals.length" class="text-xs font-semibold text-signal">이 매장에 등록된 카드 단말기가 없어요. <a href="{{ route('partner.terminals') }}#store-{{ $store->id }}" class="underline underline-offset-2">단말기 등록하기 →</a></p>
                 <input x-model="approval" class="field num !py-2.5" placeholder="단말기 승인번호" maxlength="30" aria-label="카드 승인번호" inputmode="numeric">
             </div>
             {{-- 현금: 받은 돈 → 거스름돈 --}}

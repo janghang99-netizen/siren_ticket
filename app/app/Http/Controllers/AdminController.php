@@ -538,19 +538,6 @@ class AdminController extends Controller
         return back()->with('status', 'EIS 연동을 저장했어요.'.($regen ? ' 새 서명 키를 EIS 담당자에게 전달해 주세요.' : ''));
     }
 
-    /** 매장별 현장 카드 단말기 등록 (준비 단계: TID 등록 → POS 카드결제에 승인번호 기록) */
-    public function terminalStore(Request $request, Store $store): RedirectResponse
-    {
-        $data = $request->validate([
-            'provider' => ['required', 'string', 'max:30'],
-            'tid' => ['required', 'string', 'max:40', 'unique:store_terminals,tid'],
-            'label' => ['nullable', 'string', 'max:60'],
-        ], ['tid.required' => '단말기 ID(TID)를 적어 주세요.', 'tid.unique' => '이미 등록된 단말기예요.']);
-        DB::table('store_terminals')->insert($data + ['store_id' => $store->id, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
-
-        return back()->with('status', "단말기 {$data['tid']}을(를) 등록했어요.");
-    }
-
     /** G1 감사 로그 */
     public function audit(Request $request): View
     {

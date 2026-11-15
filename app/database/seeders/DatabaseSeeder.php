@@ -80,6 +80,8 @@ class DatabaseSeeder extends Seeder
 
             foreach ($stores as [$code, $sname, $menu]) {
                 $store = Store::create(['vendor_id' => $vendor->id, 'code' => $code, 'name' => $sname, 'commission_rate' => 8.5]);
+                // 데모 카드 단말기 (매장마다 1대)
+                \App\Models\StoreTerminal::create(['store_id' => $store->id, 'provider' => 'KSNET', 'tid' => 'DEMO-'.strtoupper($code), 'label' => '1번 카운터']);
                 foreach ($menu as $sort => [$pname, $price, $options]) {
                     // 데모 카테고리 (매장별) — 처음 나온 순서가 카테고리 순서
                     $catName = [
