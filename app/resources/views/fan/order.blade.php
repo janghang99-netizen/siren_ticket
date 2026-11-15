@@ -62,6 +62,24 @@
 
     <a href="{{ route('display', $order->store) }}" class="btn-ghost mt-4 w-full">매장 전광판 보기</a>
 
+    {{-- D2 준비 시작 후: 매장에 취소 요청 --}}
+    @if ($order->cancel_requested_at)
+        <div class="mt-4 rounded-2xl bg-white/80 px-4 py-3 text-sm ring-1 ring-ink/10">
+            <p class="font-bold">취소 요청 · {{ $order->cancel_responded_at ? ($order->cancel_request_result === 'approved' ? '승인돼서 환불됐어요' : '매장이 거절했어요') : '매장 답변을 기다리고 있어요' }}</p>
+            @if ($order->cancel_request_response)<p class="mt-1 text-mist">매장: {{ $order->cancel_request_response }}</p>@endif
+        </div>
+    @elseif (in_array($order->status->value, [3, 4], true))
+        <details class="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm ring-1 ring-ink/10">
+            <summary class="cursor-pointer font-semibold">매장에 취소 요청하기</summary>
+            <form method="POST" action="{{ route('orders.cancel-request', $order) }}" class="mt-2">
+                @csrf
+                <p class="text-xs text-mist">매장이 이미 만들기 시작해서 바로 취소할 수는 없어요. 이유를 적어 요청하면 매장이 확인해요.</p>
+                <input name="reason" class="field mt-2 !py-2.5" placeholder="예: 공연 시작이 늦어져 받을 수 없어요" required aria-label="취소 요청 이유">
+                <button class="btn-ink mt-2 w-full !py-2.5 text-sm">취소 요청 보내기</button>
+            </form>
+        </details>
+    @endif
+
     {{-- D1 구매자 취소: 매장이 준비를 시작하기 전까지 --}}
     @if ($order->status->value === 2)
         <form method="POST" action="{{ route('orders.cancel', $order) }}" class="mt-3 text-center" x-show="status === 2"

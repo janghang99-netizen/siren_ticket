@@ -80,6 +80,19 @@ class PartnerController extends Controller
         return response()->json(['result' => 'ok', 'order' => $orders->transition($order, $to)->toBoardArray()]);
     }
 
+    /** D2 구매자 취소 요청 승인·거절 (거절은 사유 필수) */
+    public function respondCancel(Request $request, Order $order, OrderService $orders): RedirectResponse
+    {
+        $this->authorizeStore($request, $order->store_id);
+        $data = $request->validate(['decision' => ['required', 'in:approve,reject'], 'response' => ['nullable', 'string', 'max:200']]);
+        $approve = $data['decision'] === 'approve';
+        $orders->respondCancel($order, $approve, $data['response'] ?? null);
+        \App\Services\Audit::log($approve ? 'order.cancel_approved' : 'order.cancel_rejected', $order,
+            "{$order->store->name} 주문 {$order->pickup_code} 취소 요청 ".($approve ? '승인 · 환불' : '거절: '.$data['response']));
+
+        return back()->with('status', $approve ? '취소를 승인하고 환불했어요.' : '취소 요청을 거절했어요. 사유가 구매자에게 보여요.');
+    }
+
     public function toggleSlot(Request $request, CapacitySlot $slot): JsonResponse
     {
         $this->authorizeStore($request, $slot->store_id);

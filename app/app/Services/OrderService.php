@@ -220,6 +220,76 @@ class OrderService
         });
     }
 
+    /** D2 구매자 취소 요청: 매장이 준비를 시작한 뒤(준비중·준비완료)에는 바로 취소하지 않고 매장에 요청한다. */
+    public function requestCancel(Order $order, string $reason): Order
+    {
+        return DB::transaction(function () use ($order, $reason) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($order->status === OrderStatus::Paid) {
+                throw new OrderException('아직 준비 전이라 요청 없이 바로 취소할 수 있어요.', 'bad_transition', 409);
+            }
+            if (! in_array($order->status, [OrderStatus::Preparing, OrderStatus::Ready], true)) {
+                throw new OrderException('이미 받은 주문이나 취소된 주문은 취소를 요청할 수 없어요.', 'bad_transition', 409);
+            }
+            if ($order->cancel_requested_at) {
+                throw new OrderException($order->cancel_request_result === 'rejected' ? '매장이 이미 이 요청을 거절했어요. 매장에 직접 문의해 주세요.' : '이미 취소를 요청했어요. 매장 답변을 기다려 주세요.', 'duplicate', 409);
+            }
+            $order->update(['cancel_requested_at' => now(), 'cancel_request_reason' => $reason]);
+
+            return $order;
+        });
+    }
+
+    /** D2 매장 응답: 승인하면 환불(재고·캐파 반환), 거절은 사유 필수 (정당한 사유 없이 거부 불가 — 입점계약 제8조) */
+    public function respondCancel(Order $order, bool $approve, ?string $response): Order
+    {
+        if (! $approve && blank($response)) {
+            throw new OrderException('거절할 때는 사유를 적어야 해요. 구매자에게 그대로 보여요.', 'reason_required');
+        }
+
+        return DB::transaction(function () use ($order, $approve, $response) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if (! $order->cancel_requested_at || $order->cancel_responded_at) {
+                throw new OrderException('답변할 취소 요청이 없어요.', 'bad_transition', 409);
+            }
+
+            $fields = ['cancel_request_result' => $approve ? 'approved' : 'rejected', 'cancel_request_response' => $response, 'cancel_responded_at' => now()];
+            if ($approve) {
+                if (! in_array($order->status, [OrderStatus::Preparing, OrderStatus::Ready], true)) {
+                    throw new OrderException('이미 건넨 주문이라 여기서 취소할 수 없어요. 운영사에 환불을 요청해 주세요.', 'bad_transition', 409);
+                }
+                $this->refundOrFail($order);
+                $this->releaseResources($order);
+                $fields += ['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => '구매자 요청 취소(매장 승인)'];
+            }
+            $order->update($fields);
+
+            return $order;
+        });
+    }
+
+    /** F4 공연 취소: 그 공연 시간대에 받은 매장 주문을 상태와 관계없이(수령 전) 환불·종료. @return bool 처리했으면 true */
+    public function cancelForEvent(Order $order, string $reason): bool
+    {
+        return DB::transaction(function () use ($order, $reason) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($order->status === OrderStatus::Pending) {
+                $this->releaseResources($order);
+                $order->update(['status' => OrderStatus::Cancelled, 'cancelled_at' => now(), 'cancel_reason' => $reason]);
+
+                return true;
+            }
+            if (! in_array($order->status, [OrderStatus::Paid, OrderStatus::Preparing, OrderStatus::Ready], true)) {
+                return false;
+            }
+            $this->refundOrFail($order);
+            $this->releaseResources($order);
+            $order->update(['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => $reason]);
+
+            return true;
+        });
+    }
+
     /** 결제 안 된 채 방치된 주문을 취소해 캐파·재고를 돌려준다. @return int 만료 건수 */
     public function expirePending(): int
     {

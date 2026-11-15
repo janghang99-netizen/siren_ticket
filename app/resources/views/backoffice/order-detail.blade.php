@@ -88,6 +88,17 @@
                 @endforeach
             </ol>
             @if ($order->cancel_reason)<p class="mt-3 rounded-2xl bg-signal/10 px-3 py-2 text-sm text-signal">취소 사유: {{ $order->cancel_reason }}</p>@endif
+            @if ($order->cancel_requested_at)
+                <div class="mt-3 rounded-2xl bg-paper px-3 py-2 text-sm">
+                    <p class="font-semibold">구매자 취소 요청 <span class="num text-xs font-normal text-mist">{{ $order->cancel_requested_at->format('m.d H:i') }}</span></p>
+                    <p class="text-mist">{{ $order->cancel_request_reason }}</p>
+                    @if ($order->cancel_responded_at)
+                        <p class="mt-1"><b>{{ $order->cancel_request_result === 'approved' ? '승인' : '거절' }}</b>@if ($order->cancel_request_response) · {{ $order->cancel_request_response }}@endif</p>
+                    @else
+                        <p class="mt-1 font-semibold text-signal">매장 답변 대기 중</p>
+                    @endif
+                </div>
+            @endif
         </section>
 
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">

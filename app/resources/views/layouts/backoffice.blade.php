@@ -20,6 +20,7 @@
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],
             ['admin.settlements.index', '정산', 'admin.settlements.*'],
             ['admin.settings', '수수료·정산 설정', 'admin.settings*'],
+            ['admin.audit', '감사 로그', 'admin.audit'],
         ]
         : [
             ['partner.board', '주문보드', 'partner.board'],

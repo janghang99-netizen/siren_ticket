@@ -22,7 +22,7 @@ class FanController extends Controller
 {
     public function home(): View
     {
-        $events = Event::with('sections')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
+        $events = Event::with('sections')->where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
 
         return view('fan.home', ['events' => $events, 'headliner' => $events->first()]);
     }
@@ -180,6 +180,16 @@ class FanController extends Controller
         $orders->cancelByBuyer($order);
 
         return redirect()->route('orders.show', $order)->with('status', '주문을 취소했어요. 결제한 금액은 결제 수단으로 환불돼요.');
+    }
+
+    /** D2 준비 시작 후 취소 요청 → 매장이 승인·거절 */
+    public function requestCancel(Request $request, Order $order, OrderService $orders): RedirectResponse
+    {
+        $this->authorizeOrder($request, $order);
+        $reason = $request->validate(['reason' => ['required', 'string', 'max:200']], ['reason.required' => '취소하려는 이유를 적어 주세요.'])['reason'];
+        $orders->requestCancel($order, $reason);
+
+        return redirect()->route('orders.show', $order)->with('status', '매장에 취소를 요청했어요. 매장이 확인하면 여기에 결과가 보여요.');
     }
 
     /** F3 티켓 취소: 취소 수수료 규정 적용 */

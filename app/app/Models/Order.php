@@ -26,7 +26,15 @@ class Order extends Model
         'terms_agreed_at' => 'datetime',
         'adult_confirmed_at' => 'datetime',
         'requires_id_check' => 'boolean',
+        'cancel_requested_at' => 'datetime',
+        'cancel_responded_at' => 'datetime',
     ];
+
+    /** 매장 답변을 기다리는 구매자 취소 요청 */
+    public function hasPendingCancelRequest(): bool
+    {
+        return $this->cancel_requested_at !== null && $this->cancel_responded_at === null;
+    }
 
     public function settlement(): BelongsTo
     {
@@ -72,6 +80,7 @@ class Order extends Model
             'updated_at' => $this->updated_at?->format('H:i'),
             'cancel_disabled' => $this->status !== OrderStatus::Paid,
             'id_check' => $this->requires_id_check,
+            'cancel_request' => $this->hasPendingCancelRequest() ? $this->cancel_request_reason : null,
             'items' => $this->items->map(fn (OrderItem $i) => [
                 'name' => $i->name,
                 'option' => $i->option_name,

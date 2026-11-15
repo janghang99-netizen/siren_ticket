@@ -39,7 +39,13 @@ class Event extends Model
 
     public function salesOpen(): bool
     {
-        return ($this->sales_open_at === null || $this->sales_open_at->isPast()) && $this->starts_at->isFuture();
+        return ! $this->isCancelled()
+            && ($this->sales_open_at === null || $this->sales_open_at->isPast()) && $this->starts_at->isFuture();
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
     }
 
     public function seatsLeft(): int

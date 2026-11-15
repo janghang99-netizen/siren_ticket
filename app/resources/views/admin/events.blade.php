@@ -32,7 +32,9 @@
                                 <h2 class="truncate text-lg font-black">{{ $e->artist }}</h2>
                                 <p class="truncate text-sm text-mist">{{ $e->name }}</p>
                             </div>
-                            @if ($past)
+                            @if ($e->isCancelled())
+                                <span class="chip shrink-0 bg-signal/10 text-signal">공연 취소</span>
+                            @elseif ($past)
                                 <span class="chip shrink-0 bg-ink/10">종료</span>
                             @elseif ($e->salesOpen())
                                 <span class="chip shrink-0 bg-pick">예매 중</span>

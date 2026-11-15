@@ -118,6 +118,7 @@ class AdminController extends Controller
     public function ticketCancel(Ticket $ticket, TicketService $tickets): RedirectResponse
     {
         $tickets->cancel($ticket);
+        \App\Services\Audit::log('ticket.cancelled', $ticket, '티켓 '.$ticket->ticket_no.' 운영사 취소 · 전액 환불');
 
         return back()->with('status', "티켓 {$ticket->ticket_no}을(를) 취소하고 좌석을 다시 판매로 돌렸어요.");
     }
@@ -267,6 +268,9 @@ class AdminController extends Controller
     {
         $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date']]);
         $made = $service->generate(Carbon::parse($data['from']), Carbon::parse($data['to']));
+        foreach ($made as $s) {
+            \App\Services\Audit::log('settlement.generated', $s, '정산서 #'.$s->id.' 생성 ('.$data['from'].'~'.$data['to'].') 지급액 '.number_format($s->payout_amount).'원');
+        }
 
         return back()->with('status', $made->isEmpty()
             ? '이 기간에는 정산할 수령완료 주문이 없어요.'
@@ -284,6 +288,7 @@ class AdminController extends Controller
     public function settlementPay(Settlement $settlement, SettlementService $service): RedirectResponse
     {
         $service->markPaid($settlement);
+        \App\Services\Audit::log('settlement.paid', $settlement, '정산서 #'.$settlement->id.' '.number_format($settlement->payout_amount).'원 지급 완료');
 
         return back()->with('status', "{$settlement->vendor->name} 정산 ".number_format($settlement->payout_amount).'원을 지급 완료로 표시했어요.');
     }
@@ -394,6 +399,7 @@ class AdminController extends Controller
             }
         });
 
+        \App\Services\Audit::log('vendor.'.$data['state'], $vendor, $vendor->name.' '.['approved' => '승인', 'rejected' => '반려', 'suspended' => '정지'][$data['state']].(empty($data['reason']) ? '' : ': '.$data['reason']));
         $label = ['approved' => '승인했어요', 'rejected' => '반려했어요', 'suspended' => '이용 정지했어요. 매장은 모두 영업 종료로 바뀌었어요'][$data['state']];
 
         return back()->with('status', "‘{$vendor->name}’ 업체를 {$label}.");
@@ -412,11 +418,13 @@ class AdminController extends Controller
     {
         if ($product->isBlocked()) {
             $product->update(['blocked_at' => null, 'block_reason' => null]);
+            \App\Services\Audit::log('product.unblocked', $product, '‘'.$product->name.'’ 판매 중지 해제');
 
             return back()->with('status', "‘{$product->name}’ 판매 중지를 풀었어요.");
         }
         $reason = $request->validate(['reason' => ['required', 'string', 'max:200']], ['reason.required' => '판매 중지 사유를 적어 주세요. 업체에 그대로 보여요.'])['reason'];
         $product->update(['blocked_at' => now(), 'block_reason' => $reason]);
+        \App\Services\Audit::log('product.blocked', $product, '‘'.$product->name.'’ 판매 중지: '.$reason);
 
         return back()->with('status', "‘{$product->name}’을(를) 판매 중지했어요.");
     }
@@ -436,6 +444,7 @@ class AdminController extends Controller
         $reason = $request->validate(['reason' => ['required', 'string', 'max:100']], ['reason.required' => '환불 사유를 적어 주세요.'])['reason'];
         $was = $order->status;
         $orders->adminRefund($order, $reason);
+        \App\Services\Audit::log('order.refunded', $order, '주문 '.$order->pickup_code.' '.number_format($order->total_amount).'원 환불: '.$reason.($was === \App\Enums\OrderStatus::Settled ? ' (차기 정산 공제)' : ''));
 
         return back()->with('status', $was === \App\Enums\OrderStatus::Settled
             ? '환불했어요. 이미 정산된 주문이라 업체의 다음 정산에서 공제돼요.'
@@ -457,6 +466,7 @@ class AdminController extends Controller
     public function settlementTaxInvoice(Settlement $settlement, SettlementService $service): RedirectResponse
     {
         $service->markTaxInvoice($settlement);
+        \App\Services\Audit::log('settlement.tax_invoice', $settlement, '정산서 #'.$settlement->id.' 세금계산서 '.($settlement->tax_invoice_issued_at ? '발행 표시' : '표시 해제'));
 
         return back()->with('status', $settlement->tax_invoice_issued_at ? '세금계산서 발행 완료로 표시했어요.' : '세금계산서 발행 표시를 지웠어요.');
     }
@@ -465,8 +475,51 @@ class AdminController extends Controller
     {
         $reply = $request->validate(['reply' => ['required', 'string', 'max:2000']], ['reply.required' => '답변 내용을 적어 주세요.'])['reply'];
         $service->replyDispute($settlement, $reply);
+        \App\Services\Audit::log('settlement.replied', $settlement, '정산서 #'.$settlement->id.' 이의제기 답변');
 
         return back()->with('status', '이의제기에 답변했어요. 업체 정산 화면에 보여요.');
+    }
+
+    // ── 2단계: 공연 취소 · 공제 등록 · 감사 로그 ──
+
+    /** F4 공연 취소 → 티켓 전액 일괄 환불 + 매장 주문 환불 + 주문 시간대 마감 */
+    public function eventCancel(Request $request, Event $event, TicketService $tickets, \App\Services\OrderService $orders): RedirectResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:200'],
+            'confirm_name' => ['required', 'in:'.$event->artist],
+        ], ['reason.required' => '취소 사유를 적어 주세요. 예매자에게 보여요.', 'confirm_name.in' => '확인을 위해 아티스트 이름을 정확히 적어 주세요.']);
+
+        $r = DB::transaction(fn () => $tickets->cancelEvent($event, $data['reason'], $orders));
+        \App\Services\Audit::log('event.cancelled', $event, "공연 취소 ‘{$event->name}’: {$data['reason']} · 티켓 {$r['tickets']}매 ".number_format($r['refund'])."원 환불 · 매장 주문 {$r['orders']}건 환불", $r);
+
+        return redirect()->route('admin.events.index')->with('status', "공연을 취소했어요. 티켓 {$r['tickets']}매(".number_format($r['refund'])."원)를 전액 환불하고, 매장 주문 {$r['orders']}건을 환불했어요.");
+    }
+
+    /** C7 판매자 귀책 비용 등 공제 항목 등록 → 다음 정산에서 차감 */
+    public function adjustmentStore(Request $request, Vendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'integer', 'min:1', 'max:100000000'],
+            'reason' => ['required', 'string', 'max:200'],
+        ], ['amount.required' => '공제 금액을 적어 주세요.', 'reason.required' => '공제 사유를 적어 주세요. 업체 정산서에 그대로 보여요.']);
+
+        $adj = \App\Models\SettlementAdjustment::create(['vendor_id' => $vendor->id] + $data);
+        \App\Services\Audit::log('adjustment.created', $vendor, "{$vendor->name} 공제 ".number_format($adj->amount)."원 등록: {$adj->reason}");
+
+        return back()->with('status', number_format($adj->amount).'원을 다음 정산에서 공제하도록 등록했어요.');
+    }
+
+    /** G1 감사 로그 */
+    public function audit(Request $request): View
+    {
+        $logs = DB::table('audit_logs')->leftJoin('users', 'users.id', '=', 'audit_logs.user_id')
+            ->select('audit_logs.*', 'users.name as user_name', 'users.email as user_email')
+            ->when($request->query('action'), fn ($q, $a) => $q->where('action', $a))
+            ->when($request->query('q'), fn ($q, $t) => $q->where('summary', 'like', "%{$t}%"))
+            ->orderByDesc('audit_logs.id')->paginate(50)->withQueryString();
+
+        return view('admin.audit', ['logs' => $logs]);
     }
 
     // ── 수수료 · 정산주기 설정 (C2·C3) ──
@@ -505,6 +558,8 @@ class AdminController extends Controller
                 Store::whereKey($id)->update(['commission_rate' => $s['commission_rate']]);
             }
         });
+
+        \App\Services\Audit::log('settings.saved', null, '수수료·정산 설정 저장', $data['defaults']);
 
         return back()->with('status', '설정을 저장했어요. 바뀐 수수료율은 이후 주문부터, 정산주기는 다음 정산부터 적용돼요.');
     }

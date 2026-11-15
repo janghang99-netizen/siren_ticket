@@ -25,6 +25,7 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/orders/{order}', 'order')->name('orders.show');
     Route::get('/orders/{order}/status', 'orderStatus')->name('orders.status');
     Route::post('/orders/{order}/cancel', 'cancelOrder')->name('orders.cancel');
+    Route::post('/orders/{order}/cancel-request', 'requestCancel')->name('orders.cancel-request');
 
     // 약관·정책 (E1)
     Route::get('/policies/{doc}', 'policy')->whereIn('doc', ['terms', 'privacy', 'finance', 'refund'])->name('policy');
@@ -51,6 +52,7 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::post('/stores/{store:id}/switch', 'switchStore')->name('stores.switch');
     Route::get('/orders/{order}', 'order')->name('orders.show');
     Route::patch('/orders/{order}/status', 'updateStatus')->name('orders.status');
+    Route::patch('/orders/{order}/cancel-request', 'respondCancel')->name('orders.cancel-request');
     Route::patch('/slots/{slot}/toggle', 'toggleSlot')->name('slots.toggle');
     Route::post('/pos-orders', 'posOrder')->name('pos');
 
@@ -80,6 +82,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::post('/events', 'eventStore')->name('events.store');
     Route::get('/events/{event:id}/edit', 'eventEdit')->name('events.edit');
     Route::put('/events/{event:id}', 'eventUpdate')->name('events.update');
+    Route::post('/events/{event:id}/cancel', 'eventCancel')->name('events.cancel');
 
     Route::get('/tickets', 'tickets')->name('tickets.index');
     Route::get('/tickets/{ticket}', 'ticket')->name('tickets.show');
@@ -93,6 +96,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::put('/vendors/{vendor}', 'vendorUpdate')->name('vendors.update');
     Route::patch('/vendors/{vendor}/state', 'vendorState')->name('vendors.state');
     Route::get('/vendors/{vendor}/documents/{type}', 'vendorDocument')->name('vendors.document');
+    Route::post('/vendors/{vendor}/adjustments', 'adjustmentStore')->name('vendors.adjustments');
+
+    Route::get('/audit', 'audit')->name('audit');
 
     Route::get('/stores', 'stores')->name('stores.index');
     Route::get('/stores/new', 'storeCreate')->name('stores.create');

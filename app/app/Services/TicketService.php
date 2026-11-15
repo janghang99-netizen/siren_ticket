@@ -87,6 +87,37 @@ class TicketService
         return $this->doCancel($ticket, 'buyer');
     }
 
+    /**
+     * F4 공연 취소: 공연을 취소 상태로 바꾸고, 판매된 티켓을 전액 환불, 매장 주문 시간대를 닫고
+     * 그 공연 시간대에 받은 매장 주문(수령 전)을 환불한다.
+     *
+     * @return array{tickets:int, refund:int, orders:int}
+     */
+    public function cancelEvent(\App\Models\Event $event, string $reason, OrderService $orders): array
+    {
+        if ($event->isCancelled()) {
+            throw new OrderException('이미 취소된 공연이에요.', 'bad_transition', 409);
+        }
+        $event->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancel_reason' => $reason]);
+        $event->capacitySlots()->update(['is_closed' => true]);
+
+        $tickets = 0;
+        $refund = 0;
+        foreach (Ticket::where('event_id', $event->id)->where('status', 'paid')->pluck('id') as $id) {
+            $t = $this->doCancel(Ticket::find($id), 'admin');
+            $tickets++;
+            $refund += $t->refund_amount;
+        }
+
+        $count = 0;
+        $slotIds = $event->capacitySlots()->pluck('id');
+        foreach (\App\Models\Order::whereIn('capacity_slot_id', $slotIds)->whereIn('status', [1, 2, 3, 4])->pluck('id') as $id) {
+            $count += (int) $orders->cancelForEvent(\App\Models\Order::find($id), "공연 취소: {$reason}");
+        }
+
+        return ['tickets' => $tickets, 'refund' => $refund, 'orders' => $count];
+    }
+
     private function doCancel(Ticket $ticket, string $by): Ticket
     {
         return DB::transaction(function () use ($ticket, $by) {
@@ -95,7 +126,8 @@ class TicketService
                 throw new OrderException($ticket->status === 'used' ? '입장한 티켓은 취소할 수 없어요.' : '이미 취소된 티켓이에요.', 'bad_transition', 409);
             }
 
-            $rate = $by === 'admin' ? 0 : $ticket->cancelFeeRate();
+            // 운영사 취소·공연 취소는 전액, 공연이 취소됐으면 구매자 취소도 전액
+            $rate = ($by === 'admin' || $ticket->event->isCancelled()) ? 0 : $ticket->cancelFeeRate();
             if ($rate === null) {
                 throw new OrderException('공연 당일에는 예매를 취소할 수 없어요.', 'cancel_closed', 409);
             }

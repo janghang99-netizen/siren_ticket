@@ -103,8 +103,37 @@
                 @include('partials.bowl', ['event' => $e])
             </div>
         @endif
-        <button class="btn-ink w-full">{{ $e ? '저장' : '공연 등록' }}</button>
+        @if ($e?->isCancelled())
+            <p class="rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">취소된 공연이에요 ({{ $e->cancelled_at?->format('m.d H:i') }}) · {{ $e->cancel_reason }}</p>
+        @else
+            <button class="btn-ink w-full">{{ $e ? '저장' : '공연 등록' }}</button>
+        @endif
         <a href="{{ route('admin.events.index') }}" class="btn-ghost w-full">목록으로</a>
     </div>
 </form>
+
+{{-- F4 공연 취소: 티켓 전액 일괄 환불 + 매장 주문 환불 --}}
+@if ($e && ! $e->isCancelled())
+    <details class="mt-8 max-w-5xl rounded-3xl bg-white p-6 ring-1 ring-signal/30">
+        <summary class="cursor-pointer font-bold text-signal">공연 취소</summary>
+        <form method="POST" action="{{ route('admin.events.cancel', $e->id) }}" class="mt-4 space-y-3"
+              onsubmit="return confirm('정말 공연을 취소할까요? 되돌릴 수 없어요.')">
+            @csrf
+            <p class="text-sm text-mist">판매된 티켓을 모두 <b>수수료 없이 전액 환불</b>하고, 이 공연 시간대에 받은 매장 주문(수령 전)도 환불해요. 매장 주문 시간대는 모두 닫혀요.</p>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label for="cancel-reason" class="label">취소 사유 <span class="font-normal text-mist">(예매자에게 보여요)</span></label>
+                    <input id="cancel-reason" name="reason" class="field" required>
+                    @error('reason')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="confirm-name" class="label">확인을 위해 아티스트 이름 ‘{{ $e->artist }}’ 입력</label>
+                    <input id="confirm-name" name="confirm_name" class="field" required autocomplete="off">
+                    @error('confirm_name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <button class="btn bg-signal !py-2.5 text-sm text-white">공연 취소하고 전액 환불</button>
+        </form>
+    </details>
+@endif
 @endsection

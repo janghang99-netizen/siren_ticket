@@ -87,6 +87,9 @@
                             </ul>
                             <p x-show="o.seat" class="mt-2 text-xs text-mist" x-text="'좌석 ' + o.seat"></p>
                             <p x-show="o.id_check" class="mt-2 rounded-xl bg-signal px-3 py-1.5 text-xs font-bold text-white">주류 · 건네기 전에 신분증 확인</p>
+                            <a x-show="o.cancel_request" :href="'{{ url('partner/orders') }}/' + o.order_no" class="mt-2 block rounded-xl bg-signal/10 px-3 py-1.5 text-xs font-bold text-signal">
+                                구매자 취소 요청 · <span x-text="o.cancel_request"></span> → 답변하기
+                            </a>
                             <a :href="'{{ url('partner/orders') }}/' + o.order_no" class="mt-2 inline-block text-xs font-semibold text-mist underline-offset-4 hover:underline">주문 상세</a>
                             <div class="mt-4 flex gap-2">
                                 <button type="button" @click="move(o, col.next)" :disabled="busy === o.order_no"

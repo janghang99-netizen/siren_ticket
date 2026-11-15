@@ -47,6 +47,18 @@
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
             <h2 class="mb-3 font-bold">최근 정산</h2>
             @include('backoffice.settlement-list', ['settlements' => new \Illuminate\Pagination\Paginator($settlements, 10), 'showVendor' => false, 'route' => 'admin.settlements.show'])
+            {{-- C7 판매자 귀책 비용 등 공제 등록 --}}
+            <details class="mt-5 rounded-2xl bg-paper p-4">
+                <summary class="cursor-pointer text-sm font-bold">공제 항목 등록</summary>
+                <form method="POST" action="{{ route('admin.vendors.adjustments', $vendor) }}" class="mt-3 grid gap-2 sm:grid-cols-[140px_1fr_auto]">
+                    @csrf
+                    <input name="amount" type="number" min="1" class="field num !py-2" placeholder="금액(원)" required aria-label="공제 금액">
+                    <input name="reason" class="field !py-2" placeholder="사유 (예: 판매자 귀책 반품 비용)" required aria-label="공제 사유">
+                    <button class="btn-ink !py-2 text-sm">등록</button>
+                </form>
+                <p class="mt-2 text-xs text-mist">다음 정산서에서 지급액에서 빼요. 지급액보다 크면 나머지는 그다음 정산으로 넘어가요.</p>
+                @error('amount')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </details>
             @if ($pendingAdjustments->isNotEmpty())
                 <h3 class="mt-5 text-sm font-bold">다음 정산에서 공제될 항목</h3>
                 <ul class="mt-2 space-y-1 text-sm">
