@@ -74,6 +74,9 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
 });
 
 // ── 번역 (원본 다담다 방식): 상품명 AI 번역 사전 · 구글 오역 교정 사전 — 공개 JSON ──
+// 상품 이미지 (storage/app/products)
+Route::get('/media/products/{file}', [\App\Http\Controllers\ProductImageController::class, 'show'])
+    ->where('file', '[A-Za-z0-9]{20,80}\.(jpg|jpeg|png|webp)')->name('media.product');
 Route::get('/translate/dict/{lang}', [\App\Http\Controllers\TranslationController::class, 'dict'])->whereIn('lang', ['en', 'ja', 'zh'])->name('translate.dict');
 
 // ── NFT 티켓: 공개 메타데이터(tokenURI)·이미지, 팬 입장 코드 ──

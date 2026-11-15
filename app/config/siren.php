@@ -18,8 +18,8 @@ return [
     // 미결제 주문 만료(분) — 재고·캐파 점유 해제. 인터미션 135건 캐파가 미결제로 잠기는 걸 막는다.
     'pending_ttl_minutes' => (int) env('SIREN_PENDING_TTL', 10),
 
-    // 매장 보드: 수령완료 주문을 몇 분간 더 보여줄지 (원본 5분)
-    'board_picked_up_minutes' => 5,
+    // 매장 보드: 수령완료 주문을 몇 분간 더 보여줄지 (원본 5분 → 실수 되돌리기 위해 10분)
+    'board_picked_up_minutes' => 10,   // 이 시간 안에는 '건네줬어요' 를 되돌릴 수 있다
 
     'webhook_timeout' => 5,
 

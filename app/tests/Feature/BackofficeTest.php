@@ -77,6 +77,39 @@ class BackofficeTest extends TestCase
         $this->post('/login', ['email' => $this->vendorUser->email, 'password' => 'password'])->assertRedirect(route('partner.board'));
     }
 
+    public function test_vendor_uploads_replaces_and_removes_product_image(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $this->actingAs($this->vendorUser, 'web')->post(route('partner.stores.switch', $this->bakery->id));
+        $base = ['name' => '크루아상', 'price' => 4000, 'stock_deduct_at' => 'order', 'is_visible' => 1, 'agree_prohibited' => 1];
+
+        // 너무 작거나 이미지가 아니면 거절
+        $this->post(route('partner.products.store'), $base + ['image' => \Illuminate\Http\UploadedFile::fake()->image('a.png', 50, 50)])->assertSessionHasErrors('image');
+        $this->post(route('partner.products.store'), $base + ['image' => \Illuminate\Http\UploadedFile::fake()->create('a.pdf', 10, 'application/pdf')])->assertSessionHasErrors('image');
+
+        $this->post(route('partner.products.store'), $base + ['image' => \Illuminate\Http\UploadedFile::fake()->image('croissant.jpg', 600, 600)])->assertRedirect();
+        $product = \App\Models\Product::where('name', '크루아상')->firstOrFail();
+        $first = $product->image_path;
+        \Illuminate\Support\Facades\Storage::disk('local')->assertExists($first);
+        $this->get($product->imageUrl())->assertOk();
+        $this->get(route('partner.products'))->assertSee($product->imageUrl(), false);
+
+        // 바꾸면 옛 파일은 지운다
+        $this->put(route('partner.products.update', $product), $base + ['image' => \Illuminate\Http\UploadedFile::fake()->image('new.webp', 400, 400)])->assertRedirect();
+        $second = $product->fresh()->image_path;
+        $this->assertNotSame($first, $second);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($first);
+
+        // 빼기
+        $this->put(route('partner.products.update', $product), $base + ['remove_image' => 1])->assertRedirect();
+        $this->assertNull($product->fresh()->image_path);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($second);
+
+        // 없는 파일·이상한 이름은 404
+        $this->get('/media/products/'.str_repeat('a', 40).'.jpg')->assertNotFound();
+        $this->get('/media/products/..%2F.app_key')->assertNotFound();
+    }
+
     public function test_logged_in_admin_can_switch_to_vendor_account(): void
     {
         // 운영사로 로그인한 채 로그인 화면을 열면 안내가 나오고, 업체 계정으로 바꿀 수 있다

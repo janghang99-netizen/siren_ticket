@@ -117,6 +117,10 @@ class Order extends Model
             'pay_method' => $this->pay_method,
             'total_amount' => $this->total_amount,
             'ordered_at' => $this->created_at?->format('H:i'),
+            'ordered_ts' => $this->created_at?->getTimestamp(),
+            // 되돌리기 가능 여부 (건네준 주문은 정산 전 + 보드에 남아 있는 동안만)
+            'can_revert' => $this->status->previous() !== null && ($this->status !== OrderStatus::PickedUp
+                || (! $this->settlement_id && $this->picked_up_at?->gte(now()->subMinutes((int) config('siren.board_picked_up_minutes'))))),
             'updated_at' => $this->updated_at?->format('H:i'),
             'cancel_disabled' => $this->status !== OrderStatus::Paid,
             'id_check' => $this->requires_id_check,

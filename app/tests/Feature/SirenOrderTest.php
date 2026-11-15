@@ -58,6 +58,58 @@ class SirenOrderTest extends TestCase
         return $svc->confirmPayment($svc->place($this->store, [['product_id' => $this->coffee->id, 'qty' => $qty]], 'card', $this->slot->id));
     }
 
+    // ── 매장 보드 되돌리기 ──
+
+    public function test_store_can_step_back_each_stage_and_undo_pickup_within_window(): void
+    {
+        Http::fake();
+        $svc = app(OrderService::class);
+        $order = $this->paidOrder();
+
+        $order = $svc->transition($order, OrderStatus::Preparing);
+        $order = $svc->transition($order, OrderStatus::Paid);            // 만드는 중 → 새 주문
+        $this->assertSame(OrderStatus::Paid, $order->status);
+        $this->assertNull($order->preparing_at);
+
+        foreach ([OrderStatus::Preparing, OrderStatus::Ready, OrderStatus::PickedUp] as $s) {
+            $order = $svc->transition($order, $s);
+        }
+        $order = $svc->transition($order, OrderStatus::Ready);           // 건네줬어요 → 픽업 대기
+        $this->assertSame(OrderStatus::Ready, $order->status);
+        $this->assertNull($order->picked_up_at);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'order.reverted']);
+
+        $order = $svc->transition($order, OrderStatus::PickedUp);        // 다시 건넴
+        $this->assertSame(OrderStatus::PickedUp, $order->fresh()->status);
+
+        // 10분이 지나면 되돌릴 수 없다
+        $order->forceFill(['picked_up_at' => now()->subMinutes(11)])->save();
+        $this->assertFalse($order->fresh()->toBoardArray()['can_revert']);
+        try {
+            $svc->transition($order->fresh(), OrderStatus::Ready);
+            $this->fail('되돌려지면 안 됨');
+        } catch (OrderException $e) {
+            $this->assertSame('revert_expired', $e->reason);
+        }
+
+        // 두 칸 건너뛰어 뒤로는 안 된다
+        $other = $svc->transition($this->paidOrder(), OrderStatus::Ready);
+        $this->expectException(OrderException::class);
+        $svc->transition($other, OrderStatus::Paid);
+    }
+
+    public function test_board_api_reverts_via_status_patch(): void
+    {
+        $vendor = \App\Models\Vendor::create(['name' => '업체', 'state' => 'approved']);
+        $this->store->update(['vendor_id' => $vendor->id]);
+        $user = User::factory()->create(['role' => 'vendor', 'vendor_id' => $vendor->id]);
+        $order = app(OrderService::class)->transition($this->paidOrder(), OrderStatus::Preparing);
+
+        $this->actingAs($user, 'web')->patchJson(route('partner.orders.status', $order->order_no), ['status' => OrderStatus::Paid->value])
+            ->assertOk()->assertJsonPath('order.status', OrderStatus::Paid->value);
+        $this->getJson(route('partner.board.data'))->assertOk()->assertJsonPath('orders.0.can_revert', false);   // 새 주문은 더 뒤로 못 감
+    }
+
     // ── 티켓 ──
 
     public function test_ticket_purchase_assigns_seats_and_never_oversells(): void

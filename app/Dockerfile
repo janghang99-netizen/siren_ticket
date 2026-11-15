@@ -10,10 +10,13 @@ RUN npm run build
 FROM php:8.3-apache
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libzip-dev libgmp-dev unzip git \
-    && docker-php-ext-install pdo_mysql zip gmp \
+    && apt-get install -y --no-install-recommends libzip-dev libgmp-dev libpng-dev libjpeg62-turbo-dev libwebp-dev unzip git \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install pdo_mysql zip gmp gd \
     && a2enmod rewrite \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # 상품 이미지 업로드 (5MB) · 입점 서류 — PHP 기본 2MB 로는 부족
+    && printf 'upload_max_filesize=10M\npost_max_size=12M\n' > /usr/local/etc/php/conf.d/uploads.ini
 
 # 문서 루트를 Laravel public/ 으로
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public

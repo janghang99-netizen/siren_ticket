@@ -7,7 +7,8 @@
 
 @section('content')
 <form method="POST" action="{{ $p ? route('partner.products.update', $p) : route('partner.products.store') }}"
-      x-data="{ options: @js(array_values($options)) }"
+      enctype="multipart/form-data"
+      x-data="{ options: @js(array_values($options)), preview: @js($p?->imageUrl()), removeImage: false }"
       class="grid max-w-4xl gap-6 lg:grid-cols-[1fr_320px]">
     @csrf
     @if ($p) @method('PUT') @endif
@@ -20,6 +21,25 @@
             <label for="name" class="label">상품명</label>
             <input id="name" name="name" class="field" value="{{ old('name', $p?->name) }}" placeholder="예: 아메리카노" required>
             @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+        </div>
+        {{-- 상품 이미지 --}}
+        <div>
+            <span class="label">상품 이미지 <span class="font-normal text-mist">(선택 · JPG·PNG·WEBP, 5MB 까지, 정사각형 추천)</span></span>
+            <div class="flex items-center gap-4">
+                <div class="grid size-24 shrink-0 place-items-center overflow-hidden rounded-2xl bg-paper ring-1 ring-ink/10">
+                    <img x-show="preview && !removeImage" :src="preview" alt="상품 이미지 미리보기" class="size-full object-cover">
+                    <span x-show="!preview || removeImage" class="text-xs text-mist">이미지 없음</span>
+                </div>
+                <div class="space-y-2 text-sm">
+                    <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp"
+                           @change="const f = $event.target.files[0]; if (f) { preview = URL.createObjectURL(f); removeImage = false }"
+                           class="block text-sm file:mr-3 file:rounded-full file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white">
+                    @if ($p?->image_path)
+                        <label class="flex items-center gap-2 text-mist"><input type="checkbox" name="remove_image" value="1" x-model="removeImage"> 이미지 빼기</label>
+                    @endif
+                </div>
+            </div>
+            @error('image')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
         </div>
         <div>
             <label for="description" class="label">설명 <span class="font-normal text-mist">(선택)</span></label>

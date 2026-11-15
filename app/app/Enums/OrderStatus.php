@@ -41,6 +41,20 @@ enum OrderStatus: int
         };
     }
 
+    /**
+     * 매장 보드에서 실수로 누른 단계를 한 칸 되돌릴 때의 이전 상태.
+     * 수령완료 → 준비완료는 정산 전 + 잠깐 동안만 (OrderService::revert 에서 확인).
+     */
+    public function previous(): ?self
+    {
+        return match ($this) {
+            self::Preparing => self::Paid,
+            self::Ready => self::Preparing,
+            self::PickedUp => self::Ready,
+            default => null,
+        };
+    }
+
     /** @return list<self> 매장 보드에 띄우는 활성 상태 */
     public static function active(): array
     {

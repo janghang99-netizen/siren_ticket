@@ -6,7 +6,7 @@
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 @php($menu = $store->products->map(fn ($p) => [
     'id' => $p->id, 'name' => $p->name, 'price' => $p->price, 'alcohol' => $p->is_alcohol,
-    'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
+    'img' => $p->imageUrl(), 'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
     'soldOut' => $p->options->isEmpty() ? ($p->stock !== null && $p->stock <= 0) : $p->options->every(fn ($o) => $o->stock !== null && $o->stock <= 0),
     'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
 ])->values())
@@ -129,7 +129,8 @@
         <template x-for="p in menu" :key="p.id">
             <li class="px-5 py-4" :class="p.soldOut && 'opacity-50'">
                 <div class="flex items-center justify-between gap-3">
-                    <div class="min-w-0">
+                    <img x-show="p.img" :src="p.img" :alt="p.name" class="size-16 shrink-0 rounded-2xl object-cover ring-1 ring-ink/5" loading="lazy">
+                    <div class="min-w-0 flex-1">
                         <p class="font-bold"><span class="product-name" :data-ko="p.name" x-text="p.name"></span>
                             <span x-show="p.alcohol" class="chip ml-1 bg-signal/10 align-middle text-[10px] text-signal">19세 이상</span></p>
                         <p x-show="p.desc" class="mt-0.5 text-xs text-mist" x-text="p.desc"></p>

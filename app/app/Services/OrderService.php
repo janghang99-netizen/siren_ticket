@@ -178,6 +178,11 @@ class OrderService
             return $this->cancel($order, $order->channel === 'pos' ? '현장판매 취소' : '매장 취소');
         }
 
+        // 한 칸 뒤로 = 되돌리기 (실수로 누른 경우)
+        if ($order->status->previous() === $to) {
+            return $this->revert($order);
+        }
+
         $order = DB::transaction(function () use ($order, $to) {
             $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
             $from = $order->status;
@@ -202,6 +207,43 @@ class OrderService
         if ($order->status === OrderStatus::PickedUp) {
             $this->webhook->sendOnce($order);   // 커밋 후 전송. 실패해도 주문은 그대로 (원본 정책)
         }
+
+        return $order->load('items');
+    }
+
+    /**
+     * 매장 보드 되돌리기: 만드는 중 → 새 주문, 픽업 대기 → 만드는 중, 건네줬어요 → 픽업 대기.
+     *  - 건네줬어요(수령완료)는 정산에 들어가기 전, 보드에 남아 있는 동안(board_picked_up_minutes)만 되돌린다.
+     *  - 적립·스탬프·업체 웹훅은 한 번만 처리되게 되어 있어(idem key·webhook_sent_at) 그대로 둔다 — 다시 건네도 두 번 쌓이지 않는다.
+     */
+    public function revert(Order $order): Order
+    {
+        $order = DB::transaction(function () use ($order) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $from = $order->status;
+            $to = $from->previous();
+
+            if (! $to) {
+                throw new OrderException("{$from->label()} 주문은 되돌릴 수 없어요.", 'bad_transition', 409);
+            }
+            if ($from === OrderStatus::PickedUp) {
+                $window = (int) config('siren.board_picked_up_minutes');
+                if ($order->settlement_id || ! $order->picked_up_at || $order->picked_up_at->lt(now()->subMinutes($window))) {
+                    throw new OrderException("건넨 지 {$window}분이 지났거나 정산에 들어간 주문은 되돌릴 수 없어요.", 'revert_expired', 409);
+                }
+            }
+
+            $column = match ($from) {
+                OrderStatus::Preparing => 'preparing_at',
+                OrderStatus::Ready => 'ready_at',
+                OrderStatus::PickedUp => 'picked_up_at',
+            };
+            $order->update(['status' => $to, $column => null]);
+
+            return $order;
+        });
+
+        \App\Services\Audit::log('order.reverted', $order, "주문 {$order->pickup_code} 되돌림 → {$order->status->label()}");
 
         return $order->load('items');
     }

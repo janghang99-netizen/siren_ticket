@@ -31,10 +31,19 @@
                         @php($soldOut = $p->options->isEmpty() ? ($p->stock !== null && $p->stock <= 0) : $p->options->every(fn ($o) => $o->stock !== null && $o->stock <= 0))
                         <tr data-href="{{ route('partner.products.edit', $p) }}" @class(['opacity-50' => ! $p->is_visible || $p->isBlocked()])>
                             <td class="px-5 py-4">
+                                <div class="flex items-start gap-3">
+                                @if ($p->imageUrl())
+                                    <img src="{{ $p->imageUrl() }}" alt="" class="size-12 shrink-0 rounded-xl object-cover ring-1 ring-ink/5" loading="lazy">
+                                @else
+                                    <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-paper text-[10px] text-mist ring-1 ring-ink/5">없음</span>
+                                @endif
+                                <div>
                                 <a href="{{ route('partner.products.edit', $p) }}" class="row-link">{{ $p->name }}</a>
                                 @if ($p->is_alcohol)<span class="chip ml-1 bg-signal/10 text-signal">주류</span>@endif
                                 <p class="text-xs text-mist">재고 차감: {{ $p->stock_deduct_at === 'order' ? '주문할 때' : '결제할 때' }}</p>
                                 @if ($p->isBlocked())<p class="mt-1 text-xs font-semibold text-signal">운영사 판매 중지 · {{ $p->block_reason }}</p>@endif
+                                </div>
+                                </div>
                             </td>
                             <td class="num px-3 py-4 text-right font-bold">{{ number_format($p->price) }}</td>
                             <td class="px-3 py-4">

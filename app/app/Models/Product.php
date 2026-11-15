@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Product extends Model
 {
     protected $fillable = [
-        'store_id', 'name', 'description', 'origin', 'allergens', 'price', 'mileage_points', 'is_alcohol',
+        'store_id', 'name', 'description', 'image_path', 'origin', 'allergens', 'price', 'mileage_points', 'is_alcohol',
         'stock', 'stock_deduct_at', 'is_visible', 'sort', 'blocked_at', 'block_reason',
     ];
 
@@ -22,6 +22,12 @@ class Product extends Model
     public function scopeSellable($q)
     {
         return $q->where('is_visible', true)->whereNull('blocked_at');
+    }
+
+    /** 상품 이미지 주소 (없으면 null) */
+    public function imageUrl(): ?string
+    {
+        return $this->image_path ? route('media.product', basename($this->image_path)) : null;
     }
 
     public function isBlocked(): bool

@@ -51,7 +51,7 @@ class PartnerController extends Controller
             ->where(fn ($q) => $q->whereIn('status', array_map(fn ($s) => $s->value, OrderStatus::active()))
                 ->orWhere(fn ($q) => $q->where('status', OrderStatus::PickedUp->value)
                     ->where('picked_up_at', '>=', now()->subMinutes(config('siren.board_picked_up_minutes')))))
-            ->orderByDesc('id')->get();
+            ->orderBy('id')->get();   // 먼저 들어온 주문부터 (주방 순서)
 
         $unread = DB::table('store_notifications')->where('store_id', $store->id)->whereNull('read_at');
         $new = (clone $unread)->count();
@@ -195,6 +195,9 @@ class PartnerController extends Controller
             'stock' => ['nullable', 'integer', 'min:0'],
             'stock_deduct_at' => ['required', 'in:order,payment'],
             'sort' => ['nullable', 'integer', 'min:0'],
+            // 상품 이미지: jpg·png·webp, 5MB 까지, 너무 작은 그림은 받지 않는다
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'dimensions:min_width=200,min_height=200,max_width=6000,max_height=6000'],
+            'remove_image' => ['nullable', 'boolean'],
             // B1 판매 금지 품목이 아님을 확인 (입점계약 제6조)
             'agree_prohibited' => [$product ? 'nullable' : 'accepted'],
             'options' => ['array'],
@@ -207,6 +210,10 @@ class PartnerController extends Controller
             'price.required' => '가격을 적어 주세요.',
             'options.*.name.required' => '옵션 이름을 적어 주세요.',
             'agree_prohibited.accepted' => '판매 금지 품목이 아닌지 확인해 주세요.',
+            'image.image' => '이미지 파일만 올릴 수 있어요.',
+            'image.mimes' => 'JPG·PNG·WEBP 이미지만 올릴 수 있어요.',
+            'image.max' => '이미지는 5MB 까지 올릴 수 있어요.',
+            'image.dimensions' => '이미지는 가로·세로 200~6000픽셀이어야 해요.',
         ]);
 
         // B2 주류는 주류판매 신고번호가 있는 업체만
@@ -225,6 +232,17 @@ class PartnerController extends Controller
             // 재고 수량은 새 상품일 때만 폼에서 받는다. 이후 변경은 생산·재고 화면(원장 기록)에서.
             if (! $product) {
                 $fields['stock'] = $data['stock'] ?? null;
+            }
+            // 이미지: 새로 올리면 바꾸고, 지우기를 고르면 뺀다. 옛 파일은 저장이 끝난 뒤 지운다.
+            $oldImage = $product?->image_path;
+            if ($request->hasFile('image')) {
+                $file = $request->file('image');
+                $fields['image_path'] = $file->storeAs('products', \Illuminate\Support\Str::random(40).'.'.$file->extension(), 'local');
+            } elseif ($request->boolean('remove_image')) {
+                $fields['image_path'] = null;
+            }
+            if ($oldImage && array_key_exists('image_path', $fields) && $fields['image_path'] !== $oldImage) {
+                DB::afterCommit(fn () => \Illuminate\Support\Facades\Storage::disk('local')->delete($oldImage));
             }
             if ($product) {
                 $product->update($fields);
