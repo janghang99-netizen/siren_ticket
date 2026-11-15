@@ -32,5 +32,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- 테스트는 실제 체인으로 보내지 않는다 (Docker 환경이 kaia 여도) -->
+        <env name="SIREN_NFT_CHAIN" value="local" force="true"/>
+        <server name="SIREN_NFT_CHAIN" value="local" force="true"/>
     </php>
 </phpunit>

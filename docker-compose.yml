@@ -16,6 +16,8 @@ x-app-env: &app-env
   SESSION_DRIVER: database
   CACHE_STORE: database
   QUEUE_CONNECTION: sync
+  # NFT 티켓 체인: local(기록만) / kaia(Kairos 테스트넷). 컨트랙트 주소는 nft:deploy 가 설정에 저장한다
+  SIREN_NFT_CHAIN: kaia
 
 services:
   db:
