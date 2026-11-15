@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FanController;
-use App\Http\Controllers\StaffController;
+use App\Http\Controllers\PartnerController;
 use Illuminate\Support\Facades\Route;
 
 // ── 팬 (모바일) ──
@@ -26,17 +28,61 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/display/{store}/data', 'displayData')->name('display.data');
 });
 
-// ── 입점 매장 직원 ──
-Route::prefix('staff')->name('staff.')->controller(StaffController::class)->group(function () {
-    Route::get('/login', 'loginForm')->name('login');
-    Route::post('/login', 'login')->middleware('throttle:10,1');
+// ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
+Route::get('/login', [AuthController::class, 'form'])->middleware('guest')->name('login');
+Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:10,1']);
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
-    Route::middleware('auth')->group(function () {
-        Route::post('/logout', 'logout')->name('logout');
-        Route::get('/', 'board')->name('board');
-        Route::get('/board', 'boardData')->name('board.data');
-        Route::patch('/orders/{order}/status', 'updateStatus')->name('orders.status');
-        Route::patch('/slots/{slot}/toggle', 'toggleSlot')->name('slots.toggle');
-        Route::post('/pos-orders', 'posOrder')->name('pos');
-    });
+// ── 입점업체 콘솔: 여러 매장의 사이렌오더 ──
+Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->controller(PartnerController::class)->group(function () {
+    Route::get('/', 'board')->name('board');
+    Route::get('/board', 'boardData')->name('board.data');
+    Route::post('/stores/{store:id}/switch', 'switchStore')->name('stores.switch');
+    Route::patch('/orders/{order}/status', 'updateStatus')->name('orders.status');
+    Route::patch('/slots/{slot}/toggle', 'toggleSlot')->name('slots.toggle');
+    Route::post('/pos-orders', 'posOrder')->name('pos');
+
+    Route::get('/products', 'products')->name('products');
+    Route::get('/products/new', 'productCreate')->name('products.create');
+    Route::post('/products', 'productStore')->name('products.store');
+    Route::get('/products/{product}/edit', 'productEdit')->name('products.edit');
+    Route::put('/products/{product}', 'productUpdate')->name('products.update');
+    Route::patch('/products/{product}/toggle', 'toggleProduct')->name('products.toggle');
+
+    Route::get('/sales', 'sales')->name('sales');
+    Route::get('/cancels', 'cancels')->name('cancels');
+    Route::get('/settlements', 'settlements')->name('settlements');
+    Route::get('/settlements/{settlement}', 'settlement')->name('settlements.show');
+});
+
+// ── 슈퍼어드민 콘솔: 공연·좌석티켓·입점업체·매장·정산 ──
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(AdminController::class)->group(function () {
+    Route::get('/', fn () => redirect()->route('admin.events.index'));
+    Route::get('/events', 'events')->name('events.index');
+    Route::get('/events/new', 'eventCreate')->name('events.create');
+    Route::post('/events', 'eventStore')->name('events.store');
+    Route::get('/events/{event:id}/edit', 'eventEdit')->name('events.edit');
+    Route::put('/events/{event:id}', 'eventUpdate')->name('events.update');
+
+    Route::get('/tickets', 'tickets')->name('tickets.index');
+    Route::patch('/tickets/{ticket}/cancel', 'ticketCancel')->name('tickets.cancel');
+
+    Route::get('/vendors', 'vendors')->name('vendors.index');
+    Route::get('/vendors/new', 'vendorCreate')->name('vendors.create');
+    Route::post('/vendors', 'vendorStore')->name('vendors.store');
+    Route::get('/vendors/{vendor}/edit', 'vendorEdit')->name('vendors.edit');
+    Route::put('/vendors/{vendor}', 'vendorUpdate')->name('vendors.update');
+
+    Route::get('/stores', 'stores')->name('stores.index');
+    Route::get('/stores/new', 'storeCreate')->name('stores.create');
+    Route::post('/stores', 'storeStore')->name('stores.store');
+    Route::get('/stores/{store:id}/edit', 'storeEdit')->name('stores.edit');
+    Route::put('/stores/{store:id}', 'storeUpdate')->name('stores.update');
+
+    Route::get('/settlements', 'settlements')->name('settlements.index');
+    Route::post('/settlements', 'settlementGenerate')->name('settlements.generate');
+    Route::get('/settlements/{settlement}', 'settlement')->name('settlements.show');
+    Route::patch('/settlements/{settlement}/pay', 'settlementPay')->name('settlements.pay');
+
+    Route::get('/orders', 'orders')->name('orders.index');
 });

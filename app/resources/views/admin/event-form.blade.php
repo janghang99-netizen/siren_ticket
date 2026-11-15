@@ -1,0 +1,110 @@
+@extends('layouts.backoffice')
+@section('title', $event ? '공연 수정' : '공연 등록')
+@section('eyebrow', '좌석티켓')
+
+@php($e = $event)
+@php($dt = fn ($field, $fallback = null) => old($field, $e?->{$field}?->format('Y-m-d\TH:i') ?? $fallback))
+
+@section('content')
+<form method="POST" action="{{ $e ? route('admin.events.update', $e->id) : route('admin.events.store') }}" class="grid max-w-5xl gap-6 xl:grid-cols-[1fr_360px]">
+    @csrf
+    @if ($e) @method('PUT') @endif
+
+    <div class="space-y-6">
+        <section class="space-y-4 rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+            <h2 class="font-bold">공연 정보</h2>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label for="artist" class="label">아티스트</label>
+                    <input id="artist" name="artist" class="field" value="{{ old('artist', $e?->artist) }}" required>
+                    @error('artist')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="venue" class="label">공연장</label>
+                    <input id="venue" name="venue" class="field" value="{{ old('venue', $e?->venue ?? '서울아레나') }}" required>
+                </div>
+            </div>
+            <div>
+                <label for="name" class="label">공연명</label>
+                <input id="name" name="name" class="field" value="{{ old('name', $e?->name) }}" placeholder="예: WORLD TOUR 〈ORBIT〉 IN SEOUL" required>
+                @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div class="grid gap-4 sm:grid-cols-3">
+                <div>
+                    <label for="starts_at" class="label">공연 시작</label>
+                    <input id="starts_at" name="starts_at" type="datetime-local" class="field num !text-sm" value="{{ $dt('starts_at') }}" required>
+                    @error('starts_at')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="doors_at" class="label">입장 시작</label>
+                    <input id="doors_at" name="doors_at" type="datetime-local" class="field num !text-sm" value="{{ $dt('doors_at') }}">
+                    @error('doors_at')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="sales_open_at" class="label">예매 오픈</label>
+                    <input id="sales_open_at" name="sales_open_at" type="datetime-local" class="field num !text-sm" value="{{ $dt('sales_open_at') }}">
+                    @error('sales_open_at')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label for="theme_color" class="label">팬덤 컬러 <span class="font-normal text-mist">(좌석도·티켓 색)</span></label>
+                    <input id="theme_color" name="theme_color" type="color" class="h-12 w-full cursor-pointer rounded-2xl bg-white ring-1 ring-ink/10" value="{{ old('theme_color', $e?->theme_color ?? '#6C4BFF') }}">
+                </div>
+                <div>
+                    <label for="max_per_buyer" class="label">1인 최대 매수</label>
+                    <input id="max_per_buyer" name="max_per_buyer" type="number" min="1" max="10" class="field num" value="{{ old('max_per_buyer', $e?->max_per_buyer ?? 4) }}" required>
+                </div>
+            </div>
+        </section>
+
+        <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+            @if (! $e)
+                <h2 class="font-bold">좌석 등급 · 가격</h2>
+                <p class="mt-1 text-sm text-mist">플로어(VIP) 3구역, 1층(R) 6구역, 2층(S) 8구역이 만들어져요. 등록 후 구역별로 바꿀 수 있어요.</p>
+                <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                    @foreach (['VIP' => [176000, 1500, '플로어 3구역'], 'R' => [154000, 2000, '1층 6구역'], 'S' => [132000, 1200, '2층 8구역']] as $tier => [$price, $cap, $desc])
+                        <div class="rounded-2xl bg-paper p-4">
+                            <p class="font-bold">{{ $tier }}석 <span class="text-xs font-normal text-mist">{{ $desc }}</span></p>
+                            <label class="mt-3 block text-xs text-mist" for="tier-{{ $tier }}-price">가격(원)</label>
+                            <input id="tier-{{ $tier }}-price" name="tiers[{{ $tier }}][price]" type="number" min="0" step="1000" class="field num !py-2.5" value="{{ old("tiers.$tier.price", $price) }}" required>
+                            <label class="mt-2 block text-xs text-mist" for="tier-{{ $tier }}-cap">구역당 좌석 수</label>
+                            <input id="tier-{{ $tier }}-cap" name="tiers[{{ $tier }}][capacity]" type="number" min="1" max="5000" class="field num !py-2.5" value="{{ old("tiers.$tier.capacity", $cap) }}" required>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <h2 class="font-bold">구역별 가격 · 좌석 수</h2>
+                <p class="mt-1 text-sm text-mist">이미 팔린 좌석보다 적게 줄일 수는 없어요.</p>
+                <div class="mt-4 overflow-x-auto">
+                    <table class="w-full min-w-[480px] text-sm">
+                        <thead class="text-left text-xs text-mist">
+                            <tr><th class="py-2 font-semibold">구역</th><th class="py-2 font-semibold">가격(원)</th><th class="py-2 font-semibold">좌석 수</th><th class="py-2 text-right font-semibold">판매</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-ink/5">
+                            @foreach ($e->sections as $s)
+                                <tr>
+                                    <td class="py-2"><span class="num font-bold">{{ $s->code }}</span> <span class="text-xs text-mist">{{ $s->tier }}</span></td>
+                                    <td class="py-2 pr-2"><input name="sections[{{ $s->id }}][price]" type="number" min="0" step="1000" class="field num !py-2" value="{{ old("sections.{$s->id}.price", $s->price) }}" aria-label="{{ $s->code }}구역 가격"></td>
+                                    <td class="py-2 pr-2"><input name="sections[{{ $s->id }}][capacity]" type="number" min="{{ $s->sold }}" max="5000" class="field num !py-2" value="{{ old("sections.{$s->id}.capacity", $s->capacity) }}" aria-label="{{ $s->code }}구역 좌석 수"></td>
+                                    <td class="num py-2 text-right">{{ number_format($s->sold) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </section>
+    </div>
+
+    <div class="space-y-4">
+        @if ($e)
+            <div class="rounded-3xl bg-ink p-4">
+                @include('partials.bowl', ['event' => $e])
+            </div>
+        @endif
+        <button class="btn-ink w-full">{{ $e ? '저장' : '공연 등록' }}</button>
+        <a href="{{ route('admin.events.index') }}" class="btn-ghost w-full">목록으로</a>
+    </div>
+</form>
+@endsection

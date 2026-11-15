@@ -66,7 +66,7 @@ class SirenOrderTest extends TestCase
         $tickets = app(TicketService::class)->purchase($this->event, $section, 2, '팬', '010-1111-2222');
 
         $this->assertCount(2, $tickets);
-        $this->assertSame([2, 3], $tickets->pluck('seat_no')->all());
+        $this->assertSame([1, 2], $tickets->pluck('seat_no')->all());   // 발급된 티켓 수 기준 번호
         $this->assertSame(3, $section->fresh()->sold);
 
         $this->expectException(OrderException::class);
@@ -187,18 +187,21 @@ class SirenOrderTest extends TestCase
 
     // ── 매장 직원 ──
 
-    public function test_staff_only_sees_and_changes_own_store_orders(): void
+    public function test_vendor_only_sees_and_changes_own_store_orders(): void
     {
         $order = $this->paidOrder();
-        $other = Store::create(['code' => 'arena2', 'name' => '비어 스탠드']);
-        $mine = User::factory()->create(['store_id' => $this->store->id]);
-        $theirs = User::factory()->create(['store_id' => $other->id]);
+        $mineVendor = \App\Models\Vendor::create(['name' => '아레나푸드']);
+        $theirVendor = \App\Models\Vendor::create(['name' => '비어하우스']);
+        $this->store->update(['vendor_id' => $mineVendor->id]);
+        Store::create(['vendor_id' => $theirVendor->id, 'code' => 'arena2', 'name' => '비어 스탠드']);
+        $mine = User::factory()->create(['role' => 'vendor', 'vendor_id' => $mineVendor->id]);
+        $theirs = User::factory()->create(['role' => 'vendor', 'vendor_id' => $theirVendor->id]);
 
-        $this->actingAs($mine)->getJson(route('staff.board.data'))
+        $this->actingAs($mine)->getJson(route('partner.board.data'))
             ->assertOk()->assertJsonPath('orders.0.pickup_code', $order->pickup_code);
 
-        $this->actingAs($theirs)->getJson(route('staff.board.data'))->assertJsonCount(0, 'orders');
-        $this->actingAs($theirs)->patchJson(route('staff.orders.status', $order), ['status' => 3])->assertForbidden();
+        $this->actingAs($theirs)->getJson(route('partner.board.data'))->assertJsonCount(0, 'orders');
+        $this->actingAs($theirs)->patchJson(route('partner.orders.status', $order), ['status' => 3])->assertForbidden();
     }
 
     public function test_pos_method_is_rejected_for_online_orders(): void

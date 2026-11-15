@@ -22,7 +22,13 @@ class Order extends Model
         'cancelled_at' => 'datetime',
         'refunded_at' => 'datetime',
         'webhook_sent_at' => 'datetime',
+        'settled_at' => 'datetime',
     ];
+
+    public function settlement(): BelongsTo
+    {
+        return $this->belongsTo(Settlement::class);
+    }
 
     public function getRouteKeyName(): string
     {

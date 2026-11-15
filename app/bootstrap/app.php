@@ -12,8 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->redirectGuestsTo(fn () => route('staff.login'));
-        $middleware->redirectUsersTo(fn () => route('staff.board'));
+        $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->redirectUsersTo(fn ($request) => \App\Http\Controllers\AuthController::home($request->user()));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Store extends Model
 {
-    protected $fillable = ['code', 'name', 'commission_rate', 'is_open'];
+    protected $fillable = ['vendor_id', 'code', 'name', 'commission_rate', 'is_open'];
+
+    public function vendor(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
 
     protected $casts = ['is_open' => 'boolean', 'commission_rate' => 'decimal:2'];
 

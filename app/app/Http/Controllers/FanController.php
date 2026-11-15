@@ -153,10 +153,16 @@ class FanController extends Controller
 
     public function myOrders(Request $request): View
     {
-        $orders = Order::with(['store', 'items'])->whereIn('order_no', $request->session()->get('order_nos', []))
+        $tabs = ['active' => [2, 3, 4], 'done' => [5, 6], 'cancelled' => [11, 14]];
+        $all = Order::with(['store', 'items'])->whereIn('order_no', $request->session()->get('order_nos', []))
             ->where('status', '!=', OrderStatus::Pending->value)->latest()->get();
+        $tab = array_key_exists($request->query('tab'), $tabs) ? $request->query('tab') : 'active';
 
-        return view('fan.orders', ['orders' => $orders]);
+        return view('fan.orders', [
+            'tab' => $tab,
+            'counts' => collect($tabs)->map(fn ($s) => $all->filter(fn ($o) => in_array($o->status->value, $s, true))->count()),
+            'orders' => $all->filter(fn ($o) => in_array($o->status->value, $tabs[$tab], true))->values(),
+        ]);
     }
 
     /** 픽업 전광판 (원본 order_board_view.php). 매장 앞 모니터에 띄운다. */

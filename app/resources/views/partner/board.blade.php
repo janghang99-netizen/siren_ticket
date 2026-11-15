@@ -1,17 +1,14 @@
-<!doctype html>
-<html lang="ko">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $store->name }} 주문보드 · SIREN</title>
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-</head>
-{{-- 매장 주문보드 (원본 seller_order_board.php + ajax_seller_order_board_v2.php). 4초 폴링. --}}
-<body class="min-h-dvh bg-paper"
-      x-data="{
+@extends('layouts.backoffice')
+@section('title', $store->name.' 주문보드')
+@section('eyebrow', '실시간 · 4초마다 갱신')
+
+@section('actions')
+    <a href="{{ route('display', $store) }}" target="_blank" class="btn-ghost !py-2.5 text-sm">픽업 전광판 열기</a>
+@endsection
+
+@section('content')
+{{-- 매장 주문보드 (원본 seller_order_board.php + ajax_seller_order_board_v2.php) --}}
+<div x-data="{
         orders: [], slots: [], flash: 0, error: '', busy: null,
         names: { pre: '공연 전', intermission: '인터미션', post: '공연 후' },
         cols: [
@@ -21,8 +18,8 @@
         ],
         async load() {
             try {
-                const d = await api('{{ route('staff.board.data') }}');
-                this.orders = d.orders; this.slots = d.slots;
+                const d = await api('{{ route('partner.board.data') }}');
+                this.orders = d.orders; this.slots = d.slots; this.error = '';
                 if (d.new_orders) { this.flash = d.new_orders; setTimeout(() => this.flash = 0, 4000) }
             } catch (e) { this.error = e.message }
         },
@@ -30,55 +27,42 @@
             if (status === 11 && !confirm(o.pickup_code + ' 주문을 취소하고 환불할까요?')) return;
             this.busy = o.order_no; this.error = '';
             try {
-                await api('{{ url('staff/orders') }}/' + o.order_no + '/status', 'PATCH', { status });
+                await api('{{ url('partner/orders') }}/' + o.order_no + '/status', 'PATCH', { status });
                 await this.load();
             } catch (e) { this.error = e.message }
             this.busy = null;
         },
         async toggle(s) {
-            try { await api('{{ url('staff/slots') }}/' + s.id + '/toggle', 'PATCH'); await this.load() } catch (e) { this.error = e.message }
+            try { await api('{{ url('partner/slots') }}/' + s.id + '/toggle', 'PATCH'); await this.load() } catch (e) { this.error = e.message }
         },
         of(status) { return this.orders.filter(o => o.status === status) },
-      }"
-      x-init="load(); setInterval(() => load(), 4000)">
+     }"
+     x-init="load(); setInterval(() => load(), 4000)">
 
-    <header class="sticky top-0 z-20 border-b border-ink/5 bg-paper/90 px-6 py-4 backdrop-blur">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div>
-                <p class="font-display text-sm font-black">SIREN <span class="font-sans font-semibold text-mist">매장</span></p>
-                <h1 class="text-xl font-black">{{ $store->name }}</h1>
-            </div>
+    {{-- 시간대별 캐파: 매장 판단으로 조기 마감/재개 --}}
+    <ul class="mb-5 flex flex-wrap gap-2">
+        <template x-for="s in slots" :key="s.id">
+            <li class="flex items-center gap-3 rounded-2xl bg-white py-2 pl-4 pr-2 ring-1 ring-ink/5">
+                <div>
+                    <p class="text-xs font-semibold" x-text="names[s.slot]"></p>
+                    <p class="num text-sm font-bold"><span x-text="s.used"></span><span class="text-mist">/<span x-text="s.capacity"></span></span></p>
+                </div>
+                <button type="button" @click="toggle(s)" class="rounded-full px-3 py-1.5 text-xs font-bold"
+                        :class="s.is_closed ? 'bg-signal text-white' : (s.open ? 'bg-stick/10 text-stick' : 'bg-ink/10 text-mist')"
+                        x-text="s.is_closed ? '마감함 · 다시 열기' : (s.open ? '받는 중 · 마감하기' : '자동 마감')"></button>
+            </li>
+        </template>
+        <li x-show="!slots.length" class="text-sm text-mist">예정된 공연이 없어 주문 시간대가 없어요.</li>
+    </ul>
 
-            {{-- 시간대별 캐파: 매장 판단으로 조기 마감/재개 --}}
-            <ul class="flex flex-wrap gap-2">
-                <template x-for="s in slots" :key="s.id">
-                    <li class="flex items-center gap-3 rounded-2xl bg-white py-2 pl-4 pr-2 ring-1 ring-ink/5">
-                        <div>
-                            <p class="text-xs font-semibold" x-text="names[s.slot]"></p>
-                            <p class="num text-sm font-bold"><span x-text="s.used"></span><span class="text-mist">/<span x-text="s.capacity"></span></span></p>
-                        </div>
-                        <button type="button" @click="toggle(s)" class="rounded-full px-3 py-1.5 text-xs font-bold"
-                                :class="s.is_closed ? 'bg-signal text-white' : (s.open ? 'bg-stick/10 text-stick' : 'bg-ink/10 text-mist')"
-                                x-text="s.is_closed ? '마감함 · 다시 열기' : (s.open ? '받는 중 · 마감' : '자동 마감')"></button>
-                    </li>
-                </template>
-            </ul>
-
-            <div class="ml-auto flex items-center gap-3 text-sm">
-                <a href="{{ route('display', $store) }}" target="_blank" class="btn-ghost !py-2">전광판 열기</a>
-                <form method="POST" action="{{ route('staff.logout') }}">@csrf<button class="font-semibold text-mist hover:text-ink">로그아웃</button></form>
-            </div>
-        </div>
-    </header>
-
-    <div x-show="flash" x-cloak x-transition class="fixed left-1/2 top-24 z-30 -translate-x-1/2 rounded-full bg-ink px-6 py-3 font-bold text-pick shadow-xl" role="status">
+    <div x-show="flash" x-cloak x-transition class="fixed left-1/2 top-6 z-30 -translate-x-1/2 rounded-full bg-ink px-6 py-3 font-bold text-pick shadow-xl" role="status">
         새 주문 <span x-text="flash"></span>건
     </div>
-    <p x-show="error" x-cloak x-text="error" role="alert" class="mx-6 mt-4 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal"></p>
+    <p x-show="error" x-cloak x-text="error" role="alert" class="mb-4 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal"></p>
 
-    <main class="grid gap-5 p-6 lg:grid-cols-3">
+    <div class="grid gap-5 xl:grid-cols-3">
         <template x-for="col in cols" :key="col.status">
-            <section class="min-h-[60vh] rounded-[26px] bg-paper-deep/60 p-3">
+            <section class="min-h-[50vh] rounded-[26px] bg-paper-deep/60 p-3">
                 <h2 class="flex items-center justify-between px-2 pb-3 pt-1 font-bold">
                     <span x-text="col.title"></span>
                     <span class="num rounded-full bg-white px-2.5 py-0.5 text-sm" x-text="of(col.status).length"></span>
@@ -114,9 +98,9 @@
                 <p x-show="!of(col.status).length" class="px-2 py-8 text-center text-sm text-mist">비어 있어요</p>
             </section>
         </template>
-    </main>
+    </div>
 
-    <section x-show="of(5).length" class="px-6 pb-10">
+    <section x-show="of(5).length" class="mt-6">
         <h2 class="mb-2 text-sm font-bold text-mist">방금 건네준 주문</h2>
         <ul class="flex flex-wrap gap-2">
             <template x-for="o in of(5)" :key="o.order_no">
@@ -124,5 +108,5 @@
             </template>
         </ul>
     </section>
-</body>
-</html>
+</div>
+@endsection

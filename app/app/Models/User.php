@@ -19,7 +19,8 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'store_id',
+        'role',
+        'vendor_id',
         'name',
         'email',
         'password',
@@ -46,5 +47,24 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    protected $attributes = ['role' => 'vendor'];
+
+    public function vendor(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    /** 플랫폼 회사 (공연·좌석티켓·입점업체·정산 관리) */
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
+    }
+
+    /** 입점업체 계정 (자기 업체 매장들만) */
+    public function isVendor(): bool
+    {
+        return $this->role === 'vendor' && $this->vendor_id !== null;
     }
 }

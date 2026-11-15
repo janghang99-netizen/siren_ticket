@@ -52,8 +52,9 @@ class TicketService
                     : "{$section->code}구역이 매진됐어요. 다른 구역을 골라 주세요.", 'sold_out');
             }
 
-            $soldNow = (int) SeatSection::whereKey($section->id)->value('sold');
-            $first = $soldNow - $qty;
+            // 좌석 번호는 이 구역에 발급된 티켓 수(취소분 포함) 다음부터 — 취소된 좌석 번호를 재사용하지 않아 중복이 없다.
+            // 위 increment 가 구역 행을 잠갔으므로 같은 구역 동시 구매는 여기서 직렬화된다.
+            $first = Ticket::where('seat_section_id', $section->id)->count();
 
             return collect(range(0, $qty - 1))->map(fn ($i) => Ticket::create([
                 'ticket_no' => strtoupper($section->code.'-'.Str::random(8)),
@@ -67,6 +68,21 @@ class TicketService
                 'status' => 'paid',
                 'paid_at' => now(),
             ]));
+        });
+    }
+
+    /** 슈퍼어드민 티켓 취소: 좌석을 구역 잔여석으로 돌려준다. 입장한 티켓은 취소 불가. */
+    public function cancel(Ticket $ticket): Ticket
+    {
+        return DB::transaction(function () use ($ticket) {
+            $ticket = Ticket::whereKey($ticket->id)->lockForUpdate()->firstOrFail();
+            if ($ticket->status !== 'paid') {
+                throw new OrderException($ticket->status === 'used' ? '입장한 티켓은 취소할 수 없어요.' : '이미 취소된 티켓이에요.', 'bad_transition', 409);
+            }
+            $ticket->update(['status' => 'cancelled']);
+            SeatSection::whereKey($ticket->seat_section_id)->where('sold', '>', 0)->decrement('sold');
+
+            return $ticket;
         });
     }
 }

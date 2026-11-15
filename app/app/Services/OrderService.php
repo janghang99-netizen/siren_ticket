@@ -154,7 +154,10 @@ class OrderService
                     throw new OrderException('환불에 실패해 주문을 그대로 두었습니다. 결제사 상태를 확인해 주세요.', 'refund_failed', 502);
                 }
                 $this->releaseResources($order);
-                $order->update(['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now()]);
+                $order->update([
+                    'status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(),
+                    'cancel_reason' => $order->channel === 'pos' ? '현장판매 취소' : '매장 취소',
+                ]);
 
                 return $order;
             }
@@ -188,7 +191,7 @@ class OrderService
                     return 0;
                 }
                 $this->releaseResources($order);
-                $order->update(['status' => OrderStatus::Cancelled, 'cancelled_at' => now()]);
+                $order->update(['status' => OrderStatus::Cancelled, 'cancelled_at' => now(), 'cancel_reason' => '결제 시간 초과']);
 
                 return 1;
             });

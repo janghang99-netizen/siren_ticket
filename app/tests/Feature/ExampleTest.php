@@ -25,6 +25,7 @@ class ExampleTest extends TestCase
         $this->get('/concerts/asteria-2026-seoul/stores')->assertOk()->assertSee('아레나 커피');
         $this->get('/concerts/asteria-2026-seoul/stores/arena1')->assertOk();
         $this->get('/display/arena1')->assertOk();
-        $this->get('/staff')->assertRedirect('/staff/login');
+        $this->get('/partner')->assertRedirect('/login');
+        $this->get('/admin/events')->assertRedirect('/login');
     }
 }

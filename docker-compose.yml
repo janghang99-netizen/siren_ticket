@@ -1,0 +1,63 @@
+# 로컬 검증용: docker compose up -d --build  →  http://localhost:8090
+# 접속 정보는 전부 로컬 개발용 값이다. 운영에 그대로 쓰지 말 것.
+name: siren
+
+x-app-env: &app-env
+  APP_ENV: local
+  APP_DEBUG: "true"
+  APP_URL: http://localhost:8090
+  APP_TIMEZONE: Asia/Seoul
+  DB_CONNECTION: mysql
+  DB_HOST: db
+  DB_PORT: "3306"
+  DB_DATABASE: siren
+  DB_USERNAME: siren
+  DB_PASSWORD: siren-local
+  SESSION_DRIVER: database
+  CACHE_STORE: database
+  QUEUE_CONNECTION: sync
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: siren
+      MYSQL_USER: siren
+      MYSQL_PASSWORD: siren-local
+      MYSQL_ROOT_PASSWORD: siren-root-local
+      TZ: Asia/Seoul
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "3317:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./app/docker/mysql-init.sql:/docker-entrypoint-initdb.d/01-test-db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-usiren", "-psiren-local"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: ./app
+    image: siren-app
+    environment: *app-env
+    ports:
+      - "8090:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 미결제 주문 만료(캐파·재고 반환)를 매분 실행
+  scheduler:
+    image: siren-app
+    environment:
+      <<: *app-env
+      SKIP_MIGRATE: "1"
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      app:
+        condition: service_started
+
+volumes:
+  db-data:

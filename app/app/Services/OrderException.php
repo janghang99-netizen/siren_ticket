@@ -13,8 +13,13 @@ class OrderException extends RuntimeException
         parent::__construct($message);
     }
 
-    public function render(): JsonResponse
+    public function render(\Illuminate\Http\Request $request): JsonResponse|\Illuminate\Http\RedirectResponse
     {
+        // 폼 화면(관리 콘솔 등)에서는 이전 화면으로 돌아가 메시지를 보여 준다
+        if (! $request->expectsJson()) {
+            return back()->withInput()->withErrors(['rule' => $this->getMessage()]);
+        }
+
         return response()->json([
             'result' => 'fail',
             'code' => $this->reason,
