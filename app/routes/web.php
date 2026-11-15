@@ -116,6 +116,11 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::put('/products/{product}', 'productUpdate')->name('products.update');
     Route::patch('/products/{product}/toggle', 'toggleProduct')->name('products.toggle');
     Route::patch('/products/{product}/sold-out', 'toggleSoldOut')->name('products.sold-out');
+    // 카테고리 (매장별)
+    Route::post('/categories', 'categoryStore')->name('categories.store');
+    Route::put('/categories/{category}', 'categoryUpdate')->name('categories.update');
+    Route::patch('/categories/{category}/move', 'categoryMove')->name('categories.move');
+    Route::delete('/categories/{category}', 'categoryDestroy')->name('categories.destroy');
 
     // 생산관리 (원본 production.php) — 오늘 생산량으로 재고 덮어쓰기 + EIS 생산 webhook
     Route::get('/production', 'production')->name('production');

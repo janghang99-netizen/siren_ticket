@@ -81,8 +81,19 @@ class DatabaseSeeder extends Seeder
             foreach ($stores as [$code, $sname, $menu]) {
                 $store = Store::create(['vendor_id' => $vendor->id, 'code' => $code, 'name' => $sname, 'commission_rate' => 8.5]);
                 foreach ($menu as $sort => [$pname, $price, $options]) {
+                    // 데모 카테고리 (매장별) — 처음 나온 순서가 카테고리 순서
+                    $catName = [
+                        '아메리카노' => '커피', '카페라떼' => '커피', '레몬에이드' => '음료',
+                        '소금빵' => '빵', '크루아상' => '빵', '인터미션 세트' => '세트',
+                        '생수' => '물', '이온음료' => '음료', '탄산음료' => '음료',
+                        '생맥주 500' => '맥주', '캔맥주' => '맥주', '무알콜 맥주' => '무알콜',
+                        '클래식 핫도그' => '핫도그', '치즈 핫도그' => '핫도그', '감자튀김' => '사이드',
+                        '응원봉 배터리' => '응원 도구', '포토카드 랜덤팩' => '포토카드', '슬로건 타월' => '응원 도구',
+                    ][$pname] ?? null;
+                    $category = $catName ? \App\Models\ProductCategory::firstOrCreate(['store_id' => $store->id, 'name' => $catName],
+                        ['sort' => \App\Models\ProductCategory::where('store_id', $store->id)->count() + 1]) : null;
                     $product = Product::create([
-                        'store_id' => $store->id, 'name' => $pname, 'price' => $price, 'sort' => $sort,
+                        'store_id' => $store->id, 'category_id' => $category?->id, 'name' => $pname, 'price' => $price, 'sort' => $sort,
                         'stock' => $options ? null : ($pname === '슬로건 타월' ? 0 : 300),   // 품절 표시 확인용 1개
                         'is_alcohol' => in_array($pname, ['생맥주 500', '캔맥주'], true),
                         'origin' => in_array($code, ['arena1', 'arena3'], true) ? '원두·밀가루 수입산, 우유 국산' : null,

@@ -108,7 +108,8 @@ class FanController extends Controller
 
     public function menu(Request $request, Event $event, Store $store, BenefitService $benefits): View
     {
-        $store->load(['vendor', 'products' => fn ($q) => $q->sellable()->orderBy('sort')->with('options')]);
+        $store->load(['vendor', 'products' => fn ($q) => $q->sellable()->with(['options', 'category'])]);
+        $store->setRelation('products', \App\Models\Product::menuOrder($store->products));   // 카테고리 순서 → 상품 순서
         $slots = CapacitySlot::where('event_id', $event->id)->where('store_id', $store->id)
             ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
         $customer = $this->verifiedCustomer($request);

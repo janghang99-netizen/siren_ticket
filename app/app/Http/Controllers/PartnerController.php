@@ -63,9 +63,8 @@ class PartnerController extends Controller
             ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
 
         // 보드의 품절 관리 패널용 (판매 중인 상품만)
-        $products = Product::with('options')->where('store_id', $store->id)->where('is_visible', true)->whereNull('blocked_at')
-            ->orderBy('category')->orderBy('sort')->orderBy('id')->get()
-            ->map(fn (Product $p) => ['id' => $p->id, 'name' => $p->name, 'category' => $p->category,
+        $products = Product::menuOrder(Product::with(['options', 'category'])->where('store_id', $store->id)->sellable()->get())
+            ->map(fn (Product $p) => ['id' => $p->id, 'name' => $p->name, 'category' => $p->category?->name,
                 'sold_out' => (bool) $p->sold_out_at, 'stock_out' => ! $p->sold_out_at && $p->isSoldOut()]);
 
         return response()->json([
@@ -141,14 +140,13 @@ class PartnerController extends Controller
     public function pos(Request $request): View
     {
         $store = $this->currentStore($request);
-        $products = Product::with('options')->where('store_id', $store->id)->where('is_visible', true)->whereNull('blocked_at')
-            ->orderBy('sort')->orderBy('id')->get();
+        $products = Product::menuOrder(Product::with(['options', 'category'])->where('store_id', $store->id)->sellable()->get());
         $recent = Order::with('items')->where('store_id', $store->id)->where('channel', 'pos')
             ->where('created_at', '>=', now()->startOfDay())->latest('id')->limit(20)->get();
 
         return view('partner.pos', $this->shared($request) + [
             'menu' => $products->map(fn (Product $p) => [
-                'id' => $p->id, 'name' => $p->name, 'cat' => $p->category ?: '메뉴', 'price' => $p->price, 'img' => $p->imageUrl(),
+                'id' => $p->id, 'name' => $p->name, 'cat' => $p->categoryName(), 'price' => $p->price, 'img' => $p->imageUrl(),
                 'alcohol' => $p->is_alcohol, 'soldOut' => $p->isSoldOut(),
                 'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
             ])->values(),
@@ -180,7 +178,7 @@ class PartnerController extends Controller
     public function products(Request $request): View
     {
         $store = $this->currentStore($request);
-        $products = Product::with('options')->where('store_id', $store->id)->orderBy('sort')->orderBy('id')->get();
+        $products = Product::menuOrder(Product::with(['options', 'category'])->where('store_id', $store->id)->get());
 
         // 판매 수량 (취소·미결제 제외)
         $sold = DB::table('order_items')->join('orders', 'orders.id', '=', 'order_items.order_id')
@@ -190,7 +188,7 @@ class PartnerController extends Controller
             ->selectRaw('order_items.product_id, SUM(order_items.qty) as qty')
             ->pluck('qty', 'product_id');
 
-        return view('partner.products', $this->shared($request) + ['products' => $products, 'sold' => $sold]);
+        return view('partner.products', $this->shared($request) + ['products' => $products, 'sold' => $sold, 'categories' => $this->categories($request)]);
     }
 
     public function productCreate(Request $request): View
@@ -205,11 +203,92 @@ class PartnerController extends Controller
         return view('partner.product-form', $this->shared($request) + ['product' => $product->load('options'), 'categories' => $this->categories($request)]);
     }
 
-    /** 이 매장에서 이미 쓰는 카테고리 이름 (폼에서 고르기) */
-    private function categories(Request $request): array
+    /** 이 매장의 카테고리 (순서대로, 상품 수 포함) */
+    private function categories(Request $request): \Illuminate\Support\Collection
     {
-        return Product::where('store_id', $this->currentStore($request)->id)->whereNotNull('category')
-            ->distinct()->orderBy('category')->pluck('category')->all();
+        return \App\Models\ProductCategory::where('store_id', $this->currentStore($request)->id)
+            ->withCount('products')->orderBy('sort')->orderBy('id')->get();
+    }
+
+    // ── 카테고리 관리 (매장별: 추가 · 이름 · 순서 · 숨기기 · 삭제) ──
+
+    public function categoryStore(Request $request): RedirectResponse
+    {
+        $store = $this->currentStore($request);
+        $name = trim((string) $request->validate(['name' => ['required', 'string', 'max:30']], ['name.required' => '카테고리 이름을 적어 주세요.'])['name']);
+        $this->createCategory($store->id, $name);
+
+        return back()->with('status', "카테고리 ‘{$name}’을(를) 만들었어요.");
+    }
+
+    public function categoryUpdate(Request $request, \App\Models\ProductCategory $category): RedirectResponse
+    {
+        $this->authorizeStore($request, $category->store_id);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:30', \Illuminate\Validation\Rule::unique('product_categories', 'name')->where('store_id', $category->store_id)->ignore($category->id)],
+            'is_visible' => ['nullable', 'boolean'],
+        ], ['name.unique' => '같은 이름의 카테고리가 이미 있어요.', 'name.required' => '카테고리 이름을 적어 주세요.']);
+        $category->update(['name' => trim($data['name']), 'is_visible' => $request->boolean('is_visible')]);
+
+        return back()->with('status', "카테고리 ‘{$category->name}’을(를) 저장했어요.".($category->is_visible ? '' : ' 숨겨서 손님 메뉴·현장판매에서 빠졌어요.'));
+    }
+
+    /** 위·아래로 한 칸 — 순서를 1,2,3… 으로 다시 매긴다 */
+    public function categoryMove(Request $request, \App\Models\ProductCategory $category): RedirectResponse
+    {
+        $this->authorizeStore($request, $category->store_id);
+        $dir = $request->validate(['dir' => ['required', 'in:up,down']])['dir'];
+        $items = \App\Models\ProductCategory::where('store_id', $category->store_id)->orderBy('sort')->orderBy('id')->get()->values()->all();
+        $i = collect($items)->search(fn ($c) => $c->id === $category->id);
+        $j = $dir === 'up' ? $i - 1 : $i + 1;
+        if ($j >= 0 && $j < count($items)) {
+            [$items[$i], $items[$j]] = [$items[$j], $items[$i]];
+            DB::transaction(function () use ($items) {
+                foreach ($items as $n => $c) {
+                    $c->update(['sort' => $n + 1]);
+                }
+            });
+        }
+
+        return back();
+    }
+
+    /** 삭제 — 그 카테고리 상품은 지우지 않고 '기타' 로 옮긴다 */
+    public function categoryDestroy(Request $request, \App\Models\ProductCategory $category): RedirectResponse
+    {
+        $this->authorizeStore($request, $category->store_id);
+        $moved = $category->products()->count();
+        Product::where('category_id', $category->id)->update(['category_id' => null]);
+        $category->delete();
+
+        return back()->with('status', "카테고리 ‘{$category->name}’을(를) 지웠어요.".($moved ? " 상품 {$moved}개는 ‘기타’로 옮겼어요." : ''));
+    }
+
+    private function createCategory(int $storeId, string $name): \App\Models\ProductCategory
+    {
+        return \App\Models\ProductCategory::firstOrCreate(
+            ['store_id' => $storeId, 'name' => $name],
+            ['sort' => (int) \App\Models\ProductCategory::where('store_id', $storeId)->max('sort') + 1, 'is_visible' => true],
+        );
+    }
+
+    /** 상품 폼의 카테고리: 고른 것(이 매장 것만) 또는 새로 적은 이름(없으면 만든다) */
+    private function resolveCategory(Request $request, array $data): ?int
+    {
+        $storeId = $this->currentStore($request)->id;
+        if (filled($data['new_category'] ?? null)) {
+            return $this->createCategory($storeId, trim($data['new_category']))->id;
+        }
+        if (! empty($data['category_id'])) {
+            $id = \App\Models\ProductCategory::where('store_id', $storeId)->whereKey($data['category_id'])->value('id');
+            if (! $id) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['category_id' => '이 매장의 카테고리가 아니에요.']);
+            }
+
+            return $id;
+        }
+
+        return null;
     }
 
     public function productStore(Request $request): RedirectResponse
@@ -248,7 +327,8 @@ class PartnerController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:60'],
-            'category' => ['nullable', 'string', 'max:30'],
+            'category_id' => ['nullable', 'integer'],
+            'new_category' => ['nullable', 'string', 'max:30'],
             'description' => ['nullable', 'string', 'max:500'],
             'origin' => ['nullable', 'string', 'max:200'],
             'allergens' => ['nullable', 'string', 'max:200'],
@@ -286,7 +366,7 @@ class PartnerController extends Controller
 
         return DB::transaction(function () use ($request, $data, $product) {
             $fields = [
-                'name' => $data['name'], 'category' => filled($data['category'] ?? null) ? trim($data['category']) : null, 'price' => $data['price'], 'mileage_points' => (int) ($data['mileage_points'] ?? 0),
+                'name' => $data['name'], 'category_id' => $this->resolveCategory($request, $data), 'price' => $data['price'], 'mileage_points' => (int) ($data['mileage_points'] ?? 0),
                 'description' => $data['description'] ?? null, 'origin' => $data['origin'] ?? null, 'allergens' => $data['allergens'] ?? null,
                 'is_alcohol' => $request->boolean('is_alcohol'),
                 'stock_deduct_at' => $data['stock_deduct_at'], 'is_visible' => $request->boolean('is_visible'),

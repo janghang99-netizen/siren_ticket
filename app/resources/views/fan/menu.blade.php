@@ -6,7 +6,7 @@
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 @php($menu = $store->products->map(fn ($p) => [
     'id' => $p->id, 'name' => $p->name, 'price' => $p->price, 'alcohol' => $p->is_alcohol,
-    'cat' => $p->category ?: '메뉴', 'img' => $p->imageUrl(), 'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
+    'cat' => $p->categoryName(), 'img' => $p->imageUrl(), 'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
     'soldOut' => $p->isSoldOut(),
     'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
 ])->values())

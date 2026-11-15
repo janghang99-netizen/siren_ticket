@@ -38,7 +38,8 @@ class StoreOperationsTest extends TestCase
         $this->vendor = Vendor::create(['name' => '아레나푸드', 'state' => 'approved']);
         $this->store = Store::create(['vendor_id' => $this->vendor->id, 'code' => 'arena1', 'name' => '아레나 커피', 'commission_rate' => 10]);
         $this->other = Store::create(['vendor_id' => $this->vendor->id, 'code' => 'bake1', 'name' => '오븐 베이커리', 'commission_rate' => 10]);
-        $this->coffee = Product::create(['store_id' => $this->store->id, 'name' => '아메리카노', 'category' => '커피', 'price' => 4500, 'stock' => 10]);
+        $coffeeCat = \App\Models\ProductCategory::create(['store_id' => $this->store->id, 'name' => '커피', 'sort' => 1]);
+        $this->coffee = Product::create(['store_id' => $this->store->id, 'category_id' => $coffeeCat->id, 'name' => '아메리카노', 'price' => 4500, 'stock' => 10]);
         $this->cake = Product::create(['store_id' => $this->other->id, 'name' => '크루아상', 'price' => 4000, 'stock' => 10]);
         $event = Event::create(['slug' => 's', 'name' => '공연', 'artist' => 'A', 'starts_at' => now()->addDay(), 'sales_open_at' => now()->subHour(), 'max_per_buyer' => 4]);
         $this->slot = CapacitySlot::create(['event_id' => $event->id, 'store_id' => $this->store->id, 'slot' => 'pre', 'capacity' => 50]);
@@ -86,11 +87,54 @@ class StoreOperationsTest extends TestCase
         $this->patchJson(route('partner.products.sold-out', $stranger))->assertForbidden();
     }
 
-    public function test_product_category_is_saved_and_offered(): void
+    public function test_category_management_and_product_assignment(): void
     {
-        $this->actingAs($this->staff, 'web')->get(route('partner.products.create'))->assertOk()->assertSee('<option value="커피">', false);
-        $this->post(route('partner.products.store'), ['name' => '아이스티', 'category' => ' 음료 ', 'price' => 3000, 'stock_deduct_at' => 'order', 'is_visible' => 1, 'agree_prohibited' => 1])->assertRedirect();
-        $this->assertSame('음료', Product::where('name', '아이스티')->value('category'));
+        $this->actingAs($this->staff, 'web')->post(route('partner.stores.switch', $this->store->id));
+        $coffee = $this->coffee->category;
+        $base = ['price' => 3000, 'stock_deduct_at' => 'order', 'is_visible' => 1, 'agree_prohibited' => 1];
+
+        // 폼: 이 매장 카테고리 선택 상자
+        $this->get(route('partner.products.create'))->assertOk()->assertSee('<option value="'.$coffee->id.'"', false);
+        // 새 카테고리를 상품 폼에서 바로 만들기 (공백 정리)
+        $this->post(route('partner.products.store'), $base + ['name' => '아이스티', 'new_category' => ' 음료 '])->assertRedirect();
+        $tea = Product::where('name', '아이스티')->first();
+        $this->assertSame('음료', $tea->category->name);
+        $this->assertSame(2, $tea->category->sort);   // 맨 뒤에 붙는다
+        // 다른 매장 카테고리는 고를 수 없다
+        $foreign = \App\Models\ProductCategory::create(['store_id' => $this->other->id, 'name' => '빵']);
+        $this->post(route('partner.products.store'), $base + ['name' => '남의 것', 'category_id' => $foreign->id])->assertSessionHasErrors('category_id');
+
+        // 관리: 추가 · 중복 이름 막기 · 순서 · 이름 바꾸기
+        $this->post(route('partner.categories.store'), ['name' => '디저트'])->assertSessionHas('status');
+        $dessert = \App\Models\ProductCategory::where('name', '디저트')->first();
+        $this->put(route('partner.categories.update', $dessert), ['name' => '커피', 'is_visible' => 1])->assertSessionHasErrors('name');
+        $this->patch(route('partner.categories.move', $dessert), ['dir' => 'up']);
+        $this->assertSame(['커피', '디저트', '음료'], \App\Models\ProductCategory::where('store_id', $this->store->id)->orderBy('sort')->pluck('name')->all());
+        $this->put(route('partner.categories.update', $coffee), ['name' => '에스프레소 바', 'is_visible' => 1]);
+        $this->assertSame('에스프레소 바', $this->coffee->fresh()->category->name);   // 상품에 바로 반영
+
+        // 상품 목록: 카테고리별로 묶이고 거를 수 있다
+        $this->get(route('partner.products'))->assertOk()->assertSeeInOrder(['에스프레소 바', '아메리카노', '음료', '아이스티']);
+        $this->get(route('partner.products', ['cat' => $tea->category_id]))->assertSee('아이스티')->assertDontSee('<a href="'.route('partner.products.edit', $this->coffee).'" class="row-link">', false);
+
+        // 숨기면 손님 메뉴·현장판매·주문에서 빠진다
+        $this->put(route('partner.categories.update', $coffee), ['name' => '에스프레소 바']);   // is_visible 없음 = 숨김
+        $this->assertFalse(Product::sellable()->whereKey($this->coffee->id)->exists());
+        $this->get(route('partner.pos.screen'))->assertViewHas('menu', fn ($m) => ! $m->pluck('name')->contains('아메리카노') && $m->pluck('name')->contains('아이스티'));
+        try {
+            app(OrderService::class)->place($this->store, [['product_id' => $this->coffee->id, 'qty' => 1]], 'card', $this->slot->id);
+            $this->fail('숨긴 카테고리 상품은 주문할 수 없어야 함');
+        } catch (OrderException $e) {
+            $this->assertStringContainsString('판매하지 않는', $e->getMessage());
+        }
+
+        // 삭제해도 상품은 남고 '기타' 로
+        $this->delete(route('partner.categories.destroy', $coffee))->assertSessionHas('status');
+        $this->assertNull($this->coffee->fresh()->category_id);
+        $this->assertSame('기타', $this->coffee->fresh()->categoryName());
+
+        // 현장판매: '전체' 탭 + 카테고리 순서 (기타는 맨 뒤)
+        $this->get(route('partner.pos.screen'))->assertViewHas('menu', fn ($m) => $m->pluck('cat')->all() === ['음료', '기타']);
     }
 
     public function test_ready_sends_one_sms_to_customer(): void

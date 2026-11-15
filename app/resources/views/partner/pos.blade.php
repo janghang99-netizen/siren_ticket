@@ -28,10 +28,11 @@
             ['autoPrint', 'kitchenCopy', 'width'].forEach(k => this.$watch(k, () => {
                 try { localStorage.setItem('pos_print', JSON.stringify({ autoPrint: this.autoPrint, kitchenCopy: this.kitchenCopy, width: Number(this.width) })) } catch (e) {}
             }));
-            this.cat = this.cats[0] || null;
+            this.cat = '전체';
         },
-        get cats() { return [...new Set(this.menu.map(p => p.cat))] },
-        get shown() { return this.menu.filter(p => this.cats.length < 2 || p.cat === this.cat) },
+        get cats() { return ['전체', ...new Set(this.menu.map(p => p.cat))] },
+        get shown() { return this.cat === '전체' ? this.menu : this.menu.filter(p => p.cat === this.cat) },
+        countIn(c) { return c === '전체' ? this.menu.length : this.menu.filter(p => p.cat === c).length },
         add(p, o = null) {
             if (p.soldOut || (o && o.soldOut)) return;
             const key = p.id + ':' + (o ? o.id : '');
@@ -89,10 +90,11 @@
 
     {{-- 상품 --}}
     <section>
-        <nav x-show="cats.length > 1" class="mb-3 flex flex-wrap gap-2" aria-label="카테고리">
+        <nav x-show="menu.length" class="mb-3 flex flex-wrap gap-2" aria-label="카테고리">
             <template x-for="c in cats" :key="c">
                 <button type="button" @click="cat = c" :aria-pressed="cat === c"
-                        class="rounded-full px-4 py-2 text-sm font-bold ring-1" :class="cat === c ? 'bg-ink text-white ring-ink' : 'bg-white ring-ink/10'" x-text="c"></button>
+                        class="rounded-full px-4 py-2 text-sm font-bold ring-1" :class="cat === c ? 'bg-ink text-white ring-ink' : 'bg-white ring-ink/10'">
+                    <span x-text="c"></span> <span class="num text-xs opacity-60" x-text="countIn(c)"></span></button>
             </template>
         </nav>
         <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">

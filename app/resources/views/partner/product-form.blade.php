@@ -17,13 +17,24 @@
         @if ($p?->isBlocked())
             <p class="rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">운영사가 판매를 중지한 상품이에요 · {{ $p->block_reason }}. 내용을 고친 뒤 운영사에 해제를 요청해 주세요.</p>
         @endif
-        <div>
-            <label for="category" class="label">카테고리 <span class="font-normal text-mist">(선택 · 메뉴에서 묶어 보여요)</span></label>
-            <input id="category" name="category" list="category-list" maxlength="30" class="field" value="{{ old('category', $p?->category) }}" placeholder="예: 커피, 디저트, 음료">
-            <datalist id="category-list">
-                @foreach ($categories ?? [] as $c)<option value="{{ $c }}">@endforeach
-            </datalist>
-            @error('category')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+        {{-- 카테고리: 이 매장 카테고리에서 고르거나, 새로 만들기 (관리는 상품 화면 위 '카테고리 관리') --}}
+        <div x-data="{ adding: @js(filled(old('new_category'))) }">
+            <label for="category_id" class="label">카테고리 <span class="font-normal text-mist">(손님 메뉴·현장판매에서 묶어 보여요)</span></label>
+            <div class="flex gap-2" x-show="!adding">
+                <select id="category_id" name="category_id" class="field" :disabled="adding">
+                    <option value="">{{ \App\Models\ProductCategory::UNCATEGORIZED }} (카테고리 없음)</option>
+                    @foreach ($categories as $c)
+                        <option value="{{ $c->id }}" @selected((string) old('category_id', $p?->category_id) === (string) $c->id)>{{ $c->name }}{{ $c->is_visible ? '' : ' (숨김)' }}</option>
+                    @endforeach
+                </select>
+                <button type="button" @click="adding = true; $nextTick(() => $refs.newCat.focus())" class="btn-ghost shrink-0 !px-3 text-sm">+ 새 카테고리</button>
+            </div>
+            <div class="flex gap-2" x-show="adding" x-cloak>
+                <input x-ref="newCat" name="new_category" maxlength="30" class="field" value="{{ old('new_category') }}" placeholder="새 카테고리 이름 (예: 디저트)" :disabled="!adding">
+                <button type="button" @click="adding = false" class="btn-ghost shrink-0 !px-3 text-sm">목록에서 고르기</button>
+            </div>
+            @error('category_id')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            @error('new_category')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
         </div>
         <div>
             <label for="name" class="label">상품명</label>
