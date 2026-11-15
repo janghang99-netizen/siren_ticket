@@ -71,6 +71,32 @@
     </div>
 
     <aside class="space-y-5">
+        {{-- 업체 단위 EIS 연동 (원본 seller_webhook) --}}
+        <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+            <h2 class="font-bold">EIS 연동 <span class="text-xs font-normal text-mist">이 업체 모든 매장 공통</span></h2>
+            <form method="POST" action="{{ route('admin.vendors.integration', $vendor) }}" class="mt-3 space-y-2 text-sm">
+                @csrf @method('PUT')
+                <input name="eis_code" value="{{ old('eis_code', $integration?->eis_code) }}" class="field num !py-2" placeholder="EIS 업체 코드 (seller_id)" required aria-label="EIS 업체 코드">
+                <input name="order_url" value="{{ old('order_url', $integration?->order_url) }}" class="field !py-2" placeholder="주문 수신 URL (order.completed)" aria-label="주문 수신 URL">
+                <input name="production_url" value="{{ old('production_url', $integration?->production_url) }}" class="field !py-2" placeholder="생산 수신 URL (production.*)" aria-label="생산 수신 URL">
+                <label class="flex items-center gap-2"><input type="checkbox" name="is_active" value="1" @checked($integration?->is_active ?? true)> 전송·조회 사용</label>
+                @if ($integration)
+                    <p class="break-all rounded-xl bg-paper px-3 py-2 text-xs">서명 키 <span class="num">{{ $integration->secret }}</span></p>
+                    <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="regenerate_secret" value="1"> 서명 키 새로 발급 (EIS에도 바꿔 넣어야 해요)</label>
+                @endif
+                @error('eis_code')<p class="text-signal">{{ $message }}</p>@enderror
+                <button class="btn-ink w-full !py-2 text-sm">저장</button>
+            </form>
+            <p class="mt-3 text-xs text-mist">EIS가 가져가는 주소: <span class="num">POST /api/eis/orders</span> · <span class="num">GET /api/eis/stock</span> (원본 주소 /admin/openmarket_export.php · /api/stock_export.php 도 동작)</p>
+            @if ($integrationLogs->isNotEmpty())
+                <ul class="mt-3 space-y-1 border-t border-ink/5 pt-3 text-xs">
+                    @foreach ($integrationLogs as $l)
+                        <li class="flex justify-between gap-2"><span>{{ $l->type }}</span><span @class(['text-stick' => $l->ok, 'text-signal' => ! $l->ok])>{{ $l->result }}</span></li>
+                    @endforeach
+                </ul>
+            @endif
+        </section>
+
         {{-- A1 서류 심사 --}}
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
             <h2 class="font-bold">입점 서류</h2>

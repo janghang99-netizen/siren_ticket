@@ -213,6 +213,7 @@ class AdminController extends Controller
 
         return view('admin.store-show', [
             'store' => $store,
+            'terminals' => DB::table('store_terminals')->where('store_id', $store->id)->orderBy('id')->get(),
             'from' => $from->toDateString(), 'to' => $to->toDateString(),
             'salesAmount' => (int) (clone $sales)->sum('total_amount'),
             'salesCount' => (clone $sales)->count(),
@@ -376,6 +377,12 @@ class AdminController extends Controller
             'pendingAdjustments' => $vendor->adjustments()->whereNull('settlement_id')->latest('id')->get(),
             'salesAmount' => (int) Order::whereIn('store_id', $storeIds)->whereIn('status', [2, 3, 4, 5, 6])->where('created_at', '>=', now()->subDays(30))->sum('total_amount'),
             'unsettledAmount' => (int) Order::whereIn('store_id', $storeIds)->where('status', 5)->whereNull('settlement_id')->sum('total_amount'),
+            'integration' => DB::table('vendor_integrations')->where('vendor_id', $vendor->id)->first(),
+            'integrationLogs' => DB::table('integration_logs')->where('vendor_id', $vendor->id)->latest('id')->limit(8)->get()
+                ->concat(DB::table('webhook_deliveries')->join('orders', 'orders.id', '=', 'webhook_deliveries.order_id')
+                    ->whereIn('orders.store_id', $storeIds)->select('webhook_deliveries.*', DB::raw("'order.completed' as type"))
+                    ->latest('webhook_deliveries.id')->limit(8)->get())
+                ->sortByDesc('created_at')->take(10),
             'nextSettlement' => $vendor->nextSettlementDate(($last = $vendor->settlements()->max('period_end')) ? Carbon::parse($last) : null),
         ]);
     }
@@ -508,6 +515,40 @@ class AdminController extends Controller
         \App\Services\Audit::log('adjustment.created', $vendor, "{$vendor->name} 공제 ".number_format($adj->amount)."원 등록: {$adj->reason}");
 
         return back()->with('status', number_format($adj->amount).'원을 다음 정산에서 공제하도록 등록했어요.');
+    }
+
+    /** 업체 단위 EIS 연동 설정 (원본 admin/seller_webhook.php): EIS 코드·주문 URL·생산 URL·서명 키 */
+    public function integrationSave(Request $request, Vendor $vendor): RedirectResponse
+    {
+        $current = DB::table('vendor_integrations')->where('vendor_id', $vendor->id)->first();
+        $data = $request->validate([
+            'eis_code' => ['required', 'alpha_dash', 'max:40', Rule::unique('vendor_integrations', 'eis_code')->ignore($current?->id)],
+            'order_url' => ['nullable', 'url', 'max:255'],
+            'production_url' => ['nullable', 'url', 'max:255'],
+        ], ['eis_code.required' => 'EIS에서 쓰는 업체 코드(seller_id)를 적어 주세요.', 'eis_code.unique' => '다른 업체가 쓰는 EIS 코드예요.']);
+
+        $regen = ! $current || $request->boolean('regenerate_secret');
+        $secret = $regen ? Str::random(40) : $current->secret;
+        DB::table('vendor_integrations')->updateOrInsert(['vendor_id' => $vendor->id], [
+            'eis_code' => $data['eis_code'], 'order_url' => $data['order_url'] ?? '', 'production_url' => $data['production_url'] ?? '',
+            'secret' => $secret, 'is_active' => $request->boolean('is_active'), 'updated_at' => now(), 'created_at' => $current?->created_at ?? now(),
+        ]);
+        \App\Services\Audit::log('settings.saved', $vendor, "{$vendor->name} EIS 연동 설정 저장".($regen ? ' · 서명 키 새로 발급' : ''));
+
+        return back()->with('status', 'EIS 연동을 저장했어요.'.($regen ? ' 새 서명 키를 EIS 담당자에게 전달해 주세요.' : ''));
+    }
+
+    /** 매장별 현장 카드 단말기 등록 (준비 단계: TID 등록 → POS 카드결제에 승인번호 기록) */
+    public function terminalStore(Request $request, Store $store): RedirectResponse
+    {
+        $data = $request->validate([
+            'provider' => ['required', 'string', 'max:30'],
+            'tid' => ['required', 'string', 'max:40', 'unique:store_terminals,tid'],
+            'label' => ['nullable', 'string', 'max:60'],
+        ], ['tid.required' => '단말기 ID(TID)를 적어 주세요.', 'tid.unique' => '이미 등록된 단말기예요.']);
+        DB::table('store_terminals')->insert($data + ['store_id' => $store->id, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+
+        return back()->with('status', "단말기 {$data['tid']}을(를) 등록했어요.");
     }
 
     /** G1 감사 로그 */

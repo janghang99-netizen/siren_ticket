@@ -8,9 +8,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
- * 수령완료 주문을 매장 ERP(비트EIS)로 push. 원본 inc/webhook_order.php send_order_webhook() 호환.
+ * 수령완료 주문을 업체의 EIS 로 push. 원본 inc/webhook_order.php send_order_webhook() 호환.
+ * - 업체 단위 연동(vendor_integrations): 그 업체의 어느 매장 주문이든 업체 order_url 로, 업체 secret 으로 서명
  * - 주문당 1회 (webhook_sent_at 원자적 선점 → 버튼 재클릭/동시요청에도 중복전송 없음)
- * - 재전송 없음: 실패는 webhook_deliveries 에 남기고 주문은 막지 않는다.
+ * - 재전송 없음: 실패는 webhook_deliveries 에 남기고 주문은 막지 않는다. 누락분은 EIS 가 pull API 로 보정.
  */
 class OrderWebhookSender
 {
@@ -21,19 +22,45 @@ class OrderWebhookSender
             return;
         }
 
-        $hook = DB::table('store_webhooks')->where('store_id', $order->store_id)->where('is_active', true)->first();
-        if (! $hook) {
+        $order->loadMissing(['items', 'store']);
+        $hook = self::integration($order->store->vendor_id);
+        if (! $hook || ! $hook->is_active || $hook->order_url === '') {
             $this->log($order, null, false, 'FAIL (no config)', null);
 
             return;
         }
 
+        $payload = ['orders' => self::payloadRows($order, $hook->eis_code)];
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+        try {
+            $res = Http::timeout(config('siren.webhook_timeout'))
+                ->withHeaders(['X-Dadamda-Event' => 'order.completed', 'X-Dadamda-Signature' => 'sha256='.hash_hmac('sha256', $body, $hook->secret)])
+                ->withBody($body, 'application/json')
+                ->post($hook->order_url);
+            $this->log($order, $hook->order_url, $res->successful(), ($res->successful() ? 'OK' : 'FAIL')." (HTTP {$res->status()})", $payload);
+        } catch (ConnectionException) {
+            $this->log($order, $hook->order_url, false, 'FAIL (timeout/connection refused)', $payload);
+        }
+    }
+
+    public static function integration(?int $vendorId): ?object
+    {
+        return $vendorId ? DB::table('vendor_integrations')->where('vendor_id', $vendorId)->first() : null;
+    }
+
+    /** 원본과 같은 평탄 형식 (상품 1개 = 1행). seller_id = 업체 EIS 코드, store_code = 매장 구분용 추가 필드 */
+    public static function payloadRows(Order $order, ?string $sellerId = null): array
+    {
         $order->loadMissing(['items', 'store']);
-        $payload = ['orders' => $order->items->map(fn ($i) => [
+        $sellerId ??= self::integration($order->store->vendor_id)?->eis_code ?? $order->store->code;
+
+        return $order->items->map(fn ($i) => [
             'event' => 'order.completed',
             'order_no' => $order->order_no,
             'ordered_at' => $order->created_at->format('Y-m-d H:i:s'),
-            'seller_id' => $order->store->code,
+            'seller_id' => $sellerId,
+            'store_code' => $order->store->code,
             'product_number' => (string) $i->product_id,
             'product_name' => $i->name,
             'qty' => $i->qty,
@@ -42,20 +69,9 @@ class OrderWebhookSender
             'add_price' => 0,
             'line_total' => $i->line_total,
             'total_amount' => $order->total_amount,
-        ])->values()->all()];
-
-        $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
-        $signature = 'sha256='.hash_hmac('sha256', $body, $hook->secret);
-
-        try {
-            $res = Http::timeout(config('siren.webhook_timeout'))
-                ->withHeaders(['X-Dadamda-Signature' => $signature])
-                ->withBody($body, 'application/json')
-                ->post($hook->url);
-            $this->log($order, $hook->url, $res->successful(), ($res->successful() ? 'OK' : 'FAIL')." (HTTP {$res->status()})", $payload);
-        } catch (ConnectionException $e) {
-            $this->log($order, $hook->url, false, 'FAIL (timeout/connection refused)', $payload);
-        }
+            'pay_method' => $order->pay_method,
+            'card_approval_no' => $order->card_approval_no,
+        ])->values()->all();
     }
 
     private function log(Order $order, ?string $url, bool $ok, string $result, ?array $payload): void

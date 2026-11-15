@@ -110,8 +110,18 @@ class PartnerController extends Controller
             'items.*.option_id' => ['nullable', 'integer'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.dine_option' => ['nullable', 'in:매장,포장'],
+            // 현장 카드 단말기 (준비 단계): 카드결제면 단말기·승인번호를 남겨 단말기 매출과 대사
+            'terminal_id' => ['nullable', 'integer', 'required_if:pay_method,pos_card'],
+            'card_approval_no' => ['nullable', 'string', 'max:30', 'required_if:pay_method,pos_card'],
         ]);
-        $order = $orders->placePos($this->currentStore($request), $data['items'], $data['pay_method']);
+        $store = $this->currentStore($request);
+        if (! empty($data['terminal_id'])) {
+            abort_unless(DB::table('store_terminals')->where('id', $data['terminal_id'])->where('store_id', $store->id)->where('is_active', true)->exists(), 422, '이 매장 단말기가 아니에요.');
+        }
+        $order = $orders->placePos($store, $data['items'], $data['pay_method']);
+        if (! empty($data['terminal_id'])) {
+            $order->update(['terminal_id' => $data['terminal_id'], 'card_approval_no' => $data['card_approval_no'], 'card_approved_at' => now()]);
+        }
 
         return response()->json(['result' => 'ok', 'pickup_code' => $order->pickup_code, 'total' => $order->total_amount]);
     }
@@ -285,6 +295,62 @@ class PartnerController extends Controller
         $label = $product->name.($option ? " ({$option->name})" : '');
 
         return back()->with('status', "{$label} {$m->typeLabel()} 기록했어요. 지금 재고 {$m->stock_after}개.");
+    }
+
+    // ── 생산관리 (원본 production.php) ──
+
+    public function production(Request $request): View
+    {
+        $store = $this->currentStore($request);
+        $date = $request->date('date') ?? now();
+
+        return view('partner.production', $this->shared($request) + [
+            'products' => Product::with('options')->where('store_id', $store->id)->orderBy('sort')->orderBy('id')->get(),
+            'date' => $date->toDateString(),
+            'records' => DB::table('product_productions as pp')->join('products as p', 'p.id', '=', 'pp.product_id')
+                ->leftJoin('product_options as o', 'o.id', '=', 'pp.product_option_id')
+                ->where('pp.store_id', $store->id)->where('pp.production_date', $date->toDateString())
+                ->select('pp.*', 'p.name as product_name', 'o.name as option_name')->orderByDesc('pp.id')->get(),
+        ]);
+    }
+
+    /** 일괄 저장: qty[상품id:옵션id] = 오늘 생산량 (빈칸은 건너뜀, 0은 재고 0) */
+    public function productionSave(Request $request, \App\Services\EisService $eis): RedirectResponse
+    {
+        $data = $request->validate(['qty' => ['array'], 'qty.*' => ['nullable', 'integer', 'min:0', 'max:100000'], 'memo' => ['array'], 'memo.*' => ['nullable', 'string', 'max:100']]);
+        $saved = 0;
+        foreach ($data['qty'] ?? [] as $key => $qty) {
+            if ($qty === null || $qty === '') {
+                continue;
+            }
+            [$pid, $oid] = array_pad(explode(':', (string) $key), 2, '');
+            $product = Product::findOrFail((int) $pid);
+            $this->authorizeStore($request, $product->store_id);
+            $option = $oid !== '' ? $product->options()->findOrFail((int) $oid) : null;
+            $eis->recordProduction($product, $option, (int) $qty, $data['memo'][$key] ?? null, $request->user()->id);
+            $saved++;
+        }
+
+        return back()->with('status', $saved ? "생산 {$saved}건을 저장했어요. 재고가 오늘 생산량으로 바뀌었어요." : '입력한 수량이 없어요.');
+    }
+
+    public function productionUpdate(Request $request, int $id, \App\Services\EisService $eis): RedirectResponse
+    {
+        $row = DB::table('product_productions')->find($id) ?? abort(404);
+        $this->authorizeStore($request, $row->store_id);
+        $data = $request->validate(['qty' => ['required', 'integer', 'min:0'], 'memo' => ['nullable', 'string', 'max:100']]);
+        $eis->updateProduction($id, (int) $data['qty'], $data['memo'] ?? null, $request->user()->id);
+
+        return back()->with('status', '생산 기록을 고쳤어요.');
+    }
+
+    public function productionDelete(Request $request, int $id, \App\Services\EisService $eis): RedirectResponse
+    {
+        $row = DB::table('product_productions')->find($id) ?? abort(404);
+        $this->authorizeStore($request, $row->store_id);
+        $eis->deleteProduction($id);
+
+        return back()->with('status', '생산 기록을 지웠어요. 재고는 그대로예요.');
     }
 
     // ── 주문 상세 ──

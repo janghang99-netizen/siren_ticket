@@ -25,7 +25,8 @@
         : [
             ['partner.board', '주문보드', 'partner.board'],
             ['partner.products', '상품', 'partner.products*'],
-            ['partner.inventory', '생산·재고', 'partner.inventory*'],
+            ['partner.production', '생산관리', 'partner.production*'],
+            ['partner.inventory', '재고 원장', 'partner.inventory*'],
             ['partner.sales', '판매 내역', 'partner.sales|partner.orders.*'],
             ['partner.cancels', '취소 내역', 'partner.cancels'],
             ['partner.settlements', '정산 내역', 'partner.settlements*'],

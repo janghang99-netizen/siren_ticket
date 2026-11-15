@@ -161,8 +161,10 @@ class SirenOrderTest extends TestCase
     public function test_pickup_sends_signed_webhook_exactly_once(): void
     {
         Http::fake(['*' => Http::response('ok', 200)]);
-        DB::table('store_webhooks')->insert([
-            'store_id' => $this->store->id, 'url' => 'https://erp.test/receive', 'secret' => 's3cret',
+        $vendor = \App\Models\Vendor::create(['name' => '아레나푸드', 'state' => 'approved']);
+        $this->store->update(['vendor_id' => $vendor->id]);
+        DB::table('vendor_integrations')->insert([
+            'vendor_id' => $vendor->id, 'eis_code' => 'arenafood', 'order_url' => 'https://erp.test/receive', 'secret' => 's3cret',
             'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
         ]);
 

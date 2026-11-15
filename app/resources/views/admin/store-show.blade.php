@@ -52,6 +52,26 @@
         </section>
     @endif
 
+    {{-- 현장 카드 단말기 (준비 단계) --}}
+    <section class="mb-5 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
+        <h2 class="text-sm font-bold">현장 카드 단말기 <span class="font-normal text-mist">· POS 카드결제에 단말기·승인번호를 남겨 단말기 매출과 대사해요</span></h2>
+        <ul class="mt-2 flex flex-wrap gap-2 text-sm">
+            @forelse ($terminals as $t)
+                <li class="chip bg-paper">{{ $t->provider }} · <span class="num">{{ $t->tid }}</span>{{ $t->label ? ' · '.$t->label : '' }}</li>
+            @empty
+                <li class="text-mist">등록된 단말기가 없어요.</li>
+            @endforelse
+        </ul>
+        <form method="POST" action="{{ route('admin.stores.terminals', $store->id) }}" class="mt-3 flex flex-wrap gap-2">
+            @csrf
+            <input name="provider" class="field !w-32 !py-2" placeholder="밴사 (KSNET 등)" required aria-label="밴사">
+            <input name="tid" class="field num !w-40 !py-2" placeholder="단말기 ID (TID)" required aria-label="단말기 ID">
+            <input name="label" class="field !w-40 !py-2" placeholder="이름 (1번 카운터)" aria-label="단말기 이름">
+            <button class="btn-ink !py-2 text-sm">단말기 등록</button>
+        </form>
+        @error('tid')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+    </section>
+
     <section class="mb-6" x-data="{ blocking: null }">
         <h2 class="mb-3 text-lg font-bold">상품 <span class="num text-mist">{{ $store->products->count() }}</span></h2>
         <div class="overflow-x-auto rounded-3xl bg-white ring-1 ring-ink/5">

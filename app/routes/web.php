@@ -63,6 +63,12 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::put('/products/{product}', 'productUpdate')->name('products.update');
     Route::patch('/products/{product}/toggle', 'toggleProduct')->name('products.toggle');
 
+    // 생산관리 (원본 production.php) — 오늘 생산량으로 재고 덮어쓰기 + EIS 생산 webhook
+    Route::get('/production', 'production')->name('production');
+    Route::post('/production', 'productionSave')->name('production.save');
+    Route::put('/production/{id}', 'productionUpdate')->whereNumber('id')->name('production.update');
+    Route::delete('/production/{id}', 'productionDelete')->whereNumber('id')->name('production.delete');
+
     // 생산·재고 (H)
     Route::get('/inventory', 'inventory')->name('inventory');
     Route::post('/inventory', 'inventoryRecord')->name('inventory.record');
@@ -73,6 +79,10 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::get('/settlements/{settlement}', 'settlement')->name('settlements.show');
     Route::post('/settlements/{settlement}/dispute', 'dispute')->name('settlements.dispute');
 });
+
+// 원본 다담다 주소 호환: EIS 판매내역 pull (서명 검증, CSRF 제외)
+Route::post('/admin/openmarket_export.php', [\App\Http\Controllers\EisController::class, 'orders'])
+    ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)->middleware('throttle:60,1');
 
 // ── 슈퍼어드민 콘솔: 공연·좌석티켓·입점업체·매장·정산·설정 ──
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(AdminController::class)->group(function () {
@@ -97,6 +107,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::patch('/vendors/{vendor}/state', 'vendorState')->name('vendors.state');
     Route::get('/vendors/{vendor}/documents/{type}', 'vendorDocument')->name('vendors.document');
     Route::post('/vendors/{vendor}/adjustments', 'adjustmentStore')->name('vendors.adjustments');
+    Route::put('/vendors/{vendor}/integration', 'integrationSave')->name('vendors.integration');
+    Route::post('/stores/{store:id}/terminals', 'terminalStore')->name('stores.terminals');
 
     Route::get('/audit', 'audit')->name('audit');
 
