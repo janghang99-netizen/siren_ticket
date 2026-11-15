@@ -133,7 +133,46 @@ class PartnerController extends Controller
             $order->update(['terminal_id' => $data['terminal_id'], 'card_approval_no' => $data['card_approval_no'], 'card_approved_at' => now()]);
         }
 
-        return response()->json(['result' => 'ok', 'pickup_code' => $order->pickup_code, 'total' => $order->total_amount]);
+        return response()->json(['result' => 'ok', 'order_no' => $order->order_no, 'pickup_code' => $order->pickup_code, 'total' => $order->total_amount,
+            'ticket_url' => route('partner.orders.ticket', $order)]);
+    }
+
+    /** 현장판매 화면 — 매장 PC(카드 단말기 연결)에서 주문을 받고 번호표를 인쇄한다 */
+    public function pos(Request $request): View
+    {
+        $store = $this->currentStore($request);
+        $products = Product::with('options')->where('store_id', $store->id)->where('is_visible', true)->whereNull('blocked_at')
+            ->orderBy('sort')->orderBy('id')->get();
+        $recent = Order::with('items')->where('store_id', $store->id)->where('channel', 'pos')
+            ->where('created_at', '>=', now()->startOfDay())->latest('id')->limit(20)->get();
+
+        return view('partner.pos', $this->shared($request) + [
+            'menu' => $products->map(fn (Product $p) => [
+                'id' => $p->id, 'name' => $p->name, 'cat' => $p->category ?: '메뉴', 'price' => $p->price, 'img' => $p->imageUrl(),
+                'alcohol' => $p->is_alcohol, 'soldOut' => $p->isSoldOut(),
+                'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
+            ])->values(),
+            'terminals' => DB::table('store_terminals')->where('store_id', $store->id)->where('is_active', true)->orderBy('id')->get(['id', 'label', 'tid', 'provider']),
+            'recent' => $recent->map(fn (Order $o) => ['order_no' => $o->order_no, 'pickup_code' => $o->pickup_code, 'total' => $o->total_amount,
+                'at' => $o->created_at->format('H:i'), 'items' => $o->items->sum('qty'), 'ticket_url' => route('partner.orders.ticket', $o)])->values(),
+        ]);
+    }
+
+    /**
+     * 번호표 · 주방 주문서 인쇄 화면 (80mm / 58mm 영수증 프린터).
+     * ?kind=customer(손님 번호표) | kitchen(주방 주문서), ?width=80|58, ?auto=1 이면 열리자마자 인쇄.
+     */
+    public function ticket(Request $request, Order $order): View
+    {
+        $this->authorizeStore($request, $order->store_id);
+
+        return view('partner.ticket', [
+            'order' => $order->load(['items', 'store', 'capacitySlot']),
+            'kind' => $request->query('kind') === 'kitchen' ? 'kitchen' : 'customer',
+            'width' => (int) $request->query('width') === 58 ? 58 : 80,
+            'auto' => $request->boolean('auto'),
+            'reprint' => $request->boolean('reprint'),
+        ]);
     }
 
     // ── 상품 ──

@@ -106,6 +106,8 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::patch('/orders/{order}/cancel-request', 'respondCancel')->name('orders.cancel-request');
     Route::patch('/slots/{slot}/toggle', 'toggleSlot')->name('slots.toggle');
     Route::post('/pos-orders', 'posOrder')->name('pos');
+    Route::get('/pos', 'pos')->name('pos.screen');                               // 현장판매 화면
+    Route::get('/orders/{order}/ticket', 'ticket')->name('orders.ticket');       // 번호표·주방 주문서 인쇄
 
     Route::get('/products', 'products')->name('products');
     Route::get('/products/new', 'productCreate')->name('products.create');

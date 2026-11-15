@@ -124,6 +124,44 @@ class StoreOperationsTest extends TestCase
         $this->assertCount(1, $sms->sent);
     }
 
+    public function test_pos_screen_sells_and_prints_number_ticket(): void
+    {
+        $this->actingAs($this->staff, 'web')->post(route('partner.stores.switch', $this->store->id));
+        $terminal = \Illuminate\Support\Facades\DB::table('store_terminals')->insertGetId(['store_id' => $this->store->id, 'provider' => 'KSNET', 'tid' => 'T-001', 'label' => '1번 카운터', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->get(route('partner.pos.screen'))->assertOk()->assertSee('현장판매')
+            ->assertViewHas('menu', fn ($m) => $m->pluck('name')->contains('아메리카노'))
+            ->assertViewHas('terminals', fn ($t) => $t->pluck('label')->contains('1번 카운터'));
+
+        // 카드: 단말기·승인번호 없으면 거절
+        $this->postJson(route('partner.pos'), ['pay_method' => 'pos_card', 'items' => [['product_id' => $this->coffee->id, 'qty' => 1]]])->assertStatus(422);
+
+        $res = $this->postJson(route('partner.pos'), [
+            'pay_method' => 'pos_card', 'terminal_id' => $terminal, 'card_approval_no' => '30012345',
+            'items' => [['product_id' => $this->coffee->id, 'qty' => 2, 'dine_option' => '매장']],
+        ])->assertOk()->assertJsonStructure(['pickup_code', 'order_no', 'ticket_url']);
+        $code = $res->json('pickup_code');
+
+        // 손님 번호표: 큰 번호 · 매장 이름 · 품목 · 합계 · 승인번호
+        $this->get($res->json('ticket_url'))->assertOk()
+            ->assertSee($code)->assertSee('아레나 커피')->assertSee('아메리카노')->assertSee('9,000원')->assertSee('승인 30012345')
+            ->assertSee('size: 80mm auto', false)->assertSee('매장');
+        // 58mm · 재출력 표시 · 자동 인쇄
+        $this->get($res->json('ticket_url').'?width=58&reprint=1&auto=1')->assertOk()
+            ->assertSee('size: 58mm auto', false)->assertSee('재출력')->assertSee('window.print()', false);
+        // 주방 주문서: 금액 없이 번호·품목
+        $this->get($res->json('ticket_url').'?kind=kitchen')->assertOk()->assertSee('주방')->assertSee('×2')->assertDontSee('9,000원');
+
+        // 오늘 현장판매 목록에 뜬다 (재인쇄)
+        $this->get(route('partner.pos.screen'))->assertViewHas('recent', fn ($r) => $r->pluck('pickup_code')->contains($code));
+
+        // 다른 업체는 번호표를 볼 수 없다
+        $strangerVendor = Vendor::create(['name' => '남', 'state' => 'approved']);
+        Store::create(['vendor_id' => $strangerVendor->id, 'code' => 'y', 'name' => '남의 매장']);
+        $stranger = User::factory()->create(['role' => 'vendor', 'vendor_id' => $strangerVendor->id]);
+        $this->actingAs($stranger, 'web')->get($res->json('ticket_url'))->assertForbidden();
+    }
+
     public function test_uploaded_image_is_resized_to_webp(): void
     {
         if (! function_exists('imagewebp')) {
