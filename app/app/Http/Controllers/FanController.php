@@ -41,7 +41,9 @@ class FanController extends Controller
             'qty' => ['required', 'integer', 'min:1', 'max:'.$event->max_per_buyer],
             'name' => ['required', 'string', 'max:30'],
             'phone' => ['required', 'regex:/^01[0-9][- ]?\d{3,4}[- ]?\d{4}$/'],
+            'agree_terms' => ['accepted'],
         ], [
+            'agree_terms.accepted' => '이용약관·개인정보 수집·취소 규정에 동의해야 예매할 수 있어요.',
             'section_id.required' => '구역을 먼저 골라 주세요.',
             'name.required' => '예매자 이름을 적어 주세요.',
             'phone.required' => '휴대폰 번호를 적어 주세요.',
@@ -51,7 +53,7 @@ class FanController extends Controller
         $section = SeatSection::findOrFail($data['section_id']);
 
         try {
-            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $data['name'], $data['phone']);
+            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $data['name'], $data['phone'], now());
         } catch (OrderException $e) {
             return back()->withInput()->withErrors(['section_id' => $e->getMessage()]);
         }
@@ -71,8 +73,9 @@ class FanController extends Controller
             $request->session()->put('ticket_nos', array_values(array_unique(array_merge($request->session()->get('ticket_nos', []), $found))));
         }
 
+        // 취소한 티켓도 내역으로 보여 준다 (취소 수수료·환불액 확인)
         $tickets = Ticket::with(['event', 'section'])->whereIn('ticket_no', $request->session()->get('ticket_nos', []))
-            ->where('status', '!=', 'cancelled')->get()->sortBy(fn ($t) => $t->event->starts_at)->values();
+            ->get()->sortBy(fn ($t) => [$t->status === 'cancelled' ? 1 : 0, $t->event->starts_at])->values();
 
         return view('fan.tickets', ['tickets' => $tickets, 'searched' => $phone !== '']);
     }
@@ -80,7 +83,8 @@ class FanController extends Controller
     public function stores(Request $request, Event $event): View
     {
         $stores = Store::whereHas('capacitySlots', fn ($q) => $q->where('event_id', $event->id))
-            ->with(['capacitySlots' => fn ($q) => $q->where('event_id', $event->id), 'products' => fn ($q) => $q->where('is_visible', true)->orderBy('sort')])
+            ->whereHas('vendor', fn ($q) => $q->where('state', 'approved'))
+            ->with(['capacitySlots' => fn ($q) => $q->where('event_id', $event->id), 'products' => fn ($q) => $q->sellable()->orderBy('sort')])
             ->orderBy('id')->get();
 
         return view('fan.stores', ['event' => $event, 'stores' => $stores, 'ticket' => $this->ticketFor($request, $event)]);
@@ -88,7 +92,7 @@ class FanController extends Controller
 
     public function menu(Request $request, Event $event, Store $store): View
     {
-        $store->load(['products' => fn ($q) => $q->where('is_visible', true)->orderBy('sort')->with('options')]);
+        $store->load(['vendor', 'products' => fn ($q) => $q->sellable()->orderBy('sort')->with('options')]);
         $slots = CapacitySlot::where('event_id', $event->id)->where('store_id', $store->id)
             ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
 
@@ -107,10 +111,14 @@ class FanController extends Controller
             'items.*.option_id' => ['nullable', 'integer'],
             'items.*.qty' => ['required', 'integer', 'min:1', 'max:20'],
             'items.*.dine_option' => ['nullable', 'in:매장,포장'],
-        ]);
+            'agree_terms' => ['accepted'],
+            'adult_confirmed' => ['boolean'],
+        ], ['agree_terms.accepted' => '주문 전에 이용약관과 판매자 정보 제공에 동의해 주세요.']);
 
         $order = $orders->place($store, $data['items'], 'card', (int) $data['slot_id'],
-            ticket: $this->ticketFor($request, $event));
+            ticket: $this->ticketFor($request, $event),
+            adultConfirmed: (bool) ($data['adult_confirmed'] ?? false),
+            termsAgreedAt: now());
 
         $request->session()->push('order_nos', $order->order_no);
 
@@ -163,6 +171,31 @@ class FanController extends Controller
             'counts' => collect($tabs)->map(fn ($s) => $all->filter(fn ($o) => in_array($o->status->value, $s, true))->count()),
             'orders' => $all->filter(fn ($o) => in_array($o->status->value, $tabs[$tab], true))->values(),
         ]);
+    }
+
+    /** D1 구매자 취소: 매장이 준비를 시작하기 전까지 */
+    public function cancelOrder(Request $request, Order $order, OrderService $orders): RedirectResponse
+    {
+        $this->authorizeOrder($request, $order);
+        $orders->cancelByBuyer($order);
+
+        return redirect()->route('orders.show', $order)->with('status', '주문을 취소했어요. 결제한 금액은 결제 수단으로 환불돼요.');
+    }
+
+    /** F3 티켓 취소: 취소 수수료 규정 적용 */
+    public function cancelTicket(Request $request, Ticket $ticket, TicketService $tickets): RedirectResponse
+    {
+        abort_unless(in_array($ticket->ticket_no, $request->session()->get('ticket_nos', []), true), 404);
+        $t = $tickets->cancelByBuyer($ticket);
+
+        return redirect()->route('tickets')->with('status', $t->cancel_fee
+            ? '예매를 취소했어요. 취소 수수료 '.number_format($t->cancel_fee).'원을 빼고 '.number_format($t->refund_amount).'원이 환불돼요.'
+            : '예매를 취소했어요. '.number_format($t->refund_amount).'원 전액 환불돼요.');
+    }
+
+    public function policy(string $doc): View
+    {
+        return view('fan.policy', ['doc' => $doc]);
     }
 
     /** 픽업 전광판 (원본 order_board_view.php). 매장 앞 모니터에 띄운다. */

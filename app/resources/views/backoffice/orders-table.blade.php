@@ -1,6 +1,7 @@
 {{-- 주문 표 (업체 판매·취소 내역, 운영사 전체 주문 공용). $showVendor, $mode = sales|cancels|all --}}
 @php($showVendor = $showVendor ?? false)
 @php($mode = $mode ?? 'all')
+@php($detailRoute = $detailRoute ?? (auth()->user()->isSuperAdmin() ? 'admin.orders.show' : 'partner.orders.show'))
 @if ($orders->isEmpty())
     <div class="rounded-3xl bg-white px-6 py-12 text-center ring-1 ring-ink/5">
         <p class="font-bold">{{ $mode === 'cancels' ? '이 기간에 취소된 주문이 없어요' : '이 기간에 주문이 없어요' }}</p>
@@ -23,9 +24,9 @@
             </thead>
             <tbody class="divide-y divide-ink/5">
                 @foreach ($orders as $o)
-                    <tr>
+                    <tr data-href="{{ route($detailRoute, $o) }}">
                         <td class="num whitespace-nowrap px-5 py-3 text-xs">{{ ($mode === 'cancels' ? $o->cancelled_at : $o->created_at)?->format('m.d H:i') }}</td>
-                        <td class="num px-3 py-3 font-bold">{{ $o->pickup_code }}</td>
+                        <td class="num px-3 py-3 font-bold"><a href="{{ route($detailRoute, $o) }}" class="row-link">{{ $o->pickup_code }}</a>@if ($o->requires_id_check)<span class="chip ml-1 bg-signal/10 !px-1.5 !py-0 text-[10px] text-signal">주류</span>@endif</td>
                         @if ($showVendor)<td class="px-3 py-3">{{ $o->store->vendor?->name ?? '—' }}</td>@endif
                         <td class="px-3 py-3">{{ $o->store->name }}</td>
                         <td class="px-3 py-3">

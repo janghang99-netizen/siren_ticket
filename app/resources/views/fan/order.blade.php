@@ -56,6 +56,19 @@
         </div>
     </article>
 
+    @if ($order->requires_id_check && $order->status->value < 5)
+        <p class="mt-4 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">주류가 있어요. 받을 때 신분증을 보여 주세요.</p>
+    @endif
+
     <a href="{{ route('display', $order->store) }}" class="btn-ghost mt-4 w-full">매장 전광판 보기</a>
+
+    {{-- D1 구매자 취소: 매장이 준비를 시작하기 전까지 --}}
+    @if ($order->status->value === 2)
+        <form method="POST" action="{{ route('orders.cancel', $order) }}" class="mt-3 text-center" x-show="status === 2"
+              onsubmit="return confirm('주문을 취소할까요? {{ number_format($order->total_amount) }}원이 환불돼요.')">
+            @csrf
+            <button class="text-sm font-semibold text-mist underline-offset-4 hover:text-signal hover:underline">주문 취소 (매장이 준비를 시작하기 전까지)</button>
+        </form>
+    @endif
 </div>
 @endsection

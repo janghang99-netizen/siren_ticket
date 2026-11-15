@@ -22,9 +22,26 @@
             @yield('header-action')
         </header>
 
-        <main class="flex-1 px-4 pb-28">
+        <main class="flex-1 px-4">
+            @if (session('status'))
+                <p role="status" class="mb-3 mt-2 rounded-2xl bg-pick px-4 py-3 text-sm font-bold">{{ session('status') }}</p>
+            @endif
+            @error('rule')
+                <p role="alert" class="mb-3 mt-2 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">{{ $message }}</p>
+            @enderror
             @yield('content')
         </main>
+
+        {{-- A3 통신판매중개자 고지 · E1 약관 --}}
+        <footer class="px-4 pb-28 pt-12 text-[11px] leading-relaxed text-mist">
+            <nav class="mb-2 flex flex-wrap gap-x-3 gap-y-1 font-semibold text-ink/70" aria-label="약관">
+                <a href="{{ route('policy', 'terms') }}">이용약관</a>
+                <a href="{{ route('policy', 'privacy') }}">개인정보 처리방침</a>
+                <a href="{{ route('policy', 'refund') }}">취소·환불 규정</a>
+                <a href="{{ route('partner.apply') }}">매장 입점 신청</a>
+            </nav>
+            <p>SIREN은 공연 좌석 티켓을 직접 판매하며, 공연장 매장 상품에 대해서는 <b>통신판매중개자로서 거래 당사자가 아닙니다.</b> 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+        </footer>
 
         @php($tab = trim($__env->yieldContent('tab')))
         <nav class="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(12px,env(safe-area-inset-bottom))]" aria-label="주요 메뉴">

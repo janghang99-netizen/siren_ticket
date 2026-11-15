@@ -113,6 +113,17 @@
                 </div>
             </div>
 
+            <div class="mt-5 space-y-2 rounded-2xl bg-paper p-4 text-xs">
+                <p class="font-bold text-ink">취소 수수료</p>
+                <p class="text-mist">관람일 10일 전까지 없음 · 9~7일 전 10% · 6~3일 전 20% · 2~1일 전 30% · 당일 취소 불가
+                    <a href="{{ route('policy', 'refund') }}" target="_blank" class="row-link text-ink">자세히</a></p>
+                <label class="flex items-start gap-2 pt-1 text-sm text-ink">
+                    <input type="checkbox" name="agree_terms" value="1" class="mt-0.5" @checked(old('agree_terms')) required>
+                    <span><a href="{{ route('policy', 'terms') }}" target="_blank" class="row-link">이용약관</a>·<a href="{{ route('policy', 'privacy') }}" target="_blank" class="row-link">개인정보 수집·이용</a>·취소 수수료에 동의해요 (필수)</span>
+                </label>
+                @error('agree_terms')<p class="text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+
             @if ($event->salesOpen())
                 <button class="btn-ink mt-6 w-full text-base" :disabled="!section">
                     <span x-text="section ? won(section.price * qty) + '원 결제하기' : '구역을 골라 주세요'">결제하기</span>

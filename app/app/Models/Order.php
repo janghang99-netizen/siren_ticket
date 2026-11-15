@@ -23,6 +23,9 @@ class Order extends Model
         'refunded_at' => 'datetime',
         'webhook_sent_at' => 'datetime',
         'settled_at' => 'datetime',
+        'terms_agreed_at' => 'datetime',
+        'adult_confirmed_at' => 'datetime',
+        'requires_id_check' => 'boolean',
     ];
 
     public function settlement(): BelongsTo
@@ -68,6 +71,7 @@ class Order extends Model
             'ordered_at' => $this->created_at?->format('H:i'),
             'updated_at' => $this->updated_at?->format('H:i'),
             'cancel_disabled' => $this->status !== OrderStatus::Paid,
+            'id_check' => $this->requires_id_check,
             'items' => $this->items->map(fn (OrderItem $i) => [
                 'name' => $i->name,
                 'option' => $i->option_name,

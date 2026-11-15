@@ -20,7 +20,7 @@ class TicketService
      *
      * @return Collection<int, Ticket>
      */
-    public function purchase(Event $event, SeatSection $section, int $qty, string $name, string $phone): Collection
+    public function purchase(Event $event, SeatSection $section, int $qty, string $name, string $phone, ?\Carbon\CarbonInterface $termsAgreedAt = null): Collection
     {
         $phone = preg_replace('/\D/', '', $phone);
 
@@ -34,7 +34,7 @@ class TicketService
             throw new OrderException("한 번에 1~{$event->max_per_buyer}매까지 예매할 수 있어요.");
         }
 
-        return DB::transaction(function () use ($event, $section, $qty, $name, $phone) {
+        return DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt) {
             $owned = Ticket::where('event_id', $event->id)->where('holder_phone', $phone)
                 ->where('status', '!=', 'cancelled')->lockForUpdate()->count();
             if ($owned + $qty > $event->max_per_buyer) {
@@ -67,19 +67,44 @@ class TicketService
                 'price' => $section->price,
                 'status' => 'paid',
                 'paid_at' => now(),
+                'terms_agreed_at' => $termsAgreedAt,
             ]));
         });
     }
 
-    /** 슈퍼어드민 티켓 취소: 좌석을 구역 잔여석으로 돌려준다. 입장한 티켓은 취소 불가. */
+    /** 운영사 티켓 취소: 전액 환불, 좌석은 다시 판매로. 입장한 티켓은 취소 불가. */
     public function cancel(Ticket $ticket): Ticket
     {
-        return DB::transaction(function () use ($ticket) {
-            $ticket = Ticket::whereKey($ticket->id)->lockForUpdate()->firstOrFail();
+        return $this->doCancel($ticket, 'admin');
+    }
+
+    /**
+     * F3 구매자 취소: 취소 수수료 규정 적용 (관람일 10일 전까지 0%, 9~7일 10%, 6~3일 20%, 2~1일 30%, 당일 불가).
+     * 수수료를 뺀 금액을 환불한다.
+     */
+    public function cancelByBuyer(Ticket $ticket): Ticket
+    {
+        return $this->doCancel($ticket, 'buyer');
+    }
+
+    private function doCancel(Ticket $ticket, string $by): Ticket
+    {
+        return DB::transaction(function () use ($ticket, $by) {
+            $ticket = Ticket::with('event')->whereKey($ticket->id)->lockForUpdate()->firstOrFail();
             if ($ticket->status !== 'paid') {
                 throw new OrderException($ticket->status === 'used' ? '입장한 티켓은 취소할 수 없어요.' : '이미 취소된 티켓이에요.', 'bad_transition', 409);
             }
-            $ticket->update(['status' => 'cancelled']);
+
+            $rate = $by === 'admin' ? 0 : $ticket->cancelFeeRate();
+            if ($rate === null) {
+                throw new OrderException('공연 당일에는 예매를 취소할 수 없어요.', 'cancel_closed', 409);
+            }
+            $fee = (int) (floor($ticket->price * $rate / 100 / 10) * 10);   // 10원 단위 절사
+
+            $ticket->update([
+                'status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by' => $by,
+                'cancel_fee' => $fee, 'refund_amount' => $ticket->price - $fee,
+            ]);
             SeatSection::whereKey($ticket->seat_section_id)->where('sold', '>', 0)->decrement('sold');
 
             return $ticket;

@@ -18,7 +18,7 @@
                 @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
-                @foreach (['business_no' => '사업자등록번호', 'representative' => '대표자', 'contact_phone' => '담당자 연락처', 'contact_email' => '담당자 이메일'] as $f => $l)
+                @foreach (['business_no' => '사업자등록번호', 'mail_order_no' => '통신판매업 신고번호', 'representative' => '대표자', 'liquor_license_no' => '주류판매 신고번호 (주류 판매 시)', 'contact_phone' => '대표 연락처', 'contact_email' => '담당자 이메일', 'address' => '사업장 주소'] as $f => $l)
                     <div>
                         <label for="{{ $f }}" class="label">{{ $l }}</label>
                         <input id="{{ $f }}" name="{{ $f }}" class="field" value="{{ old($f, $v?->{$f}) }}">
@@ -38,11 +38,34 @@
                     </div>
                 @endforeach
             </div>
-            <div class="max-w-xs">
-                <label for="commission_rate" class="label">기본 수수료율 (%)</label>
-                <input id="commission_rate" name="commission_rate" type="number" step="0.01" min="0" max="50" class="field num" value="{{ old('commission_rate', $v?->commission_rate ?? 8.5) }}" required>
-                <p class="mt-1 text-xs text-mist">새 매장을 열 때 기본값이에요. 매장마다 바꿀 수 있어요.</p>
+            @php($cycle = old('settlement_cycle', $v?->settlement_cycle ?? $defaults['default_settlement_cycle']))
+            <div class="grid gap-4 sm:grid-cols-4" x-data="{ cycle: @js($cycle) }">
+                <div>
+                    <label for="commission_rate" class="label">수수료율 (%)</label>
+                    <input id="commission_rate" name="commission_rate" type="number" step="0.01" min="0" max="50" class="field num" value="{{ old('commission_rate', $v?->commission_rate ?? $defaults['default_commission_rate']) }}" required>
+                </div>
+                <div>
+                    <label for="settlement_cycle" class="label">정산주기</label>
+                    <select id="settlement_cycle" name="settlement_cycle" class="field" x-model="cycle">
+                        @foreach (\App\Models\Vendor::CYCLES as $k => $l)<option value="{{ $k }}">{{ $l }}</option>@endforeach
+                    </select>
+                </div>
+                <div>
+                    @php($day = (int) old('settlement_day', $v?->settlement_day ?? $defaults['default_settlement_day']))
+                    <label for="settlement_day" class="label">정산일</label>
+                    <select id="settlement_day" name="settlement_day" class="field" x-show="cycle !== 'monthly'" :disabled="cycle === 'monthly'">
+                        @foreach ([1 => '월', 2 => '화', 3 => '수', 4 => '목', 5 => '금', 6 => '토', 7 => '일'] as $k => $l)<option value="{{ $k }}" @selected($day === $k)>{{ $l }}요일</option>@endforeach
+                    </select>
+                    <select name="settlement_day" class="field" x-show="cycle === 'monthly'" x-cloak :disabled="cycle !== 'monthly'" aria-label="정산일 (매월)">
+                        @for ($d = 1; $d <= 28; $d++)<option value="{{ $d }}" @selected($day === $d)>매월 {{ $d }}일</option>@endfor
+                    </select>
+                </div>
+                <div>
+                    <label for="payout_delay_days" class="label">지급 (정산 후 +일)</label>
+                    <input id="payout_delay_days" name="payout_delay_days" type="number" min="0" max="30" class="field num" value="{{ old('payout_delay_days', $v?->payout_delay_days ?? $defaults['default_payout_delay_days']) }}" required>
+                </div>
             </div>
+            <p class="text-xs text-mist">수수료는 부가세 별도예요. 매장마다 다른 수수료는 매장 화면이나 설정에서 바꿀 수 있어요.</p>
         </section>
 
         @unless ($v)
@@ -66,12 +89,14 @@
     </div>
 
     <div class="space-y-4">
-        <div class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
-            <span class="label">상태</span>
-            @php($status = old('status', $v?->status ?? 'active'))
-            <label class="flex items-center gap-2 py-1 text-sm"><input type="radio" name="status" value="active" @checked($status === 'active')> 운영 중</label>
-            <label class="flex items-center gap-2 py-1 text-sm"><input type="radio" name="status" value="suspended" @checked($status === 'suspended')> 이용 정지 <span class="text-mist">(로그인 차단)</span></label>
-        </div>
+        @if ($v)
+            <div class="rounded-3xl bg-white p-6 text-sm ring-1 ring-ink/5">
+                <p class="label">심사 · 상태</p>
+                <p><b>{{ $v->stateLabel() }}</b> — 승인·반려·정지는 <a href="{{ route('admin.vendors.show', $v) }}" class="row-link">업체 화면</a>에서 해요.</p>
+            </div>
+        @else
+            <p class="rounded-3xl bg-white p-6 text-sm text-mist ring-1 ring-ink/5">운영사가 직접 등록한 업체는 계약·서류 확인을 마친 것으로 보고 바로 승인돼요. 일반 신청은 <a href="{{ route('partner.apply') }}" class="row-link" target="_blank">입점 신청 페이지</a>로 받아 심사해요.</p>
+        @endif
         @if ($v)
             <div class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
                 <p class="label">운영 매장 <span class="num text-mist">{{ $v->stores->count() }}</span></p>
@@ -86,7 +111,7 @@
             </div>
         @endif
         <button class="btn-ink w-full">{{ $v ? '저장' : '업체 등록' }}</button>
-        <a href="{{ route('admin.vendors.index') }}" class="btn-ghost w-full">목록으로</a>
+        <a href="{{ $v ? route('admin.vendors.show', $v) : route('admin.vendors.index') }}" class="btn-ghost w-full">{{ $v ? '업체 화면으로' : '목록으로' }}</a>
     </div>
 </form>
 @endsection

@@ -18,7 +18,10 @@ class AppServiceProvider extends ServiceProvider
         // 슈퍼어드민(플랫폼 회사): 공연·좌석티켓·입점업체·매장·정산
         Gate::define('super-admin', fn (User $u) => $u->isSuperAdmin());
 
-        // 입점업체: 자기 업체 매장들의 사이렌오더 (정지된 업체는 접근 불가)
+        // 입점업체 콘솔: 심사 승인된 업체만 (심사중·반려·정지는 접근 불가)
         Gate::define('vendor', fn (User $u) => $u->isVendor() && $u->vendor?->isActive());
+
+        // 입점업체 계정 자체 (심사 상태 화면 — 승인 전에도 볼 수 있음)
+        Gate::define('vendor-account', fn (User $u) => $u->isVendor());
     }
 }

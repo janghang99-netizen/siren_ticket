@@ -13,3 +13,11 @@ Artisan::command('orders:expire-pending', function (\App\Services\OrderService $
 })->purpose('결제 안 된 사이렌오더를 취소하고 캐파·재고를 돌려준다');
 
 \Illuminate\Support\Facades\Schedule::command('orders:expire-pending')->everyMinute();
+
+// 업체별 정산주기에 따라 자동 정산 (오늘이 정산일인 업체만, 직전 정산 다음 날 ~ 어제)
+Artisan::command('settlements:run-due', function (\App\Services\SettlementService $settlements) {
+    $made = $settlements->runDue();
+    $this->info("정산서 {$made->count()}건 생성");
+})->purpose('정산주기가 도래한 업체의 정산서를 만든다');
+
+\Illuminate\Support\Facades\Schedule::command('settlements:run-due')->dailyAt('06:00');

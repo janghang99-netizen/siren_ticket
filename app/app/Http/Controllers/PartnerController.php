@@ -160,10 +160,15 @@ class PartnerController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:60'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'origin' => ['nullable', 'string', 'max:200'],
+            'allergens' => ['nullable', 'string', 'max:200'],
             'price' => ['required', 'integer', 'min:0', 'max:10000000'],
             'stock' => ['nullable', 'integer', 'min:0'],
             'stock_deduct_at' => ['required', 'in:order,payment'],
             'sort' => ['nullable', 'integer', 'min:0'],
+            // B1 판매 금지 품목이 아님을 확인 (입점계약 제6조)
+            'agree_prohibited' => [$product ? 'nullable' : 'accepted'],
             'options' => ['array'],
             'options.*.id' => ['nullable', 'integer'],
             'options.*.name' => ['required', 'string', 'max:30'],
@@ -173,14 +178,26 @@ class PartnerController extends Controller
             'name.required' => '상품명을 적어 주세요.',
             'price.required' => '가격을 적어 주세요.',
             'options.*.name.required' => '옵션 이름을 적어 주세요.',
+            'agree_prohibited.accepted' => '판매 금지 품목이 아닌지 확인해 주세요.',
         ]);
+
+        // B2 주류는 주류판매 신고번호가 있는 업체만
+        if ($request->boolean('is_alcohol') && ! $request->user()->vendor->liquor_license_no) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['is_alcohol' => '주류판매 신고번호가 등록된 업체만 주류를 팔 수 있어요. 운영사에 신고번호 등록을 요청해 주세요.']);
+        }
 
         return DB::transaction(function () use ($request, $data, $product) {
             $fields = [
-                'name' => $data['name'], 'price' => $data['price'], 'stock' => $data['stock'] ?? null,
+                'name' => $data['name'], 'price' => $data['price'],
+                'description' => $data['description'] ?? null, 'origin' => $data['origin'] ?? null, 'allergens' => $data['allergens'] ?? null,
+                'is_alcohol' => $request->boolean('is_alcohol'),
                 'stock_deduct_at' => $data['stock_deduct_at'], 'is_visible' => $request->boolean('is_visible'),
                 'sort' => $data['sort'] ?? 0,
             ];
+            // 재고 수량은 새 상품일 때만 폼에서 받는다. 이후 변경은 생산·재고 화면(원장 기록)에서.
+            if (! $product) {
+                $fields['stock'] = $data['stock'] ?? null;
+            }
             if ($product) {
                 $product->update($fields);
             } else {
@@ -192,6 +209,7 @@ class PartnerController extends Controller
                 $values = ['name' => $o['name'], 'extra_price' => $o['extra_price'] ?? 0, 'stock' => $o['stock'] ?? null];
                 $option = ! empty($o['id']) ? $product->options()->find($o['id']) : null;
                 if ($option) {
+                    unset($values['stock']);   // 기존 옵션 재고는 생산·재고 화면에서만 바꾼다(원장 기록)
                     $option->update($values);
                 } else {
                     $option = $product->options()->create($values);
@@ -208,6 +226,73 @@ class PartnerController extends Controller
 
             return $product;
         });
+    }
+
+    // ── 생산·재고 (H) ──
+
+    public function inventory(Request $request): View
+    {
+        $store = $this->currentStore($request);
+        $products = Product::with('options')->where('store_id', $store->id)->orderBy('sort')->orderBy('id')->get();
+
+        $from = $request->date('from') ?? now()->subDays(6);
+        $to = $request->date('to') ?? now();
+        $type = array_key_exists((string) $request->query('type'), \App\Models\StockMovement::TYPES) ? $request->query('type') : null;
+
+        $q = \App\Models\StockMovement::with(['product', 'option', 'order', 'user'])->where('store_id', $store->id)
+            ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->when($type, fn ($q, $t) => $q->where('type', $t));
+
+        // 기간 합계 (생산·폐기·판매)
+        $totals = (clone $q)->reorder()->groupBy('type')->selectRaw('type, SUM(qty) as qty')->pluck('qty', 'type');
+
+        return view('partner.inventory', $this->shared($request) + [
+            'products' => $products,
+            'movements' => $q->latest('id')->paginate(40)->withQueryString(),
+            'totals' => $totals,
+            'from' => $from->toDateString(), 'to' => $to->toDateString(), 'type' => $type,
+        ]);
+    }
+
+    public function inventoryRecord(Request $request, \App\Services\InventoryService $inventory): RedirectResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['required', 'integer'],
+            'option_id' => ['nullable', 'integer'],
+            'type' => ['required', 'in:produce,discard,adjust'],
+            'qty' => ['required', 'integer', 'min:0', 'max:100000'],
+            'memo' => ['nullable', 'string', 'max:100'],
+        ], ['qty.required' => '수량을 적어 주세요.']);
+
+        $product = Product::findOrFail($data['product_id']);
+        $this->authorizeStore($request, $product->store_id);
+        $option = ! empty($data['option_id']) ? $product->options()->findOrFail($data['option_id']) : null;
+
+        $m = $inventory->record($product, $option, $data['type'], (int) $data['qty'], $data['memo'] ?? null, $request->user()->id);
+        $label = $product->name.($option ? " ({$option->name})" : '');
+
+        return back()->with('status', "{$label} {$m->typeLabel()} 기록했어요. 지금 재고 {$m->stock_after}개.");
+    }
+
+    // ── 주문 상세 ──
+
+    public function order(Request $request, Order $order): View
+    {
+        $this->authorizeStore($request, $order->store_id);
+
+        return view('partner.order', $this->shared($request) + [
+            'order' => $order->load(['store', 'items', 'ticket.section', 'ticket.event', 'capacitySlot', 'settlement']),
+            'movements' => \App\Models\StockMovement::with(['product', 'option'])->where('order_id', $order->id)->orderBy('id')->get(),
+        ]);
+    }
+
+    public function dispute(Request $request, Settlement $settlement, \App\Services\SettlementService $service): RedirectResponse
+    {
+        abort_unless($settlement->vendor_id === $request->user()->vendor_id, 403);
+        $message = $request->validate(['message' => ['required', 'string', 'max:2000']], ['message.required' => '이의 내용을 적어 주세요.'])['message'];
+        $service->dispute($settlement, $message);
+
+        return back()->with('status', '이의제기를 보냈어요. 운영사가 확인하고 이 화면에 답변해요.');
     }
 
     // ── 판매·취소 내역 ──

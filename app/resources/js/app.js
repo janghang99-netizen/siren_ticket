@@ -22,5 +22,25 @@ window.api = async (url, method = 'GET', body = null) => {
 
 window.won = (n) => Number(n).toLocaleString('ko-KR');
 
+/**
+ * 목록 행 클릭 → 상세. <tr data-href="..."> 에 적용.
+ * 행 안의 링크·버튼·입력·폼은 원래 동작을 우선한다. Ctrl/⌘·가운데 클릭은 새 탭.
+ * 키보드 사용자는 행 첫 칸의 실제 링크로 이동한다.
+ */
+const rowTarget = (e) => {
+    if (e.target.closest('a, button, input, select, textarea, label, form, summary')) return null;
+    return e.target.closest('[data-href]');
+};
+document.addEventListener('click', (e) => {
+    const row = rowTarget(e);
+    if (!row || window.getSelection()?.toString()) return;   // 글자 드래그 선택 중이면 이동 안 함
+    if (e.metaKey || e.ctrlKey) window.open(row.dataset.href, '_blank');
+    else window.location.href = row.dataset.href;
+});
+document.addEventListener('auxclick', (e) => {
+    const row = rowTarget(e);
+    if (row && e.button === 1) window.open(row.dataset.href, '_blank');
+});
+
 window.Alpine = Alpine;
 Alpine.start();

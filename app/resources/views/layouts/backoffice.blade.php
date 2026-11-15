@@ -19,11 +19,13 @@
             ['admin.stores.index', '매장', 'admin.stores.*'],
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],
             ['admin.settlements.index', '정산', 'admin.settlements.*'],
+            ['admin.settings', '수수료·정산 설정', 'admin.settings*'],
         ]
         : [
             ['partner.board', '주문보드', 'partner.board'],
             ['partner.products', '상품', 'partner.products*'],
-            ['partner.sales', '판매 내역', 'partner.sales'],
+            ['partner.inventory', '생산·재고', 'partner.inventory*'],
+            ['partner.sales', '판매 내역', 'partner.sales|partner.orders.*'],
             ['partner.cancels', '취소 내역', 'partner.cancels'],
             ['partner.settlements', '정산 내역', 'partner.settlements*'],
         ];
@@ -34,7 +36,7 @@
         <div class="flex items-center justify-between px-5 py-4 lg:block lg:py-6">
             <div>
                 <p class="font-display text-lg font-black">SIREN</p>
-                <p class="text-xs font-semibold text-paper/50">{{ $user->isSuperAdmin() ? '운영 콘솔' : ($vendor->name ?? '파트너') }}</p>
+                <p class="text-xs font-semibold text-paper/50">{{ $user->isSuperAdmin() ? '운영 콘솔' : ($user->vendor->name ?? '파트너') }}</p>
             </div>
             <form method="POST" action="{{ route('logout') }}" class="lg:hidden">@csrf<button class="text-sm text-paper/60">로그아웃</button></form>
         </div>
@@ -64,9 +66,9 @@
             @foreach ($nav as [$route, $label, $pattern])
                 <a href="{{ route($route) }}"
                    @class(['whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-semibold transition',
-                           'bg-paper text-ink' => request()->routeIs($pattern),
-                           'text-paper/70 hover:bg-paper/10 hover:text-paper' => ! request()->routeIs($pattern)])
-                   @if (request()->routeIs($pattern)) aria-current="page" @endif>{{ $label }}</a>
+                           'bg-paper text-ink' => request()->routeIs(...explode('|', $pattern)),
+                           'text-paper/70 hover:bg-paper/10 hover:text-paper' => ! request()->routeIs(...explode('|', $pattern))])
+                   @if (request()->routeIs(...explode('|', $pattern))) aria-current="page" @endif>{{ $label }}</a>
             @endforeach
         </nav>
 

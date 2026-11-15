@@ -21,7 +21,7 @@
                 @php($capacity = $e->sections->sum('capacity'))
                 @php($sold = $e->sections->sum('sold'))
                 @php($past = $e->starts_at->isPast())
-                <li @class(['flex gap-4 rounded-3xl bg-white p-4 ring-1 ring-ink/5', 'opacity-60' => $past])>
+                <li data-href="{{ route('admin.events.edit', $e->id) }}" @class(['flex cursor-pointer gap-4 rounded-3xl bg-white p-4 ring-1 ring-ink/5 transition hover:ring-stick/40', 'opacity-60' => $past])>
                     <div class="w-28 shrink-0 rounded-2xl bg-ink p-1.5">
                         @include('partials.bowl', ['event' => $e, 'class' => 'w-full'])
                     </div>

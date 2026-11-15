@@ -92,7 +92,7 @@ class SirenOrderTest extends TestCase
         $section = $this->section(capacity: 10);
 
         $this->post(route('concerts.purchase', $this->event), [
-            'section_id' => $section->id, 'qty' => 1, 'name' => '팬', 'phone' => '010-1234-5678',
+            'section_id' => $section->id, 'qty' => 1, 'name' => '팬', 'phone' => '010-1234-5678', 'agree_terms' => '1',
         ])->assertRedirect(route('tickets'));
 
         $this->get(route('tickets'))->assertOk()->assertSee('A1');
@@ -190,8 +190,8 @@ class SirenOrderTest extends TestCase
     public function test_vendor_only_sees_and_changes_own_store_orders(): void
     {
         $order = $this->paidOrder();
-        $mineVendor = \App\Models\Vendor::create(['name' => '아레나푸드']);
-        $theirVendor = \App\Models\Vendor::create(['name' => '비어하우스']);
+        $mineVendor = \App\Models\Vendor::create(['name' => '아레나푸드', 'state' => 'approved']);
+        $theirVendor = \App\Models\Vendor::create(['name' => '비어하우스', 'state' => 'approved']);
         $this->store->update(['vendor_id' => $mineVendor->id]);
         Store::create(['vendor_id' => $theirVendor->id, 'code' => 'arena2', 'name' => '비어 스탠드']);
         $mine = User::factory()->create(['role' => 'vendor', 'vendor_id' => $mineVendor->id]);

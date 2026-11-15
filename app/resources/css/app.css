@@ -89,6 +89,11 @@
     .eyebrow { @apply text-[11px] font-bold uppercase tracking-[.18em] text-mist; }
     .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
 
+    /* 클릭하면 상세로 가는 목록 행 */
+    tr[data-href] { cursor: pointer; transition: background-color .15s; }
+    tr[data-href]:hover { background: color-mix(in oklab, var(--color-paper) 70%, white); }
+    .row-link { @apply font-semibold underline-offset-4 hover:underline; }
+
     /* 좌석도 구역 */
     .seat-arc { transition: fill .25s, opacity .25s, transform .25s; transform-origin: 200px 200px; cursor: pointer; }
     .seat-arc:hover { transform: scale(1.015); }

@@ -65,11 +65,16 @@ class DatabaseSeeder extends Seeder
             ]],
         ];
 
-        foreach ($vendors as [$vname, $login, $bizNo, $rep, $bank, $stores]) {
+        $liquor = ['beerhouse' => '제403-5-00000호'];   // 주류판매 신고번호가 있는 업체만 주류 판매
+        foreach ($vendors as $n => [$vname, $login, $bizNo, $rep, $bank, $stores]) {
             $vendor = Vendor::create([
-                'name' => $vname, 'business_no' => $bizNo, 'representative' => $rep,
-                'contact_email' => "{$login}@siren.test", 'bank_name' => $bank,
+                'name' => $vname, 'state' => 'approved', 'approved_at' => now()->subMonth(),
+                'business_no' => $bizNo, 'mail_order_no' => '제2026-서울도봉-0'.($n + 101).'호',
+                'liquor_license_no' => $liquor[$login] ?? null, 'representative' => $rep,
+                'address' => '서울특별시 도봉구 창동 서울아레나 F&B '.($n + 1).'구역',
+                'contact_phone' => '02-000-000'.($n + 1), 'contact_email' => "{$login}@siren.test", 'bank_name' => $bank,
                 'bank_account' => '000-0000-0000-00', 'account_holder' => $vname, 'commission_rate' => 8.5,
+                'settlement_cycle' => $login === 'md' ? 'monthly' : 'biweekly', 'settlement_day' => 1, 'payout_delay_days' => 3,
             ]);
             User::create(['role' => 'vendor', 'vendor_id' => $vendor->id, 'name' => $vname, 'email' => "{$login}@siren.test", 'password' => 'password']);
 
@@ -79,6 +84,9 @@ class DatabaseSeeder extends Seeder
                     $product = Product::create([
                         'store_id' => $store->id, 'name' => $pname, 'price' => $price, 'sort' => $sort,
                         'stock' => $options ? null : ($pname === '슬로건 타월' ? 0 : 300),   // 품절 표시 확인용 1개
+                        'is_alcohol' => in_array($pname, ['생맥주 500', '캔맥주'], true),
+                        'origin' => in_array($code, ['arena1', 'arena3'], true) ? '원두·밀가루 수입산, 우유 국산' : null,
+                        'allergens' => in_array($code, ['arena1', 'arena3'], true) ? '우유, 밀' : null,
                     ]);
                     foreach ($options as $key => $value) {
                         [$oname, $extra] = is_int($key) ? [$value, 0] : [$key, $value];
@@ -88,6 +96,15 @@ class DatabaseSeeder extends Seeder
                 $venue->ensureSlots(store: $store);
             }
         }
+
+        // 입점 심사 대기 업체 (A1 흐름 확인용) — 로그인하면 심사 중 화면
+        $pending = Vendor::create([
+            'name' => '푸드트럭 컴퍼니', 'state' => 'pending', 'business_no' => '456-78-90123',
+            'mail_order_no' => '제2026-서울노원-0999호', 'representative' => '최가온', 'address' => '서울특별시 노원구',
+            'contact_phone' => '02-000-0099', 'contact_email' => 'newvendor@siren.test',
+            'bank_name' => '하나은행', 'bank_account' => '000-0000-0000-00', 'account_holder' => '푸드트럭 컴퍼니',
+        ]);
+        User::create(['role' => 'vendor', 'vendor_id' => $pending->id, 'name' => $pending->name, 'email' => 'newvendor@siren.test', 'password' => 'password']);
 
         $this->demoHistory();
     }
@@ -104,7 +121,7 @@ class DatabaseSeeder extends Seeder
                 return ['product_id' => $p->id, 'option_id' => $p->options()->value('id'), 'qty' => $qty];
             })->values()->all();
 
-            $o = $orders->confirmPayment($orders->place($store, $items, 'card'));
+            $o = $orders->confirmPayment($orders->place($store, $items, 'card', adultConfirmed: true, termsAgreedAt: now()));
             if ($to === OrderStatus::Cancelled) {
                 return $orders->transition($o, OrderStatus::Cancelled);
             }
@@ -117,6 +134,14 @@ class DatabaseSeeder extends Seeder
 
             return $o;
         };
+
+        // 생산 기록 (H) — 베이커리 오전 생산·폐기, 재고 실사
+        $inventory = app(\App\Services\InventoryService::class);
+        $bakery = Store::where('code', 'arena3')->first();
+        $staff = User::where('email', 'arenafood@siren.test')->value('id');
+        foreach ([['소금빵', 'adjust', 0, '당일 리셋'], ['소금빵', 'produce', 120, '오전 생산'], ['크루아상', 'produce', 80, '오전 생산'], ['크루아상', 'discard', 4, '모양 불량']] as [$name, $type, $qty, $memo]) {
+            $inventory->record(Product::where('store_id', $bakery->id)->where('name', $name)->first(), null, $type, $qty, $memo, $staff);
+        }
 
         // 지난주 — 수령완료 후 정산서 발행
         Carbon::setTestNow(now()->subWeek());

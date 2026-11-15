@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CapacitySlot;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\SeatSection;
@@ -125,17 +126,19 @@ class AdminController extends Controller
 
     public function vendors(): View
     {
-        return view('admin.vendors', ['vendors' => Vendor::withCount('stores')->with('users')->orderBy('id')->get()]);
+        return view('admin.vendors', ['vendors' => Vendor::withCount('stores')->with('users')
+            ->orderByRaw("CASE state WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 WHEN 'suspended' THEN 2 ELSE 3 END")
+            ->orderBy('id')->get()]);
     }
 
     public function vendorCreate(): View
     {
-        return view('admin.vendor-form', ['vendor' => null]);
+        return view('admin.vendor-form', ['vendor' => null, 'defaults' => \App\Models\Setting::values()]);
     }
 
     public function vendorEdit(Vendor $vendor): View
     {
-        return view('admin.vendor-form', ['vendor' => $vendor->load('users', 'stores')]);
+        return view('admin.vendor-form', ['vendor' => $vendor->load('users', 'stores'), 'defaults' => \App\Models\Setting::values()]);
     }
 
     public function vendorStore(Request $request): RedirectResponse
@@ -150,7 +153,8 @@ class AdminController extends Controller
         ]);
 
         $vendor = DB::transaction(function () use ($data) {
-            $vendor = Vendor::create(collect($data)->except(['login_email', 'login_password'])->all());
+            // 운영사가 직접 등록한 업체는 계약·서류 확인을 마친 것으로 보고 바로 승인
+            $vendor = Vendor::create(collect($data)->except(['login_email', 'login_password'])->all() + ['state' => 'approved', 'approved_at' => now()]);
             User::create([
                 'role' => 'vendor', 'vendor_id' => $vendor->id, 'name' => $vendor->name,
                 'email' => $data['login_email'], 'password' => $data['login_password'],
@@ -167,7 +171,7 @@ class AdminController extends Controller
     {
         $vendor->update($this->validateVendor($request));
 
-        return redirect()->route('admin.vendors.index')->with('status', "‘{$vendor->name}’ 업체 정보를 저장했어요.");
+        return redirect()->route('admin.vendors.show', $vendor)->with('status', "‘{$vendor->name}’ 업체 정보를 저장했어요.");
     }
 
     // ── 매장 ──
@@ -182,6 +186,49 @@ class AdminController extends Controller
         return view('admin.store-form', ['store' => null, 'vendors' => Vendor::orderBy('name')->get(), 'vendorId' => (int) $request->query('vendor')]);
     }
 
+    /** 매장 상세: 운영 현황 · 상품 · 주문 내역 */
+    public function storeShow(Request $request, Store $store): View
+    {
+        $store->load(['vendor', 'products' => fn ($q) => $q->orderBy('sort')->orderBy('id')->with('options')]);
+
+        $from = $request->date('from') ?? now()->subDays(6);
+        $to = $request->date('to') ?? now();
+        $range = [$from->copy()->startOfDay(), $to->copy()->endOfDay()];
+        $groups = ['active' => [2, 3, 4], 'done' => [5, 6], 'cancelled' => [11, 14]];
+
+        $base = fn () => Order::where('store_id', $store->id)->whereBetween('created_at', $range);
+        $sales = $base()->whereIn('status', [2, 3, 4, 5, 6]);
+        $cancels = $base()->whereIn('status', [11, 14]);
+        $unsettled = Order::where('store_id', $store->id)->where('status', 5)->whereNull('settlement_id');
+
+        // 가장 가까운 공연의 이 매장 주문 시간대
+        $eventId = Event::where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')
+            ->whereHas('capacitySlots', fn ($q) => $q->where('store_id', $store->id))->value('id');
+
+        $orders = $base()->with(['store.vendor', 'items', 'ticket.section'])
+            ->where('status', '!=', 1)
+            ->when($groups[$request->query('group')] ?? null, fn ($q, $s) => $q->whereIn('status', $s))
+            ->latest('id')->paginate(30)->withQueryString();
+
+        return view('admin.store-show', [
+            'store' => $store,
+            'from' => $from->toDateString(), 'to' => $to->toDateString(),
+            'salesAmount' => (int) (clone $sales)->sum('total_amount'),
+            'salesCount' => (clone $sales)->count(),
+            'cancelAmount' => (int) (clone $cancels)->sum('total_amount'),
+            'cancelCount' => (clone $cancels)->count(),
+            'unsettledAmount' => (int) (clone $unsettled)->sum('total_amount'),
+            'event' => $eventId ? Event::find($eventId) : null,
+            'slots' => CapacitySlot::where('store_id', $store->id)->where('event_id', $eventId)
+                ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get(),
+            'sold' => DB::table('order_items')->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.store_id', $store->id)->whereIn('orders.status', [2, 3, 4, 5, 6])
+                ->groupBy('order_items.product_id')->selectRaw('order_items.product_id, SUM(order_items.qty) as qty')
+                ->pluck('qty', 'product_id'),
+            'orders' => $orders,
+        ]);
+    }
+
     public function storeEdit(Store $store): View
     {
         return view('admin.store-form', ['store' => $store, 'vendors' => Vendor::orderBy('name')->get(), 'vendorId' => $store->vendor_id]);
@@ -192,14 +239,14 @@ class AdminController extends Controller
         $store = Store::create($this->validateStore($request));
         $venue->ensureSlots(store: $store);   // 예정된 공연마다 주문 시간대 생성
 
-        return redirect()->route('admin.stores.index')->with('status', "‘{$store->name}’ 매장을 열었어요.");
+        return redirect()->route('admin.stores.show', $store->id)->with('status', "‘{$store->name}’ 매장을 열었어요.");
     }
 
     public function storeUpdate(Request $request, Store $store): RedirectResponse
     {
         $store->update($this->validateStore($request, $store));
 
-        return redirect()->route('admin.stores.index')->with('status', "‘{$store->name}’ 매장을 저장했어요.");
+        return redirect()->route('admin.stores.show', $store->id)->with('status', "‘{$store->name}’ 매장을 저장했어요.");
     }
 
     // ── 정산 ──
@@ -295,15 +342,171 @@ class AdminController extends Controller
         return $request->validate([
             'name' => ['required', 'string', 'max:60'],
             'business_no' => ['nullable', 'string', 'max:20'],
+            'mail_order_no' => ['nullable', 'string', 'max:40'],
+            'liquor_license_no' => ['nullable', 'string', 'max:40'],
             'representative' => ['nullable', 'string', 'max:30'],
+            'address' => ['nullable', 'string', 'max:200'],
             'contact_phone' => ['nullable', 'string', 'max:20'],
             'contact_email' => ['nullable', 'email'],
             'bank_name' => ['nullable', 'string', 'max:30'],
             'bank_account' => ['nullable', 'string', 'max:40'],
             'account_holder' => ['nullable', 'string', 'max:50'],
             'commission_rate' => ['required', 'numeric', 'min:0', 'max:50'],
-            'status' => ['required', 'in:active,suspended'],
+            'settlement_cycle' => ['required', 'in:weekly,biweekly,monthly'],
+            'settlement_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'payout_delay_days' => ['required', 'integer', 'min:0', 'max:30'],
         ], ['name.required' => '업체명을 적어 주세요.']);
+    }
+
+    // ── 상세 화면 · 정책 조치 ──
+
+    public function vendor(Vendor $vendor): View
+    {
+        $vendor->load(['users', 'stores' => fn ($q) => $q->withCount('products')]);
+        $storeIds = $vendor->stores->pluck('id');
+
+        return view('admin.vendor', [
+            'vendor' => $vendor,
+            'settlements' => $vendor->settlements()->latest('id')->limit(10)->get(),
+            'pendingAdjustments' => $vendor->adjustments()->whereNull('settlement_id')->latest('id')->get(),
+            'salesAmount' => (int) Order::whereIn('store_id', $storeIds)->whereIn('status', [2, 3, 4, 5, 6])->where('created_at', '>=', now()->subDays(30))->sum('total_amount'),
+            'unsettledAmount' => (int) Order::whereIn('store_id', $storeIds)->where('status', 5)->whereNull('settlement_id')->sum('total_amount'),
+            'nextSettlement' => $vendor->nextSettlementDate(($last = $vendor->settlements()->max('period_end')) ? Carbon::parse($last) : null),
+        ]);
+    }
+
+    /** A1 승인·반려 / A4 정지·재개 (정지하면 그 업체 매장은 모두 영업 종료) */
+    public function vendorState(Request $request, Vendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'state' => ['required', 'in:approved,rejected,suspended'],
+            'reason' => ['nullable', 'required_if:state,rejected,suspended', 'string', 'max:200'],
+        ], ['reason.required_if' => '반려·정지 사유를 적어 주세요. 업체에 그대로 보여요.']);
+
+        DB::transaction(function () use ($vendor, $data) {
+            $vendor->update([
+                'state' => $data['state'],
+                'state_reason' => $data['state'] === 'approved' ? null : $data['reason'],
+                'approved_at' => $data['state'] === 'approved' ? ($vendor->approved_at ?? now()) : $vendor->approved_at,
+            ]);
+            if ($data['state'] === 'suspended') {
+                $vendor->stores()->update(['is_open' => false]);
+            }
+        });
+
+        $label = ['approved' => '승인했어요', 'rejected' => '반려했어요', 'suspended' => '이용 정지했어요. 매장은 모두 영업 종료로 바뀌었어요'][$data['state']];
+
+        return back()->with('status', "‘{$vendor->name}’ 업체를 {$label}.");
+    }
+
+    public function vendorDocument(Vendor $vendor, string $type)
+    {
+        $path = $vendor->documents[$type] ?? null;
+        abort_unless($path && array_key_exists($type, Vendor::DOCUMENTS) && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->download($path, $vendor->name.'_'.Vendor::DOCUMENTS[$type].'.'.pathinfo($path, PATHINFO_EXTENSION));
+    }
+
+    /** B1 운영사 판매 중지(제재) / 해제 */
+    public function productBlock(Request $request, \App\Models\Product $product): RedirectResponse
+    {
+        if ($product->isBlocked()) {
+            $product->update(['blocked_at' => null, 'block_reason' => null]);
+
+            return back()->with('status', "‘{$product->name}’ 판매 중지를 풀었어요.");
+        }
+        $reason = $request->validate(['reason' => ['required', 'string', 'max:200']], ['reason.required' => '판매 중지 사유를 적어 주세요. 업체에 그대로 보여요.'])['reason'];
+        $product->update(['blocked_at' => now(), 'block_reason' => $reason]);
+
+        return back()->with('status', "‘{$product->name}’을(를) 판매 중지했어요.");
+    }
+
+    public function order(Order $order): View
+    {
+        return view('admin.order', [
+            'order' => $order->load(['store.vendor', 'items', 'ticket.section', 'ticket.event', 'capacitySlot', 'settlement']),
+            'webhooks' => DB::table('webhook_deliveries')->where('order_id', $order->id)->latest('id')->get(),
+            'movements' => \App\Models\StockMovement::with(['product', 'option'])->where('order_id', $order->id)->orderBy('id')->get(),
+        ]);
+    }
+
+    /** 수령완료·정산완료 주문 환불 (정산완료면 차기 정산 공제 생성) */
+    public function orderRefund(Request $request, Order $order, \App\Services\OrderService $orders): RedirectResponse
+    {
+        $reason = $request->validate(['reason' => ['required', 'string', 'max:100']], ['reason.required' => '환불 사유를 적어 주세요.'])['reason'];
+        $was = $order->status;
+        $orders->adminRefund($order, $reason);
+
+        return back()->with('status', $was === \App\Enums\OrderStatus::Settled
+            ? '환불했어요. 이미 정산된 주문이라 업체의 다음 정산에서 공제돼요.'
+            : '환불했어요. 정산 대상에서 빠졌어요.');
+    }
+
+    public function ticket(Ticket $ticket): View
+    {
+        $ticket->load(['event', 'section']);
+
+        return view('admin.ticket', [
+            'ticket' => $ticket,
+            'orders' => $ticket->orders()->with(['store', 'items'])->latest('id')->get(),
+            'others' => Ticket::with('section')->where('event_id', $ticket->event_id)->where('holder_phone', $ticket->holder_phone)->whereKeyNot($ticket->id)->get(),
+            'feeRate' => $ticket->status === 'paid' ? $ticket->cancelFeeRate() : null,
+        ]);
+    }
+
+    public function settlementTaxInvoice(Settlement $settlement, SettlementService $service): RedirectResponse
+    {
+        $service->markTaxInvoice($settlement);
+
+        return back()->with('status', $settlement->tax_invoice_issued_at ? '세금계산서 발행 완료로 표시했어요.' : '세금계산서 발행 표시를 지웠어요.');
+    }
+
+    public function settlementReply(Request $request, Settlement $settlement, SettlementService $service): RedirectResponse
+    {
+        $reply = $request->validate(['reply' => ['required', 'string', 'max:2000']], ['reply.required' => '답변 내용을 적어 주세요.'])['reply'];
+        $service->replyDispute($settlement, $reply);
+
+        return back()->with('status', '이의제기에 답변했어요. 업체 정산 화면에 보여요.');
+    }
+
+    // ── 수수료 · 정산주기 설정 (C2·C3) ──
+
+    public function settings(): View
+    {
+        return view('admin.settings', [
+            'settings' => \App\Models\Setting::values(),
+            'vendors' => Vendor::with(['stores' => fn ($q) => $q->orderBy('id')])->orderBy('id')->get(),
+        ]);
+    }
+
+    public function settingsSave(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'defaults.default_commission_rate' => ['required', 'numeric', 'min:0', 'max:50'],
+            'defaults.default_settlement_cycle' => ['required', 'in:weekly,biweekly,monthly'],
+            'defaults.default_settlement_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'defaults.default_payout_delay_days' => ['required', 'integer', 'min:0', 'max:30'],
+            'defaults.commission_vat_rate' => ['required', 'numeric', 'min:0', 'max:20'],
+            'vendors' => ['array'],
+            'vendors.*.commission_rate' => ['required', 'numeric', 'min:0', 'max:50'],
+            'vendors.*.settlement_cycle' => ['required', 'in:weekly,biweekly,monthly'],
+            'vendors.*.settlement_day' => ['required', 'integer', 'min:1', 'max:28'],
+            'vendors.*.payout_delay_days' => ['required', 'integer', 'min:0', 'max:30'],
+            'stores' => ['array'],
+            'stores.*.commission_rate' => ['required', 'numeric', 'min:0', 'max:50'],
+        ]);
+
+        DB::transaction(function () use ($data) {
+            \App\Models\Setting::put($data['defaults']);
+            foreach ($data['vendors'] ?? [] as $id => $v) {
+                Vendor::whereKey($id)->update($v);
+            }
+            foreach ($data['stores'] ?? [] as $id => $s) {
+                Store::whereKey($id)->update(['commission_rate' => $s['commission_rate']]);
+            }
+        });
+
+        return back()->with('status', '설정을 저장했어요. 바뀐 수수료율은 이후 주문부터, 정산주기는 다음 정산부터 적용돼요.');
     }
 
     private function validateStore(Request $request, ?Store $store = null): array

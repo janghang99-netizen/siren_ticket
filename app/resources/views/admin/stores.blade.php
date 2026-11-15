@@ -28,8 +28,8 @@
                 </thead>
                 <tbody class="divide-y divide-ink/5">
                     @foreach ($stores as $s)
-                        <tr>
-                            <td class="px-5 py-3 font-bold">{{ $s->name }}</td>
+                        <tr data-href="{{ route('admin.stores.show', $s->id) }}">
+                            <td class="px-5 py-3"><a href="{{ route('admin.stores.show', $s->id) }}" class="row-link">{{ $s->name }}</a></td>
                             <td class="px-3 py-3">{{ $s->vendor?->name ?? '미지정' }}</td>
                             <td class="num px-3 py-3 text-xs">{{ $s->code }}</td>
                             <td class="num px-3 py-3 text-right">{{ $s->products_count }}</td>

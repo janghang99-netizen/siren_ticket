@@ -24,13 +24,18 @@ class AuthController extends Controller
         }
 
         $user = Auth::user();
-        if (! $user->isSuperAdmin() && ! ($user->isVendor() && $user->vendor?->isActive())) {
+        if (! $user->isSuperAdmin() && ! $user->isVendor()) {
             Auth::logout();
 
-            return back()->withInput($request->only('email'))->withErrors(['email' => '이용이 정지된 계정이에요. 운영사에 문의해 주세요.']);
+            return back()->withInput($request->only('email'))->withErrors(['email' => '관리 화면을 쓸 수 없는 계정이에요.']);
         }
 
         $request->session()->regenerate();
+
+        // 심사 중·반려·정지 업체는 상태 안내 화면으로
+        if ($user->isVendor() && ! $user->vendor?->isActive()) {
+            return redirect()->route('partner.status');
+        }
 
         return redirect()->intended(self::home($user));
     }
@@ -46,6 +51,10 @@ class AuthController extends Controller
 
     public static function home($user): string
     {
-        return $user?->isSuperAdmin() ? route('admin.events.index') : route('partner.board');
+        if ($user?->isSuperAdmin()) {
+            return route('admin.events.index');
+        }
+
+        return $user?->vendor?->isActive() ? route('partner.board') : route('partner.status');
     }
 }

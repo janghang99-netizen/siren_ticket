@@ -51,8 +51,8 @@
                 </thead>
                 <tbody class="divide-y divide-ink/5">
                     @foreach ($tickets as $t)
-                        <tr>
-                            <td class="num px-5 py-3 text-xs">{{ $t->paid_at?->format('m.d H:i') }}</td>
+                        <tr data-href="{{ route('admin.tickets.show', $t) }}">
+                            <td class="num px-5 py-3 text-xs"><a href="{{ route('admin.tickets.show', $t) }}" class="row-link">{{ $t->paid_at?->format('m.d H:i') }}</a></td>
                             <td class="px-3 py-3">{{ $t->event->artist }} <span class="num text-xs text-mist">{{ $t->event->starts_at->format('m.d') }}</span></td>
                             <td class="px-3 py-3">{{ $t->seatLabel() }} <span class="text-xs text-mist">{{ $t->section->tier }}</span></td>
                             <td class="px-3 py-3">{{ $t->holder_name }} <span class="num block text-xs text-mist">{{ preg_replace('/(\d{3})(\d{3,4})(\d{4})/', '$1-****-$3', $t->holder_phone) }}</span></td>

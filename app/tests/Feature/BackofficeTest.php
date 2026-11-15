@@ -36,7 +36,7 @@ class BackofficeTest extends TestCase
         parent::setUp();
 
         $this->admin = User::factory()->create(['role' => 'super_admin']);
-        $this->vendor = Vendor::create(['name' => '아레나푸드', 'commission_rate' => 10]);
+        $this->vendor = Vendor::create(['name' => '아레나푸드', 'commission_rate' => 10, 'state' => 'approved']);
         $this->vendorUser = User::factory()->create(['role' => 'vendor', 'vendor_id' => $this->vendor->id]);
         $this->cafe = Store::create(['vendor_id' => $this->vendor->id, 'code' => 'cafe', 'name' => '아레나 커피', 'commission_rate' => 10]);
         $this->bakery = Store::create(['vendor_id' => $this->vendor->id, 'code' => 'bakery', 'name' => '오븐 베이커리', 'commission_rate' => 10]);
@@ -66,7 +66,7 @@ class BackofficeTest extends TestCase
 
     public function test_suspended_vendor_cannot_use_console(): void
     {
-        $this->vendor->update(['status' => 'suspended']);
+        $this->vendor->update(['state' => 'suspended']);
         $this->actingAs($this->vendorUser)->get(route('partner.board'))->assertForbidden();
     }
 
@@ -81,7 +81,7 @@ class BackofficeTest extends TestCase
 
     public function test_vendor_switches_between_own_stores_but_not_others(): void
     {
-        $other = Store::create(['vendor_id' => Vendor::create(['name' => '남의업체'])->id, 'code' => 'x', 'name' => '남의 매장']);
+        $other = Store::create(['vendor_id' => Vendor::create(['name' => '남의업체', 'state' => 'approved'])->id, 'code' => 'x', 'name' => '남의 매장']);
 
         $this->actingAs($this->vendorUser)->post(route('partner.stores.switch', $this->bakery->id))->assertRedirect();
         $this->get(route('partner.products'))->assertSee('오븐 베이커리');
@@ -94,7 +94,7 @@ class BackofficeTest extends TestCase
         $this->actingAs($this->vendorUser)->post(route('partner.stores.switch', $this->bakery->id));
 
         $this->post(route('partner.products.store'), [
-            'name' => '소금빵', 'price' => 4000, 'stock_deduct_at' => 'order', 'is_visible' => '1',
+            'name' => '소금빵', 'price' => 4000, 'stock_deduct_at' => 'order', 'is_visible' => '1', 'agree_prohibited' => '1',
             'options' => [['name' => '1개', 'extra_price' => 0, 'stock' => 50], ['name' => '2개 세트', 'extra_price' => 3500, 'stock' => 20]],
         ])->assertRedirect(route('partner.products'));
 
@@ -128,7 +128,8 @@ class BackofficeTest extends TestCase
         $s = $made->first();
         $this->assertSame(14000, $s->gross_amount);
         $this->assertSame(1400, $s->commission_amount);   // 10%
-        $this->assertSame(12600, $s->payout_amount);
+        $this->assertSame(140, $s->commission_vat);       // 수수료 부가세 10%
+        $this->assertSame(12460, $s->payout_amount);      // 14000 - 1400 - 140
         $this->assertSame(OrderStatus::Settled, $a->fresh()->status);
         $this->assertSame($s->id, $b->fresh()->settlement_id);
 
@@ -149,7 +150,7 @@ class BackofficeTest extends TestCase
             ->assertSessionHas('status');
         $settlement = Settlement::firstOrFail();
 
-        $this->actingAs($this->vendorUser)->get(route('partner.settlements'))->assertOk()->assertSee(number_format(4500));
+        $this->actingAs($this->vendorUser)->get(route('partner.settlements'))->assertOk()->assertSee(number_format(4450));
         $this->get(route('partner.settlements.show', $settlement))->assertOk();
     }
 

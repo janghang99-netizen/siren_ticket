@@ -37,13 +37,37 @@
                     </div>
                     @if ($t->status === 'used')
                         <span class="chip bg-ink/10 text-ink">입장 완료</span>
+                    @elseif ($t->status === 'cancelled')
+                        <span class="chip bg-signal/10 text-signal">취소</span>
                     @else
                         <span class="chip bg-stick/10 text-stick">입장 전</span>
                     @endif
                 </div>
-                <a href="{{ route('stores.index', [$t->event, 'ticket' => $t->ticket_no]) }}" class="btn-stick mt-4 w-full">
-                    이 좌석으로 매장 주문하기
-                </a>
+                @if ($t->status === 'cancelled')
+                    <p class="mt-4 rounded-2xl bg-paper px-4 py-3 text-sm">
+                        <b>예매 취소됨</b> <span class="num text-xs text-mist">{{ $t->cancelled_at?->format('m.d H:i') }}</span><br>
+                        <span class="text-mist">취소 수수료 <span class="num">{{ number_format($t->cancel_fee) }}</span>원 · 환불 <b class="num text-ink">{{ number_format($t->refund_amount) }}</b>원</span>
+                    </p>
+                @else
+                    <a href="{{ route('stores.index', [$t->event, 'ticket' => $t->ticket_no]) }}" class="btn-stick mt-4 w-full">
+                        이 좌석으로 매장 주문하기
+                    </a>
+                @endif
+                @if ($t->status === 'paid')
+                    @php($rate = $t->cancelFeeRate())
+                    @if ($rate === null)
+                        <p class="mt-3 text-center text-xs text-mist">공연 당일에는 예매를 취소할 수 없어요.</p>
+                    @else
+                        @php($fee = (int) (floor($t->price * $rate / 100 / 10) * 10))
+                        <form method="POST" action="{{ route('tickets.cancel', $t) }}" class="mt-3 text-center"
+                              onsubmit="return confirm('{{ $t->seatLabel() }} 예매를 취소할까요?\n취소 수수료 {{ number_format($fee) }}원을 빼고 {{ number_format($t->price - $fee) }}원이 환불돼요.')">
+                            @csrf
+                            <button class="text-xs font-semibold text-mist underline-offset-4 hover:text-signal hover:underline">
+                                예매 취소 · {{ $rate ? '수수료 '.$rate.'% ('.number_format($fee).'원)' : '수수료 없음' }}
+                            </button>
+                        </form>
+                    @endif
+                @endif
             </div>
         </article>
     @empty

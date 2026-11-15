@@ -20,7 +20,7 @@
             </thead>
             <tbody class="divide-y divide-ink/5">
                 @foreach ($settlements as $s)
-                    <tr class="transition hover:bg-paper/60">
+                    <tr data-href="{{ route($route, $s) }}">
                         <td class="px-5 py-3"><a href="{{ route($route, $s) }}" class="num font-semibold underline-offset-4 hover:underline">{{ $s->period_start->format('Y.m.d') }} – {{ $s->period_end->format('m.d') }}</a></td>
                         @if ($showVendor)<td class="px-3 py-3">{{ $s->vendor->name }}</td>@endif
                         <td class="num px-3 py-3 text-right">{{ number_format($s->order_count) }}</td>
@@ -29,6 +29,8 @@
                         <td class="num px-3 py-3 text-right font-black">{{ number_format($s->payout_amount) }}</td>
                         <td class="px-5 py-3">
                             <span @class(['chip', 'bg-ink/10' => $s->status === 'paid', 'bg-pick' => $s->status !== 'paid'])>{{ $s->statusLabel() }}</span>
+                            @if ($s->overdueDays())<span class="chip bg-signal/10 text-signal">지연 {{ $s->overdueDays() }}일</span>@endif
+                            @if ($s->disputed_at && ! $s->dispute_replied_at)<span class="chip bg-signal text-white">이의제기</span>@endif
                         </td>
                     </tr>
                 @endforeach
