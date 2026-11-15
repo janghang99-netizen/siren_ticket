@@ -62,7 +62,14 @@ class PartnerController extends Controller
         $slots = CapacitySlot::where('store_id', $store->id)->where('event_id', $eventId)
             ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
 
+        // 보드의 품절 관리 패널용 (판매 중인 상품만)
+        $products = Product::with('options')->where('store_id', $store->id)->where('is_visible', true)->whereNull('blocked_at')
+            ->orderBy('category')->orderBy('sort')->orderBy('id')->get()
+            ->map(fn (Product $p) => ['id' => $p->id, 'name' => $p->name, 'category' => $p->category,
+                'sold_out' => (bool) $p->sold_out_at, 'stock_out' => ! $p->sold_out_at && $p->isSoldOut()]);
+
         return response()->json([
+            'products' => $products,
             'new_orders' => $new,
             'orders' => $orders->map(fn (Order $o) => $o->toBoardArray() + ['seat' => $o->ticket?->seatLabel()])->values(),
             'slots' => $slots->map(fn (CapacitySlot $s) => [
@@ -149,14 +156,21 @@ class PartnerController extends Controller
 
     public function productCreate(Request $request): View
     {
-        return view('partner.product-form', $this->shared($request) + ['product' => null]);
+        return view('partner.product-form', $this->shared($request) + ['product' => null, 'categories' => $this->categories($request)]);
     }
 
     public function productEdit(Request $request, Product $product): View
     {
         $this->authorizeStore($request, $product->store_id);
 
-        return view('partner.product-form', $this->shared($request) + ['product' => $product->load('options')]);
+        return view('partner.product-form', $this->shared($request) + ['product' => $product->load('options'), 'categories' => $this->categories($request)]);
+    }
+
+    /** 이 매장에서 이미 쓰는 카테고리 이름 (폼에서 고르기) */
+    private function categories(Request $request): array
+    {
+        return Product::where('store_id', $this->currentStore($request)->id)->whereNotNull('category')
+            ->distinct()->orderBy('category')->pluck('category')->all();
     }
 
     public function productStore(Request $request): RedirectResponse
@@ -174,6 +188,15 @@ class PartnerController extends Controller
         return redirect()->route('partner.products')->with('status', "‘{$product->name}’을(를) 저장했어요.");
     }
 
+    /** 주문보드에서 바로 품절 켜기·끄기 (재고 숫자는 그대로 두고 판매만 막는다) */
+    public function toggleSoldOut(Request $request, Product $product): JsonResponse
+    {
+        $this->authorizeStore($request, $product->store_id);
+        $product->update(['sold_out_at' => $product->sold_out_at ? null : now()]);
+
+        return response()->json(['result' => 'ok', 'sold_out' => (bool) $product->sold_out_at]);
+    }
+
     public function toggleProduct(Request $request, Product $product): RedirectResponse
     {
         $this->authorizeStore($request, $product->store_id);
@@ -186,6 +209,7 @@ class PartnerController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:60'],
+            'category' => ['nullable', 'string', 'max:30'],
             'description' => ['nullable', 'string', 'max:500'],
             'origin' => ['nullable', 'string', 'max:200'],
             'allergens' => ['nullable', 'string', 'max:200'],
@@ -223,7 +247,7 @@ class PartnerController extends Controller
 
         return DB::transaction(function () use ($request, $data, $product) {
             $fields = [
-                'name' => $data['name'], 'price' => $data['price'], 'mileage_points' => (int) ($data['mileage_points'] ?? 0),
+                'name' => $data['name'], 'category' => filled($data['category'] ?? null) ? trim($data['category']) : null, 'price' => $data['price'], 'mileage_points' => (int) ($data['mileage_points'] ?? 0),
                 'description' => $data['description'] ?? null, 'origin' => $data['origin'] ?? null, 'allergens' => $data['allergens'] ?? null,
                 'is_alcohol' => $request->boolean('is_alcohol'),
                 'stock_deduct_at' => $data['stock_deduct_at'], 'is_visible' => $request->boolean('is_visible'),
@@ -236,8 +260,8 @@ class PartnerController extends Controller
             // 이미지: 새로 올리면 바꾸고, 지우기를 고르면 뺀다. 옛 파일은 저장이 끝난 뒤 지운다.
             $oldImage = $product?->image_path;
             if ($request->hasFile('image')) {
-                $file = $request->file('image');
-                $fields['image_path'] = $file->storeAs('products', \Illuminate\Support\Str::random(40).'.'.$file->extension(), 'local');
+                // 긴 변 1000px WEBP 로 줄여 저장 (팬 화면 데이터 절약)
+                $fields['image_path'] = app(\App\Services\ProductImageStore::class)->store($request->file('image'));
             } elseif ($request->boolean('remove_image')) {
                 $fields['image_path'] = null;
             }

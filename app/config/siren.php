@@ -25,6 +25,8 @@ return [
 
     // 휴대폰 인증 문자: log(개발 — 화면에 번호 표시) / 발송사 연동 시 그 이름으로 바꾸고 SmsSender 를 바인딩
     'sms_driver' => env('SIREN_SMS_DRIVER', 'log'),
+    // 매장이 '다 됐어요' 를 누르면 손님에게 준비 완료 문자 (주문 한 건에 한 번)
+    'notify_ready_sms' => (bool) env('SIREN_NOTIFY_READY_SMS', true),
 
     // 혜택 원장 머클 루트를 올릴 곳. 체인이 정해지면 BlockchainAnchor 구현으로 교체
     'blockchain_anchor' => \App\Services\Benefits\LocalAnchor::class,

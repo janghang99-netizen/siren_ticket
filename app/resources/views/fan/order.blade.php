@@ -7,11 +7,54 @@
 @section('content')
 <div x-data="{
         status: {{ $order->status->value }},
+        alerts: false, audio: null, perm: ('Notification' in window) ? Notification.permission : 'unsupported',
+        baseTitle: document.title, titleTimer: null,
+        init() {
+            try { this.alerts = localStorage.getItem('order_alerts') === '1' } catch (e) {}
+            document.addEventListener('pointerdown', () => this.unlock(), { once: true });
+            window.addEventListener('focus', () => { clearInterval(this.titleTimer); document.title = this.baseTitle });
+            setInterval(() => this.poll(), 5000);
+        },
         async poll() {
             if (this.status >= 5) return;
-            try { this.status = (await api('{{ route('orders.status', $order) }}')).status } catch (e) {}
+            try {
+                const s = (await api('{{ route('orders.status', $order) }}')).status;
+                if (s === 4 && this.status !== 4) this.ready();
+                this.status = s;
+            } catch (e) {}
         },
-     }" x-init="setInterval(() => poll(), 5000)">
+        unlock() { if (!this.audio) try { this.audio = new (window.AudioContext || window.webkitAudioContext)() } catch (e) {} },
+        // 알림 받기: 소리 준비 + 브라우저 알림 허락 받기
+        async enable() {
+            this.unlock(); this.alerts = true;
+            try { localStorage.setItem('order_alerts', '1') } catch (e) {}
+            if (this.perm === 'default') { try { this.perm = await Notification.requestPermission() } catch (e) {} }
+            this.chime();
+        },
+        chime() {
+            const ctx = this.audio; if (!ctx) return;
+            if (ctx.state === 'suspended') ctx.resume();
+            [[0, 880], [0.2, 1174.7], [0.4, 1568]].forEach(([at, hz]) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.frequency.value = hz;
+                g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+                g.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + at + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.4);
+                o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.45);
+            });
+        },
+        ready() {
+            try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 300]) } catch (e) {}
+            if (this.alerts) this.chime();
+            if (this.perm === 'granted' && document.hidden) {
+                try { new Notification(@js('주문 '.$order->pickup_code.' 준비됐어요'), { body: @js($order->store->name.'에서 번호를 보여 주고 받아 가세요.'), tag: @js('order-'.$order->order_no) }) } catch (e) {}
+            }
+            if (!document.hasFocus()) {
+                let on = false;
+                this.titleTimer = setInterval(() => { on = !on; document.title = on ? @js('✅ 받아 가세요 · '.$order->pickup_code) : this.baseTitle }, 1000);
+            }
+        },
+     }">
 
     @error('order')
         <p role="alert" class="mt-3 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">{{ $message }}</p>
@@ -79,6 +122,13 @@
             </form>
         </details>
     @endif
+
+    {{-- 준비 완료 알림 받기 (소리 · 진동 · 브라우저 알림) — 문자는 번호가 있으면 자동 --}}
+    <div x-show="status < 4" class="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm ring-1 ring-ink/10">
+        <p class="text-ink/80"><b>준비되면 알려 드릴게요.</b> <span class="text-mist">이 화면을 켜 두거나, 휴대폰 번호로 문자를 보내요.</span></p>
+        <button type="button" x-show="!alerts" @click="enable()" class="btn-ink shrink-0 !px-4 !py-2 text-sm">🔔 알림 받기</button>
+        <span x-show="alerts" x-cloak class="shrink-0 text-xs font-bold text-stick">🔔 켜짐</span>
+    </div>
 
     {{-- D1 구매자 취소: 매장이 준비를 시작하기 전까지 --}}
     @if ($order->status->value === 2)

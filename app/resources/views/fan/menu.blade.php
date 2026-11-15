@@ -6,8 +6,8 @@
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 @php($menu = $store->products->map(fn ($p) => [
     'id' => $p->id, 'name' => $p->name, 'price' => $p->price, 'alcohol' => $p->is_alcohol,
-    'img' => $p->imageUrl(), 'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
-    'soldOut' => $p->options->isEmpty() ? ($p->stock !== null && $p->stock <= 0) : $p->options->every(fn ($o) => $o->stock !== null && $o->stock <= 0),
+    'cat' => $p->category ?: '메뉴', 'img' => $p->imageUrl(), 'desc' => $p->description, 'origin' => $p->origin, 'allergens' => $p->allergens,
+    'soldOut' => $p->isSoldOut(),
     'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
 ])->values())
 @php($slotData = $slots->map(fn ($s) => ['id' => $s->id, 'name' => $slotNames[$s->slot], 'left' => $s->remaining(), 'open' => $s->isOpen()])->values())
@@ -29,6 +29,8 @@
         slotId: @js(optional($slots->first(fn ($s) => $s->isOpen()))->id),
         dine: '포장',
         cart: [],
+        other: null,   // 다른 매장 장바구니 {store, url, count}
+        storeId: {{ $store->id }}, storeName: @js($store->name), here: location.pathname,
         busy: false,
         error: '',
         agree: false,
@@ -37,6 +39,37 @@
         couponId: '',
         balance: {{ (int) ($customer?->mileage_balance ?? 0) }},
         mileage: 0,
+        init() {
+            // 장바구니는 매장 화면을 벗어나도 남는다. 묶음결제는 같은 매장 상품끼리만 — 다른 매장 장바구니가 있으면 알려 준다
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem('siren_cart') || 'null') } catch (e) {}
+            if (saved && saved.items && saved.items.length) {
+                if (saved.store_id === this.storeId) {
+                    // 지금 메뉴 기준으로 다시 맞춘다 (빠진 상품·바뀐 가격)
+                    this.cart = saved.items.map(l => {
+                        const p = this.menu.find(p => p.id === l.product_id); if (!p || p.soldOut) return null;
+                        const o = l.option_id ? p.options.find(o => o.id === l.option_id) : null;
+                        if (l.option_id && (!o || o.soldOut)) return null;
+                        return { ...l, unit: p.price + (o ? o.extra : 0) };
+                    }).filter(Boolean);
+                } else {
+                    this.other = { store: saved.store_name, url: saved.url, count: saved.items.reduce((a, l) => a + l.qty, 0) };
+                }
+            }
+            this.$watch('cart', () => this.save());
+        },
+        save() {
+            try {
+                if (this.cart.length) localStorage.setItem('siren_cart', JSON.stringify({ store_id: this.storeId, store_name: this.storeName, url: this.here, items: this.cart }));
+                else if (!this.other) localStorage.removeItem('siren_cart');
+            } catch (e) {}
+        },
+        clearOther() { this.other = null; try { localStorage.removeItem('siren_cart') } catch (e) {} },
+        get groups() {
+            const m = new Map();
+            this.menu.forEach(p => { if (!m.has(p.cat)) m.set(p.cat, []); m.get(p.cat).push(p) });
+            return [...m].map(([name, items]) => ({ name, items }));
+        },
         get coupon() { return this.coupons.find(c => c.id == this.couponId) },
         get discount() {
             const c = this.coupon; if (!c || this.total < c.min) return 0;
@@ -50,6 +83,10 @@
         get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ $mileageMin }} ? m : 0 },
         get pay() { return this.total - this.discount - this.mileageUse },
         add(p, optionId = null) {
+            if (this.other) {
+                if (!confirm('장바구니에 ' + this.other.store + ' 상품 ' + this.other.count + '개가 있어요. \n묶음결제는 같은 매장 상품끼리만 할 수 있어요. 비우고 이 매장 상품을 담을까요?')) return;
+                this.clearOther();
+            }
             const o = p.options.find(o => o.id === optionId);
             const key = p.id + ':' + (optionId ?? '');
             const line = this.cart.find(l => l.key === key);
@@ -72,6 +109,7 @@
                     mileage_use: this.mileageUse,
                     items: this.cart.map(l => ({ product_id: l.product_id, option_id: l.option_id, qty: l.qty, dine_option: this.dine })),
                 });
+                try { localStorage.removeItem('siren_cart') } catch (e) {}
                 location.href = res.pay_url;
             } catch (e) { this.error = e.message; this.busy = false }
         },
@@ -125,34 +163,56 @@
         <p x-show="!slots.some(s => s.open)" class="mt-2 text-sm font-semibold text-signal">오늘 이 매장의 미리 주문이 모두 마감됐어요.</p>
     </fieldset>
 
-    <ul class="mt-8 divide-y divide-ink/5 overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5">
-        <template x-for="p in menu" :key="p.id">
-            <li class="px-5 py-4" :class="p.soldOut && 'opacity-50'">
-                <div class="flex items-center justify-between gap-3">
-                    <img x-show="p.img" :src="p.img" :alt="p.name" class="size-16 shrink-0 rounded-2xl object-cover ring-1 ring-ink/5" loading="lazy">
-                    <div class="min-w-0 flex-1">
-                        <p class="font-bold"><span class="product-name" :data-ko="p.name" x-text="p.name"></span>
-                            <span x-show="p.alcohol" class="chip ml-1 bg-signal/10 align-middle text-[10px] text-signal">19세 이상</span></p>
-                        <p x-show="p.desc" class="mt-0.5 text-xs text-mist" x-text="p.desc"></p>
-                        <p x-show="p.origin || p.allergens" class="mt-0.5 text-[11px] text-mist"
-                           x-text="[p.origin ? '원산지 ' + p.origin : '', p.allergens ? '알레르기 ' + p.allergens : ''].filter(Boolean).join(' · ')"></p>
-                        <p x-show="!p.soldOut" class="num mt-0.5 text-sm" x-text="won(p.price) + '원'"></p>
-                        <p x-show="p.soldOut" class="mt-0.5 text-sm font-semibold text-signal">품절</p>
-                    </div>
-                    <button type="button" x-show="!p.options.length" @click="add(p)" :disabled="p.soldOut"
-                            class="btn-ghost !px-4 !py-2 text-sm" :aria-label="p.name + ' 담기'">담기</button>
-                </div>
-                <div x-show="p.options.length" class="mt-3 flex flex-wrap gap-2">
-                    <template x-for="o in p.options" :key="o.id">
-                        <button type="button" @click="add(p, o.id)" :disabled="o.soldOut"
-                                class="rounded-full bg-paper px-3 py-1.5 text-sm font-semibold ring-1 ring-ink/5 transition hover:ring-stick/40 disabled:line-through disabled:opacity-40">
-                            <span x-text="o.name"></span><span class="num ml-1 text-xs text-mist" x-show="o.extra" x-text="'+' + won(o.extra)"></span>
-                        </button>
-                    </template>
-                </div>
-            </li>
+    {{-- 다른 매장 장바구니: 묶음결제는 같은 매장끼리만 --}}
+    <div x-show="other" x-cloak class="mt-6 rounded-2xl bg-signal/10 px-4 py-3 text-sm ring-1 ring-signal/20" role="status">
+        <p><b x-text="other?.store"></b> 상품 <b class="num" x-text="other?.count"></b>개가 장바구니에 있어요.
+            <span class="text-ink/70">묶음결제는 같은 매장 상품끼리만 할 수 있어요.</span></p>
+        <div class="mt-2 flex gap-2">
+            <a :href="other?.url" class="btn-ink !px-3 !py-1.5 text-xs">그 매장에서 마저 주문</a>
+            <button type="button" @click="clearOther()" class="btn !px-3 !py-1.5 text-xs ring-1 ring-ink/10">비우고 여기서 담기</button>
+        </div>
+    </div>
+
+    {{-- 카테고리 바로가기 --}}
+    <nav x-show="groups.length > 1" class="sticky top-[60px] z-20 -mx-4 mt-8 flex gap-2 overflow-x-auto bg-white/40 px-4 py-2 backdrop-blur-xl" aria-label="메뉴 카테고리">
+        <template x-for="g in groups" :key="g.name">
+            <a :href="'#cat-' + encodeURIComponent(g.name)" class="shrink-0 rounded-full bg-white px-3 py-1.5 text-sm font-semibold ring-1 ring-ink/10" x-text="g.name"></a>
         </template>
-    </ul>
+    </nav>
+
+    <template x-for="g in groups" :key="g.name">
+        <section class="mt-6 scroll-mt-28" :id="'cat-' + encodeURIComponent(g.name)">
+            <h2 x-show="groups.length > 1" class="mb-2 px-1 text-sm font-bold text-mist" x-text="g.name"></h2>
+            <ul class="divide-y divide-ink/5 overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5">
+                <template x-for="p in g.items" :key="p.id">
+                <li class="px-5 py-4" :class="p.soldOut && 'opacity-50'">
+                    <div class="flex items-center justify-between gap-3">
+                        <img x-show="p.img" :src="p.img" :alt="p.name" class="size-16 shrink-0 rounded-2xl object-cover ring-1 ring-ink/5" loading="lazy">
+                        <div class="min-w-0 flex-1">
+                            <p class="font-bold"><span class="product-name" :data-ko="p.name" x-text="p.name"></span>
+                                <span x-show="p.alcohol" class="chip ml-1 bg-signal/10 align-middle text-[10px] text-signal">19세 이상</span></p>
+                            <p x-show="p.desc" class="mt-0.5 text-xs text-mist" x-text="p.desc"></p>
+                            <p x-show="p.origin || p.allergens" class="mt-0.5 text-[11px] text-mist"
+                               x-text="[p.origin ? '원산지 ' + p.origin : '', p.allergens ? '알레르기 ' + p.allergens : ''].filter(Boolean).join(' · ')"></p>
+                            <p x-show="!p.soldOut" class="num mt-0.5 text-sm" x-text="won(p.price) + '원'"></p>
+                            <p x-show="p.soldOut" class="mt-0.5 text-sm font-semibold text-signal">품절</p>
+                        </div>
+                        <button type="button" x-show="!p.options.length" @click="add(p)" :disabled="p.soldOut"
+                                class="btn-ghost !px-4 !py-2 text-sm" :aria-label="p.name + ' 담기'">담기</button>
+                    </div>
+                    <div x-show="p.options.length" class="mt-3 flex flex-wrap gap-2">
+                        <template x-for="o in p.options" :key="o.id">
+                            <button type="button" @click="add(p, o.id)" :disabled="o.soldOut"
+                                    class="rounded-full bg-paper px-3 py-1.5 text-sm font-semibold ring-1 ring-ink/5 transition hover:ring-stick/40 disabled:line-through disabled:opacity-40">
+                                <span x-text="o.name"></span><span class="num ml-1 text-xs text-mist" x-show="o.extra" x-text="'+' + won(o.extra)"></span>
+                            </button>
+                        </template>
+                    </div>
+                </li>
+                </template>
+            </ul>
+        </section>
+    </template>
 
     {{-- 장바구니가 메뉴 마지막 줄을 가리지 않게 여백 --}}
     <div x-show="count" class="h-56" aria-hidden="true"></div>

@@ -47,6 +47,11 @@ class OrderService
         if (! $store->is_open || ($store->vendor_id && ! $store->vendor?->isActive())) {
             throw new OrderException("{$store->name}은(는) 지금 주문을 받지 않아요.", 'store_closed');
         }
+        // 묶음결제는 같은 매장 상품끼리만 — 다른 매장 상품은 따로 주문·결제 (매장별 정산·픽업이 다르다)
+        $ids = collect($items)->pluck('product_id')->filter()->map(fn ($v) => (int) $v)->unique();
+        if ($ids->isNotEmpty() && Product::whereIn('id', $ids)->where('store_id', '!=', $store->id)->exists()) {
+            throw new OrderException('묶음결제는 같은 매장 상품끼리만 할 수 있어요. 다른 매장 상품은 따로 주문해 주세요.', 'mixed_store');
+        }
         if (! array_key_exists($payMethod, config('siren.gateways'))) {
             throw new OrderException('지원하지 않는 결제수단입니다.');
         }
@@ -70,6 +75,9 @@ class OrderService
                 }
                 $product = Product::sellable()->where('store_id', $store->id)->find($it['product_id'] ?? 0)
                     ?? throw new OrderException('지금 판매하지 않는 메뉴가 담겨 있어요.');
+                if ($product->sold_out_at) {
+                    throw new OrderException("‘{$product->name}’은(는) 방금 품절됐어요. 장바구니에서 빼고 다시 주문해 주세요.", 'sold_out');
+                }
                 $option = empty($it['option_id']) ? null
                     : ($product->options()->find($it['option_id']) ?? throw new OrderException('없는 옵션이 담겨 있어요.'));
 
@@ -207,6 +215,9 @@ class OrderService
         if ($order->status === OrderStatus::PickedUp) {
             $this->webhook->sendOnce($order);   // 커밋 후 전송. 실패해도 주문은 그대로 (원본 정책)
         }
+        if ($order->status === OrderStatus::Ready) {
+            $this->notifyReady($order);
+        }
 
         return $order->load('items');
     }
@@ -246,6 +257,31 @@ class OrderService
         \App\Services\Audit::log('order.reverted', $order, "주문 {$order->pickup_code} 되돌림 → {$order->status->label()}");
 
         return $order->load('items');
+    }
+
+    /**
+     * 손님에게 "준비 완료" 문자 — 주문 화면을 닫아 둔 손님도 알 수 있게. 한 주문에 한 번만
+     * (되돌렸다가 다시 준비 완료가 돼도 또 보내지 않는다). 번호를 모르는 주문(현장판매 등)은 건너뛴다.
+     * 실패해도 주문 처리는 막지 않는다.
+     */
+    public function notifyReady(Order $order): void
+    {
+        if (! config('siren.notify_ready_sms') || ! $order->customer_id) {
+            return;
+        }
+        if (! \Illuminate\Support\Facades\Cache::add("order:ready_sms:{$order->id}", 1, now()->addDay())) {
+            return;
+        }
+        try {
+            $phone = \App\Models\Customer::whereKey($order->customer_id)->value('phone');
+            if ($phone) {
+                $store = $order->store()->value('name');
+                app(\App\Services\Benefits\SmsSender::class)->send($phone,
+                    "[SIREN] 주문 {$order->pickup_code} 준비됐어요. {$store}에서 번호를 보여 주고 받아 가세요.");
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /** D1 구매자 청약철회: 매장이 준비를 시작하기 전(결제완료)이면 바로 취소·환불 */

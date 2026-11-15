@@ -11,8 +11,9 @@
      - 앞으로·뒤로: 단계마다 되돌리기, 누른 직후 8초 동안 "실행 취소"
      - 주문이 많을 때: 먼저 들어온 순, 기다린 시간 표시(10분↑ 강조), 번호·상품 검색, 촘촘히 보기, 칸 안 스크롤 --}}
 <div x-data="{
-        orders: [], slots: [], flash: 0, error: '', busy: null, now: Date.now() / 1000,
+        orders: [], slots: [], products: [], stockOpen: false, flash: 0, error: '', busy: null, now: Date.now() / 1000,
         q: '', compact: false, undo: null, undoTimer: null,
+        sound: true, audio: null, baseTitle: document.title, titleTimer: null,
         names: { pre: '공연 전', intermission: '인터미션', post: '공연 후' },
         cols: [
             { status: 2, title: '새 주문', next: 3, action: '만들기 시작' },
@@ -22,16 +23,50 @@
         labels: { 2: '새 주문', 3: '만드는 중', 4: '픽업 대기', 5: '건넴', 11: '취소' },
         init() {
             try { this.compact = localStorage.getItem('board_compact') === '1' } catch (e) {}
+            try { this.sound = localStorage.getItem('board_sound') !== '0' } catch (e) {}
             this.$watch('compact', v => { try { localStorage.setItem('board_compact', v ? '1' : '0') } catch (e) {} });
+            this.$watch('sound', v => { try { localStorage.setItem('board_sound', v ? '1' : '0') } catch (e) {}; if (v) this.chime() });
+            // 브라우저는 사람이 한 번 눌러야 소리를 내준다 — 보드의 아무 곳이나 처음 누를 때 소리 준비
+            document.addEventListener('pointerdown', () => this.unlock(), { once: true });
+            window.addEventListener('focus', () => this.stopTitle());
             this.load(); setInterval(() => this.load(), 4000); setInterval(() => this.now = Date.now() / 1000, 15000);
         },
         async load() {
             try {
                 const d = await api('{{ route('partner.board.data') }}');
-                this.orders = d.orders; this.slots = d.slots; this.error = '';
-                if (d.new_orders) { this.flash = d.new_orders; setTimeout(() => this.flash = 0, 4000) }
+                this.orders = d.orders; this.slots = d.slots; this.products = d.products || []; this.error = '';
+                if (d.new_orders) { this.flash = d.new_orders; setTimeout(() => this.flash = 0, 4000); this.alertNew(d.new_orders) }
             } catch (e) { this.error = e.message }
         },
+        // ── 새 주문 알림: 소리(딩동 두 번) · 진동 · 탭 제목 깜빡임 ──
+        unlock() {
+            if (this.audio) return;
+            try { this.audio = new (window.AudioContext || window.webkitAudioContext)() } catch (e) {}
+        },
+        chime() {
+            if (!this.sound) return;
+            this.unlock();
+            const ctx = this.audio; if (!ctx) return;
+            if (ctx.state === 'suspended') ctx.resume();
+            [[0, 1318.5], [0.18, 987.8], [0.6, 1318.5], [0.78, 987.8]].forEach(([at, hz]) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.type = 'sine'; o.frequency.value = hz;
+                g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+                g.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + at + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.35);
+                o.connect(g).connect(ctx.destination);
+                o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.4);
+            });
+        },
+        alertNew(n) {
+            this.chime();
+            try { navigator.vibrate && navigator.vibrate([200, 100, 200]) } catch (e) {}
+            if (document.hasFocus()) return;
+            this.stopTitle();
+            let on = false;
+            this.titleTimer = setInterval(() => { on = !on; document.title = on ? '🔔 새 주문 ' + n + '건' : this.baseTitle }, 1000);
+        },
+        stopTitle() { clearInterval(this.titleTimer); this.titleTimer = null; document.title = this.baseTitle },
         async move(o, status, silent = false) {
             if (status === 11 && !confirm(o.pickup_code + ' 주문을 취소하고 환불할까요? (취소는 되돌릴 수 없어요)')) return;
             const from = o.status;
@@ -64,6 +99,15 @@
         },
         of(status) { return this.orders.filter(o => o.status === status && this.match(o)) },
         count(status) { return this.orders.filter(o => o.status === status).length },
+        // 보드에서 바로 품절 켜기·끄기 — 팬 메뉴에 바로 '품절' 로 보이고 새 주문을 막는다
+        async soldOut(p) {
+            if (!p.sold_out && !confirm('‘' + p.name + '’을(를) 품절로 바꿀까요? 손님 메뉴에서 바로 주문이 막혀요.')) return;
+            try {
+                const r = await api('{{ url('partner/products') }}/' + p.id + '/sold-out', 'PATCH');
+                p.sold_out = r.sold_out;
+            } catch (e) { this.error = e.message }
+        },
+        get soldOutCount() { return this.products.filter(p => p.sold_out || p.stock_out).length },
         async toggle(s) {
             try { await api('{{ url('partner/slots') }}/' + s.id + '/toggle', 'PATCH'); await this.load() } catch (e) { this.error = e.message }
         },
@@ -96,8 +140,35 @@
             <button type="button" @click="compact = false" :class="!compact ? 'bg-ink text-white' : 'text-mist'" class="rounded-full px-3 py-1.5" :aria-pressed="!compact">크게</button>
             <button type="button" @click="compact = true" :class="compact ? 'bg-ink text-white' : 'text-mist'" class="rounded-full px-3 py-1.5" :aria-pressed="compact">촘촘히</button>
         </div>
+        <button type="button" @click="stockOpen = !stockOpen" :aria-expanded="stockOpen"
+                class="rounded-full bg-white px-3 py-2 text-xs font-bold ring-1 ring-ink/10">
+            품절 관리 <span x-show="soldOutCount" class="num ml-1 rounded-full bg-signal px-1.5 text-white" x-text="soldOutCount"></span>
+        </button>
+        <button type="button" @click="sound = !sound" :aria-pressed="sound"
+                class="rounded-full px-3 py-2 text-xs font-bold ring-1"
+                :class="sound ? 'bg-pick text-ink ring-pick' : 'bg-white text-mist ring-ink/10'"
+                x-text="sound ? '🔔 새 주문 알림음 켜짐' : '🔕 알림음 꺼짐'"></button>
         <p class="text-xs text-mist">먼저 들어온 주문이 위 · 10분 넘게 기다린 주문은 빨간 테두리</p>
     </div>
+
+    {{-- 품절 관리: 바쁠 때 상품 화면까지 가지 않고 바로 --}}
+    <section x-show="stockOpen" x-cloak x-transition class="mb-4 rounded-3xl bg-white p-4 ring-1 ring-ink/5">
+        <h2 class="mb-2 text-sm font-bold">품절 관리 <span class="font-normal text-mist">· 누르면 바로 손님 메뉴에 반영돼요. 재고 숫자는 그대로예요.</span></h2>
+        <ul class="flex flex-wrap gap-2">
+            <template x-for="p in products" :key="p.id">
+                <li>
+                    <button type="button" @click="soldOut(p)" :disabled="p.stock_out" :aria-pressed="p.sold_out"
+                            class="rounded-full px-3 py-1.5 text-sm font-semibold ring-1 transition"
+                            :class="p.sold_out ? 'bg-signal text-white ring-signal' : (p.stock_out ? 'bg-paper text-mist ring-ink/10 line-through' : 'bg-white ring-ink/15 hover:ring-ink/40')"
+                            :title="p.stock_out ? '재고가 0 이에요 — 생산·재고 화면에서 채워 주세요' : (p.sold_out ? '눌러서 다시 판매' : '눌러서 품절')">
+                        <span x-show="p.category" class="text-xs opacity-60" x-text="p.category + ' · '"></span><span x-text="p.name"></span>
+                        <span class="ml-1 text-xs" x-text="p.sold_out ? '품절 · 다시 팔기' : (p.stock_out ? '재고 0' : '')"></span>
+                    </button>
+                </li>
+            </template>
+            <li x-show="!products.length" class="text-sm text-mist">판매 중인 상품이 없어요.</li>
+        </ul>
+    </section>
 
     <div x-show="flash" x-cloak x-transition class="fixed left-1/2 top-6 z-30 -translate-x-1/2 rounded-full bg-ink px-6 py-3 font-bold text-pick shadow-xl" role="status">
         새 주문 <span x-text="flash"></span>건

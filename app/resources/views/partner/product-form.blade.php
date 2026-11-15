@@ -18,6 +18,14 @@
             <p class="rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">운영사가 판매를 중지한 상품이에요 · {{ $p->block_reason }}. 내용을 고친 뒤 운영사에 해제를 요청해 주세요.</p>
         @endif
         <div>
+            <label for="category" class="label">카테고리 <span class="font-normal text-mist">(선택 · 메뉴에서 묶어 보여요)</span></label>
+            <input id="category" name="category" list="category-list" maxlength="30" class="field" value="{{ old('category', $p?->category) }}" placeholder="예: 커피, 디저트, 음료">
+            <datalist id="category-list">
+                @foreach ($categories ?? [] as $c)<option value="{{ $c }}">@endforeach
+            </datalist>
+            @error('category')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+        </div>
+        <div>
             <label for="name" class="label">상품명</label>
             <input id="name" name="name" class="field" value="{{ old('name', $p?->name) }}" placeholder="예: 아메리카노" required>
             @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
