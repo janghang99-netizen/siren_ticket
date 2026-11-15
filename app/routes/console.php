@@ -103,3 +103,18 @@ Artisan::command('nft:retry', function (\App\Services\Nft\NftTicketService $nft)
 })->purpose('체인에 못 보낸 NFT 발행·소각·입장 기록을 다시 보낸다');
 
 \Illuminate\Support\Facades\Schedule::command('nft:retry')->everyFiveMinutes()->withoutOverlapping();
+
+// 상품명 번역 (원본 다담다: Claude API) — 새 상품·이름 바뀐 상품을 언어마다 최대 150개씩
+Artisan::command('translations:products {--lang=*}', function (\App\Services\Translation\ProductTranslationService $tr) {
+    if (! $tr->ready()) {
+        $this->warn('ANTHROPIC_API_KEY 가 없어 건너뜀 — 상품명은 구글 번역이 맡아요.');
+
+        return;
+    }
+    foreach ($this->option('lang') ?: array_keys(\App\Services\Translation\ProductTranslationService::LANGS) as $lang) {
+        $r = $tr->run($lang);
+        $this->info("{$lang}: {$r['translated']}개 번역".($r['errors'] ? ' · 실패 '.implode(' / ', $r['errors']) : ''));
+    }
+})->purpose('번역 대기 상품명을 Claude 로 번역해 사전에 넣는다');
+
+\Illuminate\Support\Facades\Schedule::command('translations:products')->hourly()->withoutOverlapping();

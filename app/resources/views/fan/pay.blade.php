@@ -10,7 +10,7 @@
         <ul class="space-y-2 text-sm">
             @foreach ($order->items as $item)
                 <li class="flex justify-between gap-3">
-                    <span>{{ $item->name }}@if ($item->option_name) · {{ $item->option_name }}@endif <span class="text-mist">× {{ $item->qty }} · {{ $item->dine_option }}</span></span>
+                    <span><span class="product-name" data-ko="{{ $item->name }}">{{ $item->name }}</span>@if ($item->option_name) · {{ $item->option_name }}@endif <span class="text-mist">× {{ $item->qty }} · {{ $item->dine_option }}</span></span>
                     <span class="num shrink-0">{{ number_format($item->line_total) }}</span>
                 </li>
             @endforeach

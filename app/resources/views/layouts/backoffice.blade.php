@@ -23,6 +23,7 @@
             ['admin.coupons.index', '쿠폰·스탬프', 'admin.coupons.*'],
             ['admin.customers.index', '고객·마일리지', 'admin.customers.*'],
             ['admin.ledger', '혜택 원장', 'admin.ledger*'],
+            ['admin.translations', '번역', 'admin.translations*'],
             ['admin.settings', '수수료·정산 설정', 'admin.settings*'],
             ['admin.audit', '감사 로그', 'admin.audit'],
         ]

@@ -53,28 +53,13 @@ class MemberAuthTest extends TestCase
         $this->assertSame('CN', $m->residence_country);
     }
 
-    public function test_screen_language_switches_without_mixing_languages(): void
+    public function test_screens_are_korean_source_translated_by_google_widget(): void
     {
-        // 브라우저가 중국어면 중국어로, 고르면 그 언어로 — 한 화면에 한 언어만
+        // 서버는 한국어 원문 한 벌만 — 다른 언어는 구글 번역 위젯이 화면에서 바꾼다 (원본 다담다 방식)
         $this->withHeader('Accept-Language', 'zh-CN,zh;q=0.9')->get(route('member.login'))
-            ->assertOk()->assertSee('会员登录')->assertDontSee('회원 로그인')->assertSee('lang="zh-CN"', false);
-
-        $this->get(route('locale', 'en'))->assertRedirect();
-        $this->get(route('member.signup'))->assertOk()->assertSee('Only members can book tickets')->assertDontSee('仅限会员购票');
-
-        $this->get(route('locale', 'ko'));
-        $this->get(route('member.signup'))->assertOk()->assertSee('티켓 예매는 회원만 할 수 있어요');
-        $this->get(route('locale', 'fr'))->assertNotFound();
-
-        // 서버 오류 문구도 고른 언어로
-        $this->get(route('locale', 'zh_CN'));
-        $this->post(route('member.login.attempt'), ['identifier' => '01000000000', 'password' => 'whatever-1']);
-        $this->get(route('member.login'))->assertSee('账号或密码不正确。');
-
-        // 회원이 언어를 고르면 계정에 저장돼 다른 기기에서도 그 언어
-        $member = $this->actingAsMember();
-        $this->get(route('locale', 'en'));
-        $this->assertSame('en', $member->fresh()->locale);
+            ->assertOk()->assertSee('lang="ko"', false)->assertDontSee('会员登录')
+            ->assertSee('translate.google.com/translate_a/element.js', false)
+            ->assertSee('data-lang="zh-CN"', false)->assertSee('translation-links', false);
     }
 
     public function test_phone_normalization_rejects_mismatched_country(): void

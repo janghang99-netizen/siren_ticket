@@ -45,7 +45,7 @@
             <ul class="mt-5 space-y-1.5 border-t border-ink/5 pt-4 text-sm">
                 @foreach ($order->items as $item)
                     <li class="flex justify-between gap-3">
-                        <span>{{ $item->name }}@if ($item->option_name) · {{ $item->option_name }}@endif <span class="text-mist">× {{ $item->qty }}</span></span>
+                        <span><span class="product-name" data-ko="{{ $item->name }}">{{ $item->name }}</span>@if ($item->option_name) · {{ $item->option_name }}@endif <span class="text-mist">× {{ $item->qty }}</span></span>
                         <span class="text-mist">{{ $item->dine_option }}</span>
                     </li>
                 @endforeach

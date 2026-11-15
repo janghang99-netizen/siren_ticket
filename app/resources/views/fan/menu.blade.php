@@ -130,7 +130,7 @@
             <li class="px-5 py-4" :class="p.soldOut && 'opacity-50'">
                 <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="font-bold"><span x-text="p.name"></span>
+                        <p class="font-bold"><span class="product-name" :data-ko="p.name" x-text="p.name"></span>
                             <span x-show="p.alcohol" class="chip ml-1 bg-signal/10 align-middle text-[10px] text-signal">19세 이상</span></p>
                         <p x-show="p.desc" class="mt-0.5 text-xs text-mist" x-text="p.desc"></p>
                         <p x-show="p.origin || p.allergens" class="mt-0.5 text-[11px] text-mist"
@@ -162,7 +162,7 @@
             <ul class="max-h-40 space-y-2 overflow-auto text-sm">
                 <template x-for="l in cart" :key="l.key">
                     <li class="flex items-center justify-between gap-2">
-                        <span class="min-w-0 truncate" x-text="l.name"></span>
+                        <span class="product-name min-w-0 truncate" :data-ko="l.name" x-text="l.name"></span>
                         <span class="flex shrink-0 items-center gap-2">
                             <button type="button" @click="dec(l)" class="size-7 rounded-full bg-paper font-bold" :aria-label="l.name + ' 하나 빼기'">−</button>
                             <span class="num w-4 text-center font-bold" x-text="l.qty"></span>

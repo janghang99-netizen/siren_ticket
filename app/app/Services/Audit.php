@@ -18,6 +18,7 @@ class Audit
         'ticket.cancelled' => '티켓 취소(운영사)', 'event.cancelled' => '공연 취소',
         'settlement.generated' => '정산서 생성', 'settlement.paid' => '정산 지급', 'settlement.replied' => '이의제기 답변',
         'settlement.tax_invoice' => '세금계산서 표시', 'adjustment.created' => '공제 등록', 'settings.saved' => '수수료·정산 설정',
+        'translation.run' => '상품명 일괄 번역', 'translation.fix_saved' => '번역 교정 추가', 'translation.fix_deleted' => '번역 교정 삭제',
     ];
 
     public static function log(string $action, ?Model $subject, string $summary, array $data = []): void

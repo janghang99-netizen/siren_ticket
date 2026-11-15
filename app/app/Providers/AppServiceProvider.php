@@ -12,6 +12,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(\App\Services\Benefits\BlockchainAnchor::class, fn ($app) => $app->make(config('siren.blockchain_anchor')));
         $this->app->bind(\App\Services\Nft\TicketChain::class, fn ($app) => $app->make(config('siren.nft.chain')));
+        // 상품명 번역 (원본 다담다: Claude API) — 키는 ANTHROPIC_API_KEY 환경 변수
+        $this->app->bind(\App\Services\Translation\ProductNameTranslator::class,
+            fn () => new \App\Services\Translation\ClaudeProductNameTranslator(config('services.anthropic.key')));
     }
 
     public function boot(): void

@@ -73,16 +73,8 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
     });
 });
 
-// ── 화면 언어 고르기 (회원이면 계정에도 저장) ──
-Route::get('/lang/{locale}', function (\Illuminate\Http\Request $request, string $locale) {
-    abort_unless(isset(\App\Http\Middleware\SetLocale::SUPPORTED[$locale]), 404);
-    $request->session()->put('locale', $locale);
-    $request->user('member')?->forceFill(['locale' => $locale])->save();
-    // 보던 화면(같은 사이트)으로 돌아간다. 이전 주소가 없거나 다른 사이트면 홈으로 (API 주소로 돌아가지 않게)
-    $from = (string) $request->headers->get('referer');
-
-    return redirect()->to($from && parse_url($from, PHP_URL_HOST) === $request->getHost() ? $from : route('home'));
-})->name('locale');
+// ── 번역 (원본 다담다 방식): 상품명 AI 번역 사전 · 구글 오역 교정 사전 — 공개 JSON ──
+Route::get('/translate/dict/{lang}', [\App\Http\Controllers\TranslationController::class, 'dict'])->whereIn('lang', ['en', 'ja', 'zh'])->name('translate.dict');
 
 // ── NFT 티켓: 공개 메타데이터(tokenURI)·이미지, 팬 입장 코드 ──
 Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->name('nft.metadata');
@@ -163,6 +155,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 
     Route::get('/check-in', [\App\Http\Controllers\NftController::class, 'checkInForm'])->name('check-in');
     Route::post('/check-in', [\App\Http\Controllers\NftController::class, 'checkIn'])->middleware('throttle:120,1')->name('check-in.scan');
+
+    // 번역 (원본 다담다 admin/translate_products.php) — 상품명 Claude 번역 · 구글 오역 교정 사전
+    Route::controller(\App\Http\Controllers\TranslationController::class)->group(function () {
+        Route::get('/translations', 'index')->name('translations');
+        Route::post('/translations/test', 'test')->middleware('throttle:10,1')->name('translations.test');
+        Route::post('/translations/run', 'run')->middleware('throttle:10,1')->name('translations.run');
+        Route::post('/translations/fixes', 'fixStore')->name('translations.fixes.store');
+        Route::delete('/translations/fixes/{fix}', 'fixDestroy')->name('translations.fixes.destroy');
+    });
 
     Route::get('/ledger', 'ledger')->name('ledger');
     Route::post('/ledger/anchor', 'ledgerAnchor')->name('ledger.anchor');
