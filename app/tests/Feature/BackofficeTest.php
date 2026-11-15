@@ -77,6 +77,20 @@ class BackofficeTest extends TestCase
         $this->post('/login', ['email' => $this->vendorUser->email, 'password' => 'password'])->assertRedirect(route('partner.board'));
     }
 
+    public function test_logged_in_admin_can_switch_to_vendor_account(): void
+    {
+        // 운영사로 로그인한 채 로그인 화면을 열면 안내가 나오고, 업체 계정으로 바꿀 수 있다
+        $this->actingAs($this->admin, 'web')->get('/login')->assertOk()->assertSee($this->admin->email)->assertSee('운영사');
+
+        // 비밀번호가 틀리면 지금 로그인은 그대로
+        $this->post('/login', ['email' => $this->vendorUser->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
+        $this->assertAuthenticatedAs($this->admin, 'web');
+
+        $this->post('/login', ['email' => $this->vendorUser->email, 'password' => 'password'])->assertRedirect(route('partner.board'));
+        $this->assertAuthenticatedAs($this->vendorUser, 'web');
+        $this->get(route('partner.board'))->assertOk();
+    }
+
     // ── 한 업체 여러 매장 ──
 
     public function test_vendor_switches_between_own_stores_but_not_others(): void

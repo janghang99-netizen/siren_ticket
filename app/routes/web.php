@@ -83,8 +83,9 @@ Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController:
     ->middleware(['auth:member', 'throttle:20,1'])->name('tickets.entry-code');
 
 // ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
-Route::get('/login', [AuthController::class, 'form'])->middleware('guest')->name('login');
-Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:10,1']);
+// 이미 로그인해 있어도 로그인 화면을 연다 — 운영사 ↔ 입점업체 계정 바꾸기
+Route::get('/login', [AuthController::class, 'form'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
 // ── 입점 신청 (A1) — 누구나 신청, 운영사 심사 후 승인 ──

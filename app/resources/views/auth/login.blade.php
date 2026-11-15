@@ -14,6 +14,13 @@
         <p class="font-display text-xl font-black">SIREN</p>
         <h1 class="mt-1 text-lg font-bold">관리 화면 로그인</h1>
         <p class="mt-1 text-sm text-mist">운영사는 공연·티켓·정산을, 입점업체는 우리 매장 주문과 상품을 관리해요.</p>
+        @if ($current)
+            <p role="status" class="mt-4 rounded-2xl bg-ink/5 px-4 py-3 text-sm">
+                지금 <b>{{ $current->email }}</b>({{ $current->isSuperAdmin() ? '운영사' : '입점업체' }})로 로그인해 있어요.
+                다른 계정으로 로그인하면 바뀌어요.
+                <a href="{{ \App\Http\Controllers\AuthController::home($current) }}" class="mt-1 block font-semibold text-stick">지금 계정으로 계속 →</a>
+            </p>
+        @endif
 
         <div class="mt-6 space-y-4">
             <div>
