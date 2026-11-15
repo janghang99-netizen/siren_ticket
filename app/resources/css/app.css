@@ -5,7 +5,97 @@
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
+/*
+ * SIREN — 디자인 토큰
+ * 포스터 종이(라일락) 위에 잉크, 응원봉 바이올렛, 픽업 옐로.
+ * Unbounded 는 숫자·코드·좌석에만 (포스터 타이포), 본문은 Pretendard.
+ */
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-paper: #F1EEF8;
+    --color-paper-deep: #E4DFF1;
+    --color-ink: #17132B;
+    --color-stick: #6C4BFF;
+    --color-pick: #FFD23F;
+    --color-signal: #FF5A5F;
+    --color-mist: #8A84A3;
+
+    --font-sans: 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Unbounded', 'Pretendard Variable', sans-serif;
+
+    --animate-blink: blink 1.2s ease-in-out infinite;
+    --animate-rise: rise .5s cubic-bezier(.2,.8,.2,1) both;
+
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .35; }
+    }
+    @keyframes rise {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: none; }
+    }
+}
+
+@layer base {
+    html { -webkit-tap-highlight-color: transparent; }
+    body {
+        @apply bg-paper text-ink font-sans antialiased;
+        word-break: keep-all;
+    }
+    :focus-visible {
+        outline: 3px solid var(--color-stick);
+        outline-offset: 2px;
+        border-radius: 6px;
+    }
+    [x-cloak] { display: none !important; }
+}
+
+@layer components {
+    /* 숫자는 고정폭으로 — 가격·좌석·코드가 흔들리지 않게 */
+    .num { font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+    /* 티켓 스텁: 양옆 반원 노치 + 절취선 */
+    .stub {
+        --notch: 14px;
+        --cut: 62%;
+        position: relative;
+        background: #fff;
+        border-radius: 18px;
+        -webkit-mask:
+            radial-gradient(circle var(--notch) at 0 var(--cut), #0000 98%, #000) left / 51% 100% no-repeat,
+            radial-gradient(circle var(--notch) at 100% var(--cut), #0000 98%, #000) right / 51% 100% no-repeat;
+                mask:
+            radial-gradient(circle var(--notch) at 0 var(--cut), #0000 98%, #000) left / 51% 100% no-repeat,
+            radial-gradient(circle var(--notch) at 100% var(--cut), #0000 98%, #000) right / 51% 100% no-repeat;
+    }
+    .perforation {
+        height: 0;
+        border-top: 2px dashed var(--color-paper-deep);
+        margin: 0 20px;
+    }
+
+    .btn, .btn-ink, .btn-stick, .btn-ghost {
+        @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 font-semibold transition
+               active:scale-[.98] disabled:opacity-40 disabled:pointer-events-none;
+    }
+    .btn-ink { @apply bg-ink text-paper hover:bg-black; }
+    .btn-stick { @apply bg-stick text-white hover:brightness-110; }
+    .btn-ghost { @apply bg-white/70 text-ink ring-1 ring-ink/10 hover:bg-white; }
+
+    .field {
+        @apply w-full rounded-2xl border-0 bg-white px-4 py-3.5 text-base ring-1 ring-ink/10
+               placeholder:text-mist focus:ring-2 focus:ring-stick focus:outline-none;
+    }
+    .label { @apply mb-1.5 block text-sm font-semibold text-ink/80; }
+    .eyebrow { @apply text-[11px] font-bold uppercase tracking-[.18em] text-mist; }
+    .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
+
+    /* 좌석도 구역 */
+    .seat-arc { transition: fill .25s, opacity .25s, transform .25s; transform-origin: 200px 200px; cursor: pointer; }
+    .seat-arc:hover { transform: scale(1.015); }
+    .seat-arc[aria-disabled="true"] { cursor: not-allowed; }
+    .seat-arc[aria-disabled="true"]:hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
 }

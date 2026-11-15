@@ -39,6 +39,11 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    public function ticket(): BelongsTo
+    {
+        return $this->belongsTo(Ticket::class);
+    }
+
     public function capacitySlot(): BelongsTo
     {
         return $this->belongsTo(CapacitySlot::class);

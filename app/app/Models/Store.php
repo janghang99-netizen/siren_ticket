@@ -11,6 +11,9 @@ class Store extends Model
 
     protected $casts = ['is_open' => 'boolean', 'commission_rate' => 'decimal:2'];
 
+    /** DB 기본값과 동일 — create() 직후 메모리 모델에도 적용되게 */
+    protected $attributes = ['is_open' => true, 'commission_rate' => '8.50'];
+
     public function getRouteKeyName(): string
     {
         return 'code';

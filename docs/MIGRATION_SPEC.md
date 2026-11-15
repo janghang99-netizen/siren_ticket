@@ -95,4 +95,12 @@
 - 스탬프/쿠폰 (`inc/lib_stamp.php`)
 - SMS 알림톡 (원본 `send_sms_socket`)
 - 원본 DB 이력 이관 (`auction_jangproduct` → `orders`)
-- 프론트엔드(고객 주문 화면, 매장 보드, 전광판 UI) — 이번에는 API만
+- 티켓 실결제·좌석 지정 예매(현재는 구역 선택 + 자동 좌석 배정), 입장 QR 검표
+
+## 9. 2단계 추가 범위 (2026-11-15)
+
+- **아이돌 공연 티켓 판매**: `events` 확장 + `seat_sections`(보울 좌석도의 호 하나 = 구역) + `tickets`.
+  구역 잔여석은 원자적 UPDATE로 차감, 1인 매수 제한은 휴대폰 번호 기준.
+- **티켓 = 매장 주문 패스**: `orders.ticket_id` — 매장 보드에 주문자 좌석이 보인다.
+- **화면**: 팬 모바일(공연·좌석도·내 티켓·매장 메뉴·결제·픽업번호), 매장 칸반 보드, 픽업 전광판.
+  Blade + Tailwind v4 + Alpine. 디자인 토큰은 `resources/css/app.css`.

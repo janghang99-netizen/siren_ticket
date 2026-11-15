@@ -12,6 +12,8 @@ class Product extends Model
 
     protected $casts = ['price' => 'integer', 'stock' => 'integer', 'is_visible' => 'boolean'];
 
+    protected $attributes = ['stock_deduct_at' => 'order', 'is_visible' => true, 'sort' => 0];
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);

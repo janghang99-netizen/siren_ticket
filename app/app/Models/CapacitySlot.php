@@ -16,6 +16,8 @@ class CapacitySlot extends Model
         'is_closed' => 'boolean',
     ];
 
+    protected $attributes = ['used' => 0, 'is_closed' => false];
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
