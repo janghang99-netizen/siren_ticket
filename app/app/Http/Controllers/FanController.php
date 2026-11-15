@@ -90,7 +90,7 @@ class FanController extends Controller
         $phone = '';
 
         // 취소한 티켓도 내역으로 보여 준다 (취소 수수료·환불액 확인)
-        $tickets = Ticket::with(['event', 'section'])->whereIn('ticket_no', $request->session()->get('ticket_nos', []))
+        $tickets = Ticket::with(['event', 'section', 'token'])->whereIn('ticket_no', $request->session()->get('ticket_nos', []))
             ->get()->sortBy(fn ($t) => [$t->status === 'cancelled' ? 1 : 0, $t->event->starts_at])->values();
 
         return view('fan.tickets', ['tickets' => $tickets, 'searched' => $phone !== '']);

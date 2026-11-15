@@ -29,6 +29,12 @@ return [
     // 혜택 원장 머클 루트를 올릴 곳. 체인이 정해지면 BlockchainAnchor 구현으로 교체
     'blockchain_anchor' => \App\Services\Benefits\LocalAnchor::class,
 
+    // NFT 티켓: 체인 구현과 컨트랙트 주소. 체인이 정해지면 TicketChain 구현으로 바꾼다
+    'nft' => [
+        'chain' => \App\Services\Nft\LocalTicketChain::class,
+        'contract' => env('SIREN_NFT_CONTRACT', '0x5152454e00000000000000000000000000000001'),
+    ],
+
     // 인증한 휴대폰 번호를 이 세션에서 몇 분 동안 유지할지
     'phone_session_minutes' => 60,
 ];

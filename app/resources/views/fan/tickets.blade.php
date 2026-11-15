@@ -43,6 +43,30 @@
                         <span class="chip bg-stick/10 text-stick">입장 전</span>
                     @endif
                 </div>
+                {{-- NFT 티켓 + 30초마다 바뀌는 입장 코드 (캡처로는 입장 불가) --}}
+                @if ($t->token)
+                    <div class="mt-4 rounded-2xl bg-paper px-4 py-3 text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold">NFT 티켓 <span class="num text-mist">#{{ $t->token->token_id }}</span></span>
+                            <span class="chip bg-ink/5">{{ $t->token->statusLabel() }} · 양도 불가</span>
+                        </div>
+                        <p class="num mt-1 text-mist">내 지갑 {{ \App\Models\TicketToken::short($t->token->owner_address) }} · {{ $t->token->network }} · 발행 {{ \App\Models\TicketToken::short((string) $t->token->mint_tx) }}</p>
+                    </div>
+                    @if ($t->status === 'paid' && auth('member')->id() === $t->member_id)
+                        <div class="mt-3 rounded-2xl bg-ink p-4 text-center text-paper"
+                             x-data="{ code: '', left: 25, show: false,
+                                 async load() { try { const r = await api('{{ route('tickets.entry-code', $t) }}'); this.code = r.code; this.left = r.refresh } catch (e) { this.code = '' } },
+                                 open() { this.show = true; this.load(); setInterval(() => { if (--this.left <= 0) this.load() }, 1000) } }">
+                            <button type="button" x-show="!show" @click="open()" class="w-full text-sm font-bold">입장 코드 보기 (공연장 입구에서)</button>
+                            <div x-show="show" x-cloak>
+                                <p class="text-[11px] text-paper/60">입구 직원에게 보여 주세요 · <span class="num" x-text="left"></span>초 뒤 바뀌어요</p>
+                                <p class="num mt-2 break-all text-lg font-black tracking-wide" x-text="code || '불러오는 중…'"></p>
+                                <p class="mt-1 text-[11px] text-paper/60">캡처한 화면은 쓸 수 없어요</p>
+                            </div>
+                        </div>
+                    @endif
+                @endif
+
                 @if ($t->status === 'cancelled')
                     <p class="mt-4 rounded-2xl bg-paper px-4 py-3 text-sm">
                         <b>예매 취소됨</b> <span class="num text-xs text-mist">{{ $t->cancelled_at?->format('m.d H:i') }}</span><br>

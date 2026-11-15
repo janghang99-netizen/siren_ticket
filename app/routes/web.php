@@ -72,6 +72,12 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
     });
 });
 
+// ── NFT 티켓: 공개 메타데이터(tokenURI)·이미지, 팬 입장 코드 ──
+Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->name('nft.metadata');
+Route::get('/nft/tickets/{ticket}/image.svg', [\App\Http\Controllers\NftController::class, 'image'])->whereNumber('ticket')->name('nft.image');
+Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController::class, 'entryCode'])
+    ->middleware(['auth:member', 'throttle:20,1'])->name('tickets.entry-code');
+
 // ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
 Route::get('/login', [AuthController::class, 'form'])->middleware('guest')->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:10,1']);
@@ -142,6 +148,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::get('/customers', 'customers')->name('customers.index');
     Route::get('/customers/{customer}', 'customer')->name('customers.show');
     Route::post('/customers/{customer}/mileage', 'customerAdjust')->name('customers.adjust');
+
+    Route::get('/check-in', [\App\Http\Controllers\NftController::class, 'checkInForm'])->name('check-in');
+    Route::post('/check-in', [\App\Http\Controllers\NftController::class, 'checkIn'])->middleware('throttle:120,1')->name('check-in.scan');
 
     Route::get('/ledger', 'ledger')->name('ledger');
     Route::post('/ledger/anchor', 'ledgerAnchor')->name('ledger.anchor');

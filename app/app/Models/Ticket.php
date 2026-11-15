@@ -31,6 +31,12 @@ class Ticket extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    /** NFT 티켓 (회원 예매분만) */
+    public function token(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(TicketToken::class);
+    }
+
     /**
      * 구매자 취소 수수료율 (소비자분쟁해결기준·공연): 관람일 10일 전까지 0%, 9~7일 전 10%,
      * 6~3일 전 20%, 2~1일 전 30%, 당일은 취소 불가(null).

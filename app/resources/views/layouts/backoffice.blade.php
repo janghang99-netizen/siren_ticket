@@ -15,6 +15,7 @@
         ? [
             ['admin.events.index', '공연 일정', 'admin.events.*'],
             ['admin.tickets.index', '티켓 판매', 'admin.tickets.*'],
+            ['admin.check-in', '입장 검표', 'admin.check-in*'],
             ['admin.vendors.index', '입점업체', 'admin.vendors.*'],
             ['admin.stores.index', '매장', 'admin.stores.*'],
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],

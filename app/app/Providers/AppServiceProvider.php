@@ -11,6 +11,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(\App\Services\Benefits\BlockchainAnchor::class, fn ($app) => $app->make(config('siren.blockchain_anchor')));
+        $this->app->bind(\App\Services\Nft\TicketChain::class, fn ($app) => $app->make(config('siren.nft.chain')));
     }
 
     public function boot(): void

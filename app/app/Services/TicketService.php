@@ -37,7 +37,7 @@ class TicketService
             throw new OrderException("한 번에 1~{$event->max_per_buyer}매까지 예매할 수 있어요.");
         }
 
-        return DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt, $couponIssueId, $mileageUse, $member) {
+        $bought = DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt, $couponIssueId, $mileageUse, $member) {
             // 1인 매수 제한: 같은 번호 또는 같은 회원 (번호를 바꿔 가며 사는 리셀 방지)
             $owned = Ticket::where('event_id', $event->id)
                 ->where(fn ($q) => $q->where('holder_phone', $phone)->when($member, fn ($q) => $q->orWhere('member_id', $member->id)))
@@ -87,6 +87,14 @@ class TicketService
 
             return $tickets->map->fresh();
         });
+
+        // 회원 티켓은 NFT 발행 (좌석 잠금이 풀린 커밋 뒤에 — 실체인은 느리거나 실패할 수 있다)
+        $nft = app(\App\Services\Nft\NftTicketService::class);
+        foreach ($bought as $t) {
+            $nft->mint($t);
+        }
+
+        return $bought->map->fresh(['token']);
     }
 
     /** 운영사 티켓 취소: 전액 환불, 좌석은 다시 판매로. 입장한 티켓은 취소 불가. */
@@ -137,7 +145,7 @@ class TicketService
 
     private function doCancel(Ticket $ticket, string $by): Ticket
     {
-        return DB::transaction(function () use ($ticket, $by) {
+        $cancelled = DB::transaction(function () use ($ticket, $by) {
             $ticket = Ticket::with('event')->whereKey($ticket->id)->lockForUpdate()->firstOrFail();
             if ($ticket->status !== 'paid') {
                 throw new OrderException($ticket->status === 'used' ? '입장한 티켓은 취소할 수 없어요.' : '이미 취소된 티켓이에요.', 'bad_transition', 409);
@@ -157,5 +165,8 @@ class TicketService
 
             return $ticket;
         });
+        app(\App\Services\Nft\NftTicketService::class)->burn($cancelled);   // 취소한 좌석의 NFT 소각
+
+        return $cancelled;
     }
 }

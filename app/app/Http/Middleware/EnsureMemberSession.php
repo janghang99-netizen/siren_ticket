@@ -13,7 +13,15 @@ class EnsureMemberSession
     public function handle(Request $request, Closure $next): Response
     {
         $guard = Auth::guard('member');
-        if ($guard->check() && (int) $request->session()->get('member_session_version') !== (int) $guard->user()->session_version) {
+        if (! $guard->check()) {
+            return $next($request);
+        }
+        $version = $request->session()->get('member_session_version');
+        // "로그인 유지" 쿠키로 새 세션이 열리면 버전 값이 없다 → 지금 버전으로 기록
+        // (비밀번호를 바꾸면 remember_token 도 바뀌어 예전 쿠키로는 애초에 로그인되지 않는다)
+        if ($version === null) {
+            $request->session()->put('member_session_version', $guard->user()->session_version);
+        } elseif ((int) $version !== (int) $guard->user()->session_version) {
             $guard->logout();
             $request->session()->forget('member_session_version');
 
