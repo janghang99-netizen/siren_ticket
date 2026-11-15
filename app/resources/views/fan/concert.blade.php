@@ -22,6 +22,19 @@
         get section() { return this.sections.find(s => s.id === this.selected) },
         get limit() { return this.section ? Math.min(this.max, this.section.left) : this.max },
         pick(id) { this.selected = id; this.qty = Math.min(this.qty, this.limit); this.$nextTick(() => this.$refs.panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })) },
+        coupons: @js($myCoupons->map(fn ($i) => ['id' => $i->id, 'label' => $i->coupon->benefitLabel(), 'kind' => $i->coupon->kind, 'value' => $i->coupon->value, 'max' => $i->coupon->max_discount, 'min' => $i->coupon->min_amount])->values()),
+        couponId: @js(old('coupon_issue_id', '')),
+        balance: {{ (int) ($customer?->mileage_balance ?? 0) }},
+        mileage: @js((int) old('mileage_use', 0)),
+        get total() { return this.section ? this.section.price * this.qty : 0 },
+        get discount() {
+            const c = this.coupons.find(c => c.id == this.couponId); if (!c || this.total < c.min) return 0;
+            let d = c.kind === 'fixed' ? c.value : Math.floor(this.total * c.value / 1000) * 10;
+            if (c.max) d = Math.min(d, c.max);
+            return Math.min(d, this.total);
+        },
+        get mileageCap() { return Math.min(this.balance, Math.floor((this.total - this.discount) * {{ (int) \App\Models\Setting::get('mileage_use_max_rate') }} / 100)) },
+        get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ (int) \App\Models\Setting::get('mileage_min_use') }} ? m : 0 },
      }">
 
     <section class="mt-2 animate-rise">
@@ -101,16 +114,42 @@
                         <button type="button" class="size-9 rounded-full bg-white text-lg font-bold disabled:opacity-30" @click="qty++" :disabled="qty >= limit" aria-label="한 장 더하기">+</button>
                     </div>
                 </div>
-                <div>
-                    <label for="name" class="label">예매자 이름</label>
-                    <input id="name" name="name" class="field" value="{{ old('name') }}" autocomplete="name" required>
-                    @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label for="phone" class="label">휴대폰 번호</label>
-                    <input id="phone" name="phone" class="field" inputmode="tel" value="{{ old('phone') }}" placeholder="010-1234-5678" autocomplete="tel" required>
-                    <p class="mt-1 text-xs text-mist">이 번호로 내 티켓을 다시 찾을 수 있어요.</p>
-                    @error('phone')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                {{-- 예매는 회원만: 예매자 = 로그인한 회원 (1인 매수 제한을 계정 단위로 지켜 리셀을 막는다) --}}
+                @if ($member)
+                    <div class="flex items-center justify-between rounded-2xl bg-paper px-4 py-3 text-sm">
+                        <span>예매자 <b>{{ $member->name }}</b> <span class="num text-mist">{{ $member->maskedPhone() }}</span></span>
+                        <a href="{{ route('member.account') }}" class="text-xs font-semibold text-stick">내 계정</a>
+                    </div>
+                @else
+                    <div class="rounded-2xl bg-paper px-4 py-4 text-sm">
+                        <p class="font-bold">티켓 예매는 회원만 할 수 있어요</p>
+                        <p class="mt-1 text-xs text-mist">해외 팬도 가입할 수 있어요 (중국은 이메일 인증) · 海外粉丝也可以注册</p>
+                        <div class="mt-3 flex gap-2">
+                            <a href="{{ route('member.login', ['return' => request()->getRequestUri()]) }}" class="btn-ink !py-2.5 text-sm">로그인</a>
+                            <a href="{{ route('member.signup') }}" class="btn-ghost !py-2.5 text-sm">회원가입</a>
+                        </div>
+                    </div>
+                @endif
+
+                {{-- 혜택: 인증한 번호로 예매할 때만 쿠폰·마일리지 사용 --}}
+                <div class="rounded-2xl bg-paper p-4 text-sm">
+                    @if ($customer)
+                        <p class="mb-2 font-bold">혜택 <span class="font-normal text-mist">마일리지 <span class="num">{{ number_format($customer->mileage_balance) }}</span>원</span></p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <select name="coupon_issue_id" x-model="couponId" class="field !py-2 text-xs" aria-label="쿠폰">
+                                <option value="">쿠폰 안 씀</option>
+                                <template x-for="c in coupons" :key="c.id"><option :value="c.id" x-text="c.label"></option></template>
+                            </select>
+                            <input type="number" name="mileage_use" min="0" step="100" x-model="mileage" class="field num !py-2 text-xs" :placeholder="'마일리지 (최대 ' + won(mileageCap) + ')'" aria-label="마일리지 사용">
+                        </div>
+                        <p x-show="couponId && total && !discount" class="mt-1 text-xs text-signal">이 예매에는 이 쿠폰을 쓸 수 없어요 (최소 금액 확인)</p>
+                    @else
+                        <p class="text-mist">로그인하면 쿠폰·마일리지를 쓸 수 있어요.</p>
+                    @endif
+                    @foreach ($freeCoupons as $c)
+                        <p class="mt-2 text-xs text-mist">받을 수 있는 쿠폰: <b class="text-ink">{{ $c->benefitLabel() }}</b> ({{ $c->name }}) — <a href="{{ route('benefits') }}" class="row-link text-ink">혜택에서 받기</a></p>
+                    @endforeach
+                    @error('coupon_issue_id')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
                 </div>
             </div>
 
@@ -125,9 +164,11 @@
                 @error('agree_terms')<p class="text-sm text-signal">{{ $message }}</p>@enderror
             </div>
 
-            @if ($event->salesOpen())
+            @if ($event->salesOpen() && ! $member)
+                <a href="{{ route('member.login', ['return' => request()->getRequestUri()]) }}" class="btn-ink mt-6 w-full text-base">로그인하고 예매하기</a>
+            @elseif ($event->salesOpen())
                 <button class="btn-ink mt-6 w-full text-base" :disabled="!section">
-                    <span x-text="section ? won(section.price * qty) + '원 결제하기' : '구역을 골라 주세요'">결제하기</span>
+                    <span x-text="section ? won(total - discount - mileageUse) + '원 결제하기' : '구역을 골라 주세요'">결제하기</span>
                 </button>
             @else
                 <button class="btn-ink mt-6 w-full text-base" disabled>지금은 예매 기간이 아니에요</button>

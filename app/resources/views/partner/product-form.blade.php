@@ -42,6 +42,12 @@
                 @error('price')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
             <div>
+                <label for="mileage_points" class="label">적립 마일리지 (1개당, 원)</label>
+                <input id="mileage_points" name="mileage_points" type="number" min="0" step="10" class="field num" value="{{ old('mileage_points', $p?->mileage_points ?? 0) }}">
+                <p class="mt-1 text-xs text-mist">손님이 받아 가면 적립돼요. 우리 업체 부담이라 정산에서 빠지고, 판매가의 {{ \App\Models\Setting::get('mileage_product_max_rate') }}%까지 걸 수 있어요.</p>
+                @error('mileage_points')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
                 <label for="sort" class="label">메뉴 순서</label>
                 <input id="sort" name="sort" type="number" min="0" class="field num" value="{{ old('sort', $p?->sort ?? 0) }}">
                 <p class="mt-1 text-xs text-mist">작은 숫자가 위에 보여요.</p>

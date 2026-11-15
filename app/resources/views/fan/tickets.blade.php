@@ -60,7 +60,7 @@
                     @else
                         @php($fee = (int) (floor($t->price * $rate / 100 / 10) * 10))
                         <form method="POST" action="{{ route('tickets.cancel', $t) }}" class="mt-3 text-center"
-                              onsubmit="return confirm('{{ $t->seatLabel() }} 예매를 취소할까요?\n취소 수수료 {{ number_format($fee) }}원을 빼고 {{ number_format($t->price - $fee) }}원이 환불돼요.')">
+                              onsubmit="return confirm('{{ $t->seatLabel() }} 예매를 취소할까요?\n취소 수수료 {{ number_format($fee) }}원을 빼고 {{ number_format(max(0, $t->paid_amount - $fee)) }}원이 환불돼요.{{ $t->mileage_used ? '\n쓴 마일리지는 돌려드려요.' : '' }}')">
                             @csrf
                             <button class="text-xs font-semibold text-mist underline-offset-4 hover:text-signal hover:underline">
                                 예매 취소 · {{ $rate ? '수수료 '.$rate.'% ('.number_format($fee).'원)' : '수수료 없음' }}
@@ -72,17 +72,16 @@
         </article>
     @empty
         <div class="mt-8 rounded-3xl bg-white px-5 py-8 text-center ring-1 ring-ink/5">
-            <p class="text-lg font-bold">{{ $searched ? '이 번호로 예매한 티켓이 없어요' : '아직 티켓이 없어요' }}</p>
-            <p class="mt-1 text-sm text-mist">{{ $searched ? '예매할 때 적은 번호인지 확인해 주세요.' : '예매한 적이 있다면 휴대폰 번호로 찾아보세요.' }}</p>
+            <p class="text-lg font-bold">아직 티켓이 없어요</p>
+            <p class="mt-1 text-sm text-mist">{{ auth('member')->check() ? '예매한 티켓은 여기에 모두 보여요.' : '로그인하면 어느 기기에서든 내 티켓을 볼 수 있어요.' }}</p>
             <a href="{{ route('home') }}" class="btn-ink mt-5">공연 보러 가기</a>
         </div>
     @endforelse
 
-    <form method="GET" action="{{ route('tickets') }}" class="mt-10">
-        <label for="phone" class="label">다른 기기에서 예매했나요?</label>
-        <div class="flex gap-2">
-            <input id="phone" name="phone" class="field" inputmode="tel" placeholder="예매한 휴대폰 번호" autocomplete="tel">
-            <button class="btn-ghost shrink-0">찾기</button>
+    @guest('member')
+        <div class="mt-10 flex gap-2">
+            <a href="{{ route('member.login', ['return' => route('tickets', absolute: false)]) }}" class="btn-ink flex-1">로그인하고 내 티켓 보기</a>
+            <a href="{{ route('member.signup') }}" class="btn-ghost">회원가입</a>
         </div>
-    </form>
+    @endguest
 @endsection

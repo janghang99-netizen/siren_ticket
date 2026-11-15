@@ -42,6 +42,11 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        // 팬 회원 (티켓 예매) — 운영사·업체 계정과 테이블·세션 키가 다르다
+        'member' => [
+            'driver' => 'session',
+            'provider' => 'members',
+        ],
     ],
 
     /*
@@ -65,6 +70,10 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+        'members' => [
+            'driver' => 'eloquent',
+            'model' => \App\Models\Member::class,
         ],
 
         // 'users' => [

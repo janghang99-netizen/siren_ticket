@@ -9,7 +9,9 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Models\SettlementAdjustment;
 use App\Models\Store;
+use App\Models\Customer;
 use App\Models\Ticket;
+use App\Services\Benefits\BenefitService;
 use App\Services\Payments\PaymentGateway;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,7 @@ class OrderService
     public function __construct(
         private OrderWebhookSender $webhook,
         private InventoryService $inventory,
+        private BenefitService $benefits,
     ) {}
 
     /**
@@ -31,11 +34,16 @@ class OrderService
      *
      * @param  array<int, array{product_id:int, option_id?:int|null, qty:int, dine_option?:string}>  $items
      * @param  bool  $adultConfirmed  주류가 담긴 온라인 주문은 성인 확인 필수 (입점계약 제6조 주류 특칙)
+     * @param  Customer|null  $customer  휴대폰 번호 고객 — 적립·스탬프 대상. 쿠폰·마일리지를 쓰려면 인증된 고객이어야 한다(컨트롤러 확인).
      */
     public function place(Store $store, array $items, string $payMethod, ?int $slotId = null,
         string $channel = 'online', ?Ticket $ticket = null, ?string $phone = null,
-        bool $adultConfirmed = false, ?CarbonInterface $termsAgreedAt = null): Order
+        bool $adultConfirmed = false, ?CarbonInterface $termsAgreedAt = null,
+        ?Customer $customer = null, ?int $couponIssueId = null, int $mileageUse = 0): Order
     {
+        if ($channel === 'pos' && ($couponIssueId || $mileageUse > 0)) {
+            throw new OrderException('현장판매에서는 쿠폰·마일리지를 쓸 수 없어요.');
+        }
         if (! $store->is_open || ($store->vendor_id && ! $store->vendor?->isActive())) {
             throw new OrderException("{$store->name}은(는) 지금 주문을 받지 않아요.", 'store_closed');
         }
@@ -47,11 +55,14 @@ class OrderService
             throw new OrderException('이 결제수단은 여기서 쓸 수 없습니다.');
         }
 
-        return DB::transaction(function () use ($store, $items, $payMethod, $slotId, $channel, $ticket, $phone, $adultConfirmed, $termsAgreedAt) {
+        return DB::transaction(function () use ($store, $items, $payMethod, $slotId, $channel, $ticket, $phone, $adultConfirmed, $termsAgreedAt, $customer, $couponIssueId, $mileageUse) {
             $slot = $slotId ? $this->claimCapacity($store, $slotId) : null;
 
             $lines = [];
             $total = 0;
+            $earn = 0;
+            $unitPrices = [];
+            $earnCap = (float) Setting::get('mileage_product_max_rate');
             foreach ($items as $it) {
                 $qty = (int) ($it['qty'] ?? 0);
                 if ($qty < 1) {
@@ -65,6 +76,9 @@ class OrderService
                 $unit = $product->price + ($option?->extra_price ?? 0);
                 $lines[] = [$product, $option, $qty, $unit, ($it['dine_option'] ?? '포장') === '매장' ? '매장' : '포장'];
                 $total += $unit * $qty;
+                // 업체가 상품에 건 적립금 (판매가의 상한 % 이내) — 원본 auction_product.point × 수량
+                $earn += min($product->mileage_points, (int) floor($product->price * $earnCap / 100)) * $qty;
+                $unitPrices[$product->id] = $product->price;
             }
             if ($lines === []) {
                 throw new OrderException('담긴 메뉴가 없어요.');
@@ -88,8 +102,11 @@ class OrderService
                 'terms_agreed_at' => $termsAgreedAt,
                 'adult_confirmed_at' => $hasAlcohol && $adultConfirmed ? now() : null,
                 'pay_method' => $payMethod,
-                'buyer_phone' => $phone ?? $ticket?->holder_phone,
+                'buyer_phone' => $phone ?? $customer?->phone ?? $ticket?->holder_phone,
+                'customer_id' => $customer?->id,
                 'total_amount' => $total,
+                'paid_amount' => $total,
+                'mileage_earn' => $customer ? $earn : 0,
                 'commission_rate' => $store->commission_rate,
             ]);
 
@@ -107,6 +124,10 @@ class OrderService
                     'dine_option' => $dine,
                     'stock_deducted' => $deducted,
                 ]);
+            }
+
+            if ($customer && ($couponIssueId || $mileageUse > 0)) {
+                $this->benefits->applyToOrder($order, $customer, $store, $couponIssueId, $mileageUse, $unitPrices);
             }
 
             return $order->load('items');
@@ -144,9 +165,10 @@ class OrderService
     }
 
     /** 현장판매(POS): 생성 + 즉시 확정 (원본 ajax_seller_pos_order.php 와 같은 순서) */
-    public function placePos(Store $store, array $items, string $payMethod): Order
+    public function placePos(Store $store, array $items, string $payMethod, ?Customer $customer = null): Order
     {
-        return $this->confirmPayment($this->place($store, $items, $payMethod, channel: 'pos'));
+        // 현장판매도 휴대폰 번호를 받으면 스탬프·적립 대상 (원본 ajax_seller_pos_order.php stamp_phone)
+        return $this->confirmPayment($this->place($store, $items, $payMethod, channel: 'pos', customer: $customer));
     }
 
     /** 매장의 상태 변경. 취소는 결제수단별 환불 → 성공 시에만 환불완료(14)로. */
@@ -170,6 +192,9 @@ class OrderService
                 OrderStatus::PickedUp => 'picked_up_at',
             };
             $order->update(['status' => $to, $column => now()]);
+            if ($to === OrderStatus::PickedUp) {
+                $this->benefits->earnForOrder($order);   // 원본: 수령완료(5) 때 스탬프·적립
+            }
 
             return $order;
         });
@@ -199,14 +224,13 @@ class OrderService
                 throw new OrderException('수령완료·정산완료 주문만 여기서 환불해요. 진행 중 주문은 매장 취소를 쓰세요.', 'bad_transition', 409);
             }
             $this->refundOrFail($order);
+            $this->benefits->revokeForOrder($order);   // 쓴 마일리지 반환, 받은 적립금·스탬프 회수
 
             if ($order->status === OrderStatus::Settled && $order->store->vendor_id) {
-                $commission = (int) round($order->total_amount * (float) $order->commission_rate / 100);
-                $vat = (int) round($commission * (float) Setting::get('commission_vat_rate') / 100);
                 SettlementAdjustment::create([
                     'vendor_id' => $order->store->vendor_id,
                     'order_id' => $order->id,
-                    'amount' => $order->total_amount - $commission - $vat,   // 그 주문으로 업체가 받은 정산금
+                    'amount' => $order->vendorNet(),   // 그 주문으로 업체가 받은 정산금
                     'reason' => "정산 후 환불 ({$order->pickup_code}) · {$reason}",
                 ]);
             }
@@ -260,6 +284,7 @@ class OrderService
                 }
                 $this->refundOrFail($order);
                 $this->releaseResources($order);
+                $this->benefits->releaseOrder($order);
                 $fields += ['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => '구매자 요청 취소(매장 승인)'];
             }
             $order->update($fields);
@@ -275,6 +300,7 @@ class OrderService
             $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
             if ($order->status === OrderStatus::Pending) {
                 $this->releaseResources($order);
+                $this->benefits->releaseOrder($order);
                 $order->update(['status' => OrderStatus::Cancelled, 'cancelled_at' => now(), 'cancel_reason' => $reason]);
 
                 return true;
@@ -284,6 +310,7 @@ class OrderService
             }
             $this->refundOrFail($order);
             $this->releaseResources($order);
+            $this->benefits->releaseOrder($order);
             $order->update(['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => $reason]);
 
             return true;
@@ -302,6 +329,7 @@ class OrderService
                     return 0;
                 }
                 $this->releaseResources($order);
+                $this->benefits->releaseOrder($order);
                 $order->update(['status' => OrderStatus::Cancelled, 'cancelled_at' => now(), 'cancel_reason' => '결제 시간 초과']);
 
                 return 1;
@@ -321,6 +349,7 @@ class OrderService
             }
             $this->refundOrFail($order);
             $this->releaseResources($order);
+            $this->benefits->releaseOrder($order);
             $order->update([
                 'status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(),
                 'cancel_reason' => $reason,

@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Customer;
 use App\Models\Event;
+use App\Services\Benefits\BenefitService;
 use App\Models\SeatSection;
 use App\Models\Ticket;
 use Illuminate\Support\Collection;
@@ -20,7 +22,8 @@ class TicketService
      *
      * @return Collection<int, Ticket>
      */
-    public function purchase(Event $event, SeatSection $section, int $qty, string $name, string $phone, ?\Carbon\CarbonInterface $termsAgreedAt = null): Collection
+    public function purchase(Event $event, SeatSection $section, int $qty, string $name, string $phone, ?\Carbon\CarbonInterface $termsAgreedAt = null,
+        ?int $couponIssueId = null, int $mileageUse = 0, ?\App\Models\Member $member = null): Collection
     {
         $phone = preg_replace('/\D/', '', $phone);
 
@@ -34,8 +37,10 @@ class TicketService
             throw new OrderException("한 번에 1~{$event->max_per_buyer}매까지 예매할 수 있어요.");
         }
 
-        return DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt) {
-            $owned = Ticket::where('event_id', $event->id)->where('holder_phone', $phone)
+        return DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt, $couponIssueId, $mileageUse, $member) {
+            // 1인 매수 제한: 같은 번호 또는 같은 회원 (번호를 바꿔 가며 사는 리셀 방지)
+            $owned = Ticket::where('event_id', $event->id)
+                ->where(fn ($q) => $q->where('holder_phone', $phone)->when($member, fn ($q) => $q->orWhere('member_id', $member->id)))
                 ->where('status', '!=', 'cancelled')->lockForUpdate()->count();
             if ($owned + $qty > $event->max_per_buyer) {
                 $left = max(0, $event->max_per_buyer - $owned);
@@ -55,20 +60,32 @@ class TicketService
             // 좌석 번호는 이 구역에 발급된 티켓 수(취소분 포함) 다음부터 — 취소된 좌석 번호를 재사용하지 않아 중복이 없다.
             // 위 increment 가 구역 행을 잠갔으므로 같은 구역 동시 구매는 여기서 직렬화된다.
             $first = Ticket::where('seat_section_id', $section->id)->count();
+            $customer = $member?->customer ?? Customer::forPhone($phone);   // 관람 후 마일리지·스탬프 대상 (PG user_id = customer_key)
+            $bookingNo = 'B'.now()->format('ymd').strtoupper(Str::random(8));
 
-            return collect(range(0, $qty - 1))->map(fn ($i) => Ticket::create([
+            $tickets = collect(range(0, $qty - 1))->map(fn ($i) => Ticket::create([
                 'ticket_no' => strtoupper($section->code.'-'.Str::random(8)),
+                'booking_no' => $bookingNo,
                 'event_id' => $event->id,
                 'seat_section_id' => $section->id,
+                'customer_id' => $customer->id,
+                'member_id' => $member?->id,
                 'row_no' => intdiv($first + $i, self::SEATS_PER_ROW) + 1,
                 'seat_no' => (($first + $i) % self::SEATS_PER_ROW) + 1,
                 'holder_name' => $name,
                 'holder_phone' => $phone,
                 'price' => $section->price,
+                'paid_amount' => $section->price,
                 'status' => 'paid',
                 'paid_at' => now(),
                 'terms_agreed_at' => $termsAgreedAt,
             ]));
+
+            if ($couponIssueId || $mileageUse > 0) {
+                app(BenefitService::class)->applyToBooking($tickets, $customer, $event, $bookingNo, $couponIssueId, $mileageUse);
+            }
+
+            return $tickets->map->fresh();
         });
     }
 
@@ -131,12 +148,11 @@ class TicketService
             if ($rate === null) {
                 throw new OrderException('공연 당일에는 예매를 취소할 수 없어요.', 'cancel_closed', 409);
             }
-            $fee = (int) (floor($ticket->price * $rate / 100 / 10) * 10);   // 10원 단위 절사
+            $fee = (int) (floor($ticket->price * $rate / 100 / 10) * 10);   // 10원 단위 절사, 정가 기준
 
-            $ticket->update([
-                'status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by' => $by,
-                'cancel_fee' => $fee, 'refund_amount' => $ticket->price - $fee,
-            ]);
+            $ticket->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by' => $by, 'cancel_fee' => $fee]);
+            // 현금은 결제한 만큼에서 수수료를 빼고 돌려주고, 쓴 마일리지·쿠폰은 혜택 원장으로 되돌린다
+            $ticket->update(['refund_amount' => app(BenefitService::class)->releaseTicket($ticket, $fee)]);
             SeatSection::whereKey($ticket->seat_section_id)->where('sold', '>', 0)->decrement('sold');
 
             return $ticket;

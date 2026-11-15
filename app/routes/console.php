@@ -21,3 +21,25 @@ Artisan::command('settlements:run-due', function (\App\Services\SettlementServic
 })->purpose('정산주기가 도래한 업체의 정산서를 만든다');
 
 \Illuminate\Support\Facades\Schedule::command('settlements:run-due')->dailyAt('06:00');
+
+// 공연이 끝난 티켓에 관람 마일리지·스탬프 지급 (공연 시작 3시간 뒤부터)
+Artisan::command('benefits:grant-attendance', function (\App\Services\Benefits\BenefitService $benefits) {
+    $this->info('관람 혜택 지급: '.$benefits->grantAttendance().'매');
+})->purpose('관람이 끝난 티켓에 마일리지와 관람 스탬프를 준다');
+
+\Illuminate\Support\Facades\Schedule::command('benefits:grant-attendance')->hourly();
+
+// 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
+Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
+    $check = $ledger->verify();
+    if (! $check['ok']) {
+        $this->error("원장 위변조 의심: #{$check['broken_at']}번 기록부터 체인이 끊겼어요. 앵커를 만들지 않아요.");
+        report(new RuntimeException("benefit_ledger chain broken at {$check['broken_at']}"));
+
+        return 1;
+    }
+    $anchor = $ledger->anchor();
+    $this->info($anchor ? "앵커 #{$anchor->id}: {$anchor->row_count}건 · {$anchor->merkle_root}" : '새 기록 없음');
+})->purpose('혜택 원장을 검증하고 머클 루트로 묶는다');
+
+\Illuminate\Support\Facades\Schedule::command('ledger:anchor')->dailyAt('03:00');

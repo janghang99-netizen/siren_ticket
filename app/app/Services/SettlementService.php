@@ -16,9 +16,11 @@ use Illuminate\Support\Facades\DB;
 /**
  * 입점업체 정산 (입점계약 제7조).
  *  - 대상: 기간 안에 수령완료(=구매확정)된 주문. 묶인 주문은 정산완료(6)로 바뀌고 다시 묶이지 않는다.
- *  - 수수료 = round(주문금액 × 주문 시점 매장 수수료율), 부가세 = round(수수료 × 10%) — 수수료 부가세 별도
+ *  - 매출 = 판매액(할인 전). 운영사 쿠폰·마일리지 사용분은 운영사가 대신 내므로 매출에 그대로 포함된다.
+ *  - 업체 쿠폰 = 업체가 발행한 쿠폰 할인액 (업체 부담), 적립금 = 업체가 상품에 건 마일리지 (업체 부담, 원본 go_money sum(point))
+ *  - 수수료 = round((판매액 − 업체 쿠폰) × 주문 시점 매장 수수료율), 부가세 = round(수수료 × 10%)
  *  - 공제 = 차기 정산 공제 항목(정산 후 환불분 등). 지급액이 음수가 되면 0원으로 하고 남은 공제는 다음 정산으로 이월
- *  - 지급액 = 매출 − 수수료 − 부가세 − 공제, 지급예정일 = 정산 종료일 + 업체 지급일수
+ *  - 지급액 = 매출 − 업체 쿠폰 − 수수료 − 부가세 − 적립금 − 공제, 지급예정일 = 정산 종료일 + 업체 지급일수
  */
 class SettlementService
 {
@@ -45,12 +47,14 @@ class SettlementService
             return $orders->groupBy(fn (Order $o) => $o->store->vendor_id)->map(function (Collection $group, $vid) use ($start, $end, $vatRate) {
                 $vendor = Vendor::findOrFail($vid);
                 $gross = (int) $group->sum('total_amount');
-                $commission = (int) $group->sum(fn (Order $o) => (int) round($o->total_amount * (float) $o->commission_rate / 100));
+                $vendorCoupon = (int) $group->sum(fn (Order $o) => $o->coupon_funded_by === 'vendor' ? $o->coupon_discount : 0);
+                $mileageEarn = (int) $group->sum('mileage_earn');
+                $commission = (int) $group->sum(fn (Order $o) => $o->commission());   // 업체 쿠폰을 뺀 금액에 수수료
                 $vat = (int) round($commission * $vatRate / 100);
 
                 $adjustments = SettlementAdjustment::where('vendor_id', $vid)->whereNull('settlement_id')->lockForUpdate()->get();
                 $deduction = (int) $adjustments->sum('amount');
-                $payout = $gross - $commission - $vat - $deduction;
+                $payout = $gross - $vendorCoupon - $commission - $vat - $mileageEarn - $deduction;
                 $carry = 0;
                 if ($payout < 0) {          // 공제가 이번 지급액보다 크면 0원 지급, 나머지는 다음 정산으로
                     $carry = -$payout;
@@ -68,6 +72,9 @@ class SettlementService
                     'period_end' => $end->toDateString(),
                     'order_count' => $group->count(),
                     'gross_amount' => $gross,
+                    'coupon_vendor_amount' => $vendorCoupon,
+                    'mileage_earn_amount' => $mileageEarn,
+                    'platform_benefit_amount' => (int) $group->sum(fn (Order $o) => $o->platformBenefit()),
                     'commission_amount' => $commission,
                     'commission_vat' => $vat,
                     'deduction_amount' => $deduction,

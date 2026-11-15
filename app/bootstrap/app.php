@@ -12,8 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->redirectGuestsTo(fn () => route('login'));
-        $middleware->redirectUsersTo(fn ($request) => \App\Http\Controllers\AuthController::home($request->user()));
+        // 관리 화면(운영사·업체)은 관리 로그인, 팬 화면(티켓 예매·내 계정)은 회원 로그인으로
+        $middleware->redirectGuestsTo(fn ($request) => $request->is('admin', 'admin/*', 'partner', 'partner/*', 'logout')
+            ? route('login')
+            : route('member.login', ['return' => $request->getRequestUri()]));
+        $middleware->redirectUsersTo(fn ($request) => $request->is('member/*')
+            ? route('member.account')
+            : \App\Http\Controllers\AuthController::home($request->user()));
+        $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -20,7 +20,16 @@ class Ticket extends Model
         'cancelled_at' => 'datetime',
         'cancel_fee' => 'integer',
         'refund_amount' => 'integer',
+        'coupon_discount' => 'integer',
+        'mileage_used' => 'integer',
+        'paid_amount' => 'integer',
+        'benefit_granted_at' => 'datetime',
     ];
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
 
     /**
      * 구매자 취소 수수료율 (소비자분쟁해결기준·공연): 관람일 10일 전까지 0%, 9~7일 전 10%,

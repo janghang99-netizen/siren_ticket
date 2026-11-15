@@ -216,7 +216,8 @@ class PolicyTest extends TestCase
     public function test_c2_settings_page_saves_defaults_vendor_and_store_rates(): void
     {
         $this->actingAs($this->admin)->put(route('admin.settings.save'), [
-            'defaults' => ['default_commission_rate' => 7, 'default_settlement_cycle' => 'monthly', 'default_settlement_day' => 10, 'default_payout_delay_days' => 5, 'commission_vat_rate' => 10],
+            'defaults' => ['default_commission_rate' => 7, 'default_settlement_cycle' => 'monthly', 'default_settlement_day' => 10, 'default_payout_delay_days' => 5, 'commission_vat_rate' => 10,
+                'mileage_min_use' => 1000, 'mileage_use_max_rate' => 100, 'mileage_product_max_rate' => 10, 'ticket_mileage_rate' => 1],
             'vendors' => [$this->vendor->id => ['commission_rate' => 9, 'settlement_cycle' => 'weekly', 'settlement_day' => 5, 'payout_delay_days' => 2]],
             'stores' => [$this->store->id => ['commission_rate' => 6.5]],
         ])->assertRedirect();
@@ -267,7 +268,8 @@ class PolicyTest extends TestCase
     {
         $event = Event::create(['slug' => 'e1', 'name' => 'E', 'artist' => 'A', 'starts_at' => now()->addDays(20), 'max_per_buyer' => 4]);
         $section = SeatSection::create(['event_id' => $event->id, 'code' => 'A', 'name' => 'A', 'tier' => 'R', 'price' => 1000, 'capacity' => 10, 'ring' => 1, 'start_deg' => 0, 'end_deg' => 30]);
-        $this->post(route('concerts.purchase', $event), ['section_id' => $section->id, 'qty' => 1, 'name' => '팬', 'phone' => '010-1111-2222'])
+        $this->actingAsMember();
+        $this->post(route('concerts.purchase', $event), ['section_id' => $section->id, 'qty' => 1])
             ->assertSessionHasErrors('agree_terms');
         $this->assertSame(0, Ticket::count());
     }

@@ -107,6 +107,36 @@ class DatabaseSeeder extends Seeder
         User::create(['role' => 'vendor', 'vendor_id' => $pending->id, 'name' => $pending->name, 'email' => 'newvendor@siren.test', 'password' => 'password']);
 
         $this->demoHistory();
+        $this->demoBenefits();
+    }
+
+    /** 혜택·회원 데모: 쿠폰(운영사·업체), 매장 스탬프, 관람 스탬프, 팬 회원(한국·중국) */
+    private function demoBenefits(): void
+    {
+        $arena1 = Store::where('code', 'arena1')->first();
+        $americano = Product::where('store_id', $arena1->id)->where('name', '아메리카노')->first();
+        $americano->update(['mileage_points' => 200]);
+
+        \App\Models\Coupon::create(['name' => '첫 주문 1,000원', 'issuer' => 'platform', 'scope' => 'order', 'kind' => 'fixed', 'value' => 1000, 'min_amount' => 5000, 'is_public' => true, 'valid_days' => 30]);
+        \App\Models\Coupon::create(['name' => '아스테리아 팬 10%', 'issuer' => 'platform', 'scope' => 'ticket', 'kind' => 'percent', 'value' => 10, 'max_discount' => 20000, 'code' => 'ASTERIA2026', 'total_limit' => 500]);
+        \App\Models\Coupon::create(['name' => '아레나 커피 15%', 'issuer' => 'vendor', 'vendor_id' => $arena1->vendor_id, 'scope' => 'order', 'store_id' => $arena1->id, 'kind' => 'percent', 'value' => 15, 'max_discount' => 3000, 'is_public' => true]);
+
+        $free = \App\Models\Coupon::create(['name' => '아레나 커피 스탬프 보상', 'issuer' => 'vendor', 'vendor_id' => $arena1->vendor_id, 'scope' => 'order', 'store_id' => $arena1->id, 'kind' => 'free_item', 'product_id' => $americano->id, 'source' => 'stamp', 'valid_days' => 60]);
+        \App\Models\StampProgram::create(['owner' => 'store', 'store_id' => $arena1->id, 'name' => '아레나 커피 스탬프', 'need_count' => 10, 'reward_coupon_id' => $free->id]);
+        $ticketReward = \App\Models\Coupon::create(['name' => '관람 스탬프 보상', 'issuer' => 'platform', 'scope' => 'ticket', 'kind' => 'fixed', 'value' => 10000, 'source' => 'stamp', 'valid_days' => 180]);
+        \App\Models\StampProgram::create(['owner' => 'platform', 'name' => '공연 관람 스탬프', 'need_count' => 5, 'reward_coupon_id' => $ticketReward->id]);
+
+        // 팬 회원: 한국(휴대폰 인증), 중국(이메일 인증). 비밀번호는 개발용
+        foreach ([['김팬', 'KR', '01012345678', null], ['李华', 'CN', '8613800138000', 'lihua@qq.com']] as [$name, $country, $phone, $email]) {
+            $m = new \App\Models\Member([
+                'name' => $name, 'country' => $country, 'phone' => $phone, 'email' => $email, 'locale' => $country === 'CN' ? 'zh-CN' : 'ko',
+                'phone_verified_at' => $email ? null : now(), 'email_verified_at' => $email ? now() : null,
+                'customer_id' => \App\Models\Customer::forPhone($phone)->id,
+            ]);
+            $m->forceFill(['password' => 'siren-fan-2026', 'password_changed_at' => now()])->save();
+        }
+        app(\App\Services\Benefits\BenefitService::class)->adjustMileage(\App\Models\Customer::where('phone', '01012345678')->first(), 5000, '가입 환영 마일리지',
+            User::where('role', 'super_admin')->value('id'));
     }
 
     /** 판매·취소·정산 화면이 비어 있지 않게: 지난주 수령완료 주문 → 정산서, 이번 주 주문 몇 건 + 취소 1건 */

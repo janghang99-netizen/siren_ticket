@@ -91,11 +91,18 @@ class SirenOrderTest extends TestCase
     {
         $section = $this->section(capacity: 10);
 
+        // 비회원은 예매 화면에서 회원 로그인으로 보낸다
+        $this->post(route('concerts.purchase', $this->event), ['section_id' => $section->id, 'qty' => 1, 'agree_terms' => '1'])
+            ->assertRedirect();
+        $this->assertSame(0, \App\Models\Ticket::count());
+
+        $member = $this->actingAsMember();
         $this->post(route('concerts.purchase', $this->event), [
-            'section_id' => $section->id, 'qty' => 1, 'name' => '팬', 'phone' => '010-1234-5678', 'agree_terms' => '1',
+            'section_id' => $section->id, 'qty' => 1, 'agree_terms' => '1',
         ])->assertRedirect(route('tickets'));
 
         $this->get(route('tickets'))->assertOk()->assertSee('A1');
+        $this->assertSame($member->id, \App\Models\Ticket::first()->member_id);
     }
 
     // ── 매장 주문 ──

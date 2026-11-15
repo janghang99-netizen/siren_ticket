@@ -45,6 +45,24 @@
     </section>
 
     <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+        <h2 class="font-bold">마일리지 <span class="text-xs font-normal text-mist">매장 주문·공연 티켓 공통</span></h2>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            @foreach ([
+                'mileage_min_use' => ['최소 사용액 (원)', 0, 100000, 100],
+                'mileage_use_max_rate' => ['결제액 중 최대 사용 (%)', 0, 100, 1],
+                'mileage_product_max_rate' => ['업체 상품 적립 상한 (판매가 %)', 0, 50, 1],
+                'ticket_mileage_rate' => ['공연 관람 적립 (티켓 결제액 %)', 0, 20, 0.1],
+            ] as $key => [$label, $min, $max, $step])
+                <div>
+                    <label class="label" for="m-{{ $key }}">{{ $label }}</label>
+                    <input id="m-{{ $key }}" name="defaults[{{ $key }}]" type="number" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}" class="field num" value="{{ old('defaults.'.$key, $settings[$key]) }}" required>
+                </div>
+            @endforeach
+        </div>
+        <p class="mt-3 text-xs text-mist">매장 주문 적립은 업체가 상품마다 정하고 업체가 부담해요(정산에서 빠짐). 공연 관람 적립과 마일리지 사용분은 운영사가 부담해요.</p>
+    </section>
+
+    <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
         <h2 class="font-bold">업체별 · 매장별</h2>
         <p class="mt-1 text-sm text-mist">수수료율은 주문할 때의 값이 주문에 기록돼요. 바꾸면 이후 주문부터 적용되고, 지난 주문 정산은 바뀌지 않아요.</p>
 

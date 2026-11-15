@@ -11,6 +11,12 @@
     'options' => $p->options->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'extra' => $o->extra_price, 'soldOut' => $o->stock !== null && $o->stock <= 0])->values(),
 ])->values())
 @php($slotData = $slots->map(fn ($s) => ['id' => $s->id, 'name' => $slotNames[$s->slot], 'left' => $s->remaining(), 'open' => $s->isOpen()])->values())
+@php($couponData = $myCoupons->map(fn ($i) => [
+    'id' => $i->id, 'label' => $i->coupon->benefitLabel(), 'kind' => $i->coupon->kind, 'value' => $i->coupon->value,
+    'max' => $i->coupon->max_discount, 'min' => $i->coupon->min_amount, 'product' => $i->coupon->product_id,
+])->values())
+@php($mileageMin = (int) \App\Models\Setting::get('mileage_min_use'))
+@php($mileageRate = (int) \App\Models\Setting::get('mileage_use_max_rate'))
 
 @section('header-action')
     <a href="{{ route('stores.index', $event) }}" class="text-sm font-semibold text-stick">매장 목록</a>
@@ -27,6 +33,22 @@
         error: '',
         agree: false,
         adult: false,
+        coupons: @js($couponData),
+        couponId: '',
+        balance: {{ (int) ($customer?->mileage_balance ?? 0) }},
+        mileage: 0,
+        get coupon() { return this.coupons.find(c => c.id == this.couponId) },
+        get discount() {
+            const c = this.coupon; if (!c || this.total < c.min) return 0;
+            let d = c.kind === 'fixed' ? c.value
+                : c.kind === 'percent' ? Math.floor(this.total * c.value / 1000) * 10
+                : (this.cart.find(l => l.product_id === c.product) ? this.menu.find(p => p.id === c.product).price : 0);
+            if (c.max) d = Math.min(d, c.max);
+            return Math.min(d, this.total);
+        },
+        get mileageCap() { return Math.min(this.balance, Math.floor((this.total - this.discount) * {{ $mileageRate }} / 100)) },
+        get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ $mileageMin }} ? m : 0 },
+        get pay() { return this.total - this.discount - this.mileageUse },
         add(p, optionId = null) {
             const o = p.options.find(o => o.id === optionId);
             const key = p.id + ':' + (optionId ?? '');
@@ -46,6 +68,8 @@
                     slot_id: this.slotId,
                     agree_terms: this.agree,
                     adult_confirmed: this.adult,
+                    coupon_issue_id: this.discount ? this.couponId : null,
+                    mileage_use: this.mileageUse,
                     items: this.cart.map(l => ({ product_id: l.product_id, option_id: l.option_id, qty: l.qty, dine_option: this.dine })),
                 });
                 location.href = res.pay_url;
@@ -58,6 +82,31 @@
     @if ($ticket)
         <p class="mt-1 text-sm text-mist"><b class="text-ink">{{ $ticket->seatLabel() }}</b> 티켓으로 주문해요</p>
     @endif
+
+    {{-- 혜택: 스탬프 · 받을 수 있는 쿠폰 · 마일리지 --}}
+    <section class="mt-5 rounded-3xl bg-white p-4 text-sm ring-1 ring-ink/5" aria-label="혜택">
+        @if ($customer)
+            <div class="flex items-center justify-between gap-3">
+                <p>마일리지 <b class="num">{{ number_format($customer->mileage_balance) }}</b>원 · 쿠폰 <b class="num">{{ $myCoupons->count() }}</b>장</p>
+                <a href="{{ route('benefits') }}" class="text-xs font-semibold text-stick">내 혜택</a>
+            </div>
+        @else
+            <a href="{{ route('benefits', ['return' => request()->getRequestUri()]) }}" class="flex items-center justify-between gap-3">
+                <span>휴대폰 인증하고 <b>쿠폰·마일리지</b> 쓰기</span><span class="text-xs font-semibold text-stick">인증 →</span>
+            </a>
+        @endif
+        @if ($stamp)
+            <p class="mt-2 text-xs text-mist">스탬프 {{ $stamp->need_count }}개를 모으면 {{ $stamp->rewardCoupon?->benefitLabel() ?? '보상' }}
+                @if ($stampCount !== null) · 지금 <b class="num text-ink">{{ max(0, $stampCount) }}</b>개 @endif</p>
+        @endif
+        @foreach ($freeCoupons as $c)
+            <form method="POST" action="{{ route('benefits.claim', $c) }}" class="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-paper px-3 py-2">
+                @csrf
+                <span class="min-w-0 truncate"><b>{{ $c->benefitLabel() }}</b> <span class="text-xs text-mist">{{ $c->name }}</span></span>
+                <button class="btn-ink shrink-0 !px-3 !py-1.5 text-xs" @disabled(! $customer)>받기</button>
+            </form>
+        @endforeach
+    </section>
 
     {{-- 주문 시간대: 매장 처리량만큼만 받는다 (카운트·시간 중 먼저 오는 쪽으로 마감) --}}
     <fieldset class="mt-6">
@@ -130,10 +179,32 @@
                     </template>
                 </div>
                 <button type="button" @click="order()" :disabled="busy || !slotId || !ready" class="btn-ink ml-auto !py-3 text-sm">
-                    <span class="num" x-text="won(total) + '원'"></span>
+                    <span class="num" x-text="won(pay) + '원'"></span>
                     <span x-text="busy ? '주문 중…' : '주문하기'"></span>
                 </button>
             </div>
+            @if ($customer)
+                <div class="mt-3 grid grid-cols-2 gap-2 border-t border-ink/5 pt-3 text-xs">
+                    <label class="min-w-0">
+                        <span class="sr-only">쿠폰</span>
+                        <select x-model="couponId" class="field !py-2 text-xs">
+                            <option value="">쿠폰 안 씀</option>
+                            <template x-for="c in coupons" :key="c.id"><option :value="c.id" x-text="c.label"></option></template>
+                        </select>
+                    </label>
+                    <label class="flex items-center gap-1">
+                        <span class="sr-only">마일리지 사용</span>
+                        <input type="number" min="0" step="100" x-model="mileage" class="field num !py-2 text-xs" :placeholder="'마일리지 (최대 ' + won(mileageCap) + ')'">
+                    </label>
+                    <p x-show="discount || mileageUse" class="col-span-2 text-mist">
+                        <span class="num" x-text="won(total)"></span>원
+                        <span x-show="discount">− 쿠폰 <span class="num" x-text="won(discount)"></span></span>
+                        <span x-show="mileageUse">− 마일리지 <span class="num" x-text="won(mileageUse)"></span></span>
+                    </p>
+                    <p x-show="couponId && !discount" class="col-span-2 text-signal">이 장바구니에는 이 쿠폰을 쓸 수 없어요 (최소 금액·대상 상품 확인)</p>
+                    <p x-show="Number(mileage) > 0 && !mileageUse" class="col-span-2 text-signal">마일리지는 {{ number_format($mileageMin) }}원부터 쓸 수 있어요</p>
+                </div>
+            @endif
             <div class="mt-3 space-y-1.5 border-t border-ink/5 pt-3 text-xs">
                 <label x-show="hasAlcohol" class="flex items-start gap-2 font-semibold text-signal">
                     <input type="checkbox" x-model="adult" class="mt-0.5">

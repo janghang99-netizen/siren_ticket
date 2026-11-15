@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Route;
 Route::controller(FanController::class)->group(function () {
     Route::get('/', 'home')->name('home');
     Route::get('/concerts/{event}', 'concert')->name('concerts.show');
-    Route::post('/concerts/{event}/tickets', 'purchase')->middleware('throttle:20,1')->name('concerts.purchase');
+    // 티켓 예매는 회원만 (매장 음식 주문은 비회원 그대로)
+    Route::post('/concerts/{event}/tickets', 'purchase')->middleware(['auth:member', 'throttle:20,1'])->name('concerts.purchase');
     Route::get('/tickets', 'tickets')->name('tickets');
     Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->name('tickets.cancel');
 
@@ -27,12 +28,48 @@ Route::controller(FanController::class)->group(function () {
     Route::post('/orders/{order}/cancel', 'cancelOrder')->name('orders.cancel');
     Route::post('/orders/{order}/cancel-request', 'requestCancel')->name('orders.cancel-request');
 
+    // 내 혜택: 휴대폰 인증 → 마일리지·쿠폰·스탬프 (회원가입 없음)
+    Route::get('/benefits', 'benefits')->name('benefits');
+    Route::post('/benefits/send', 'sendCode')->middleware('throttle:6,1')->name('benefits.send');
+    Route::post('/benefits/verify', 'verifyCode')->middleware('throttle:10,1')->name('benefits.verify');
+    Route::post('/benefits/forget', 'forgetPhone')->name('benefits.forget');
+    Route::post('/benefits/coupons/code', 'claimCode')->middleware('throttle:10,1')->name('benefits.code');
+    Route::post('/benefits/coupons/{coupon}', 'claimCoupon')->middleware('throttle:20,1')->name('benefits.claim');
+
     // 약관·정책 (E1)
     Route::get('/policies/{doc}', 'policy')->whereIn('doc', ['terms', 'privacy', 'finance', 'refund'])->name('policy');
 
     // 매장 앞 픽업 전광판 (공개 — 픽업번호만 노출)
     Route::get('/display/{store}', 'display')->name('display');
     Route::get('/display/{store}/data', 'displayData')->name('display.data');
+});
+
+// ── 팬 회원: 가입 · 로그인 · 계정 보안 (관리 로그인과 별개) ──
+Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\MemberController::class)->group(function () {
+    Route::middleware('guest:member')->group(function () {
+        Route::get('/signup', 'signupForm')->name('signup');
+        Route::post('/signup', 'signupStart')->middleware('throttle:5,1')->name('signup.start');
+        Route::post('/signup/verify', 'signupVerify')->middleware('throttle:10,1')->name('signup.verify');
+        Route::get('/login', 'loginForm')->name('login');
+        Route::post('/login', 'login')->middleware('throttle:30,1')->name('login.attempt');
+        Route::get('/login/verify', 'stepUpForm')->name('login.step-up');
+        Route::post('/login/verify', 'stepUp')->middleware('throttle:10,1');
+        Route::get('/login/two-factor', 'twoFactorForm')->name('login.two-factor');
+        Route::post('/login/two-factor', 'twoFactor')->middleware('throttle:10,1');
+        Route::get('/password/forgot', 'forgotForm')->name('password.forgot');
+        Route::post('/password/forgot', 'forgotSend')->middleware('throttle:5,1')->name('password.send');
+        Route::post('/password/reset', 'resetPassword')->middleware('throttle:10,1')->name('password.reset');
+    });
+    Route::middleware('auth:member')->group(function () {
+        Route::get('/account', 'account')->name('account');
+        Route::post('/logout', 'logout')->name('logout');
+        Route::put('/password', 'changePassword')->middleware('throttle:5,1')->name('password.change');
+        Route::post('/two-factor', 'twoFactorSetup')->name('two-factor.setup');
+        Route::post('/two-factor/confirm', 'twoFactorConfirm')->middleware('throttle:10,1')->name('two-factor.confirm');
+        Route::delete('/two-factor', 'twoFactorDisable')->middleware('throttle:5,1')->name('two-factor.disable');
+        Route::delete('/devices/{device}', 'revokeDevice')->whereNumber('device')->name('devices.revoke');
+        Route::post('/logout-everywhere', 'logoutEverywhere')->name('logout-everywhere');
+    });
 });
 
 // ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
@@ -78,6 +115,36 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
     Route::get('/settlements', 'settlements')->name('settlements');
     Route::get('/settlements/{settlement}', 'settlement')->name('settlements.show');
     Route::post('/settlements/{settlement}/dispute', 'dispute')->name('settlements.dispute');
+});
+
+// 입점업체 혜택: 우리 쿠폰(업체 부담) · 매장 스탬프
+Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->controller(\App\Http\Controllers\PartnerBenefitController::class)->group(function () {
+    Route::get('/coupons', 'coupons')->name('coupons');
+    Route::get('/coupons/new', 'couponCreate')->name('coupons.create');
+    Route::post('/coupons', 'couponStore')->name('coupons.store');
+    Route::get('/coupons/{coupon}/edit', 'couponEdit')->name('coupons.edit');
+    Route::put('/coupons/{coupon}', 'couponUpdate')->name('coupons.update');
+    Route::get('/stamp', 'stamp')->name('stamp');
+    Route::put('/stamp', 'stampSave')->name('stamp.save');
+});
+
+// 운영사 혜택: 쿠폰 · 고객 마일리지 · 관람 스탬프 · 혜택 원장
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(\App\Http\Controllers\BenefitAdminController::class)->group(function () {
+    Route::get('/coupons', 'coupons')->name('coupons.index');
+    Route::get('/coupons/new', 'couponCreate')->name('coupons.create');
+    Route::post('/coupons', 'couponStore')->name('coupons.store');
+    Route::get('/coupons/{coupon}', 'coupon')->whereNumber('coupon')->name('coupons.show');
+    Route::get('/coupons/{coupon}/edit', 'couponEdit')->name('coupons.edit');
+    Route::put('/coupons/{coupon}', 'couponUpdate')->name('coupons.update');
+    Route::post('/coupons/{coupon}/grant', 'couponGrant')->name('coupons.grant');
+    Route::put('/stamp', 'stampSave')->name('stamp.save');
+
+    Route::get('/customers', 'customers')->name('customers.index');
+    Route::get('/customers/{customer}', 'customer')->name('customers.show');
+    Route::post('/customers/{customer}/mileage', 'customerAdjust')->name('customers.adjust');
+
+    Route::get('/ledger', 'ledger')->name('ledger');
+    Route::post('/ledger/anchor', 'ledgerAnchor')->name('ledger.anchor');
 });
 
 // 원본 다담다 주소 호환: EIS 판매내역 pull (서명 검증, CSRF 제외)

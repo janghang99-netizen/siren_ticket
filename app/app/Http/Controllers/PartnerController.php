@@ -113,12 +113,15 @@ class PartnerController extends Controller
             // 현장 카드 단말기 (준비 단계): 카드결제면 단말기·승인번호를 남겨 단말기 매출과 대사
             'terminal_id' => ['nullable', 'integer', 'required_if:pay_method,pos_card'],
             'card_approval_no' => ['nullable', 'string', 'max:30', 'required_if:pay_method,pos_card'],
-        ]);
+            // 원본 stamp_phone: 손님 휴대폰 번호를 받으면 수령 시 스탬프·적립
+            'stamp_phone' => ['nullable', 'regex:/^01[0-9][- ]?\d{3,4}[- ]?\d{4}$/'],
+        ], ['stamp_phone.regex' => '휴대폰 번호를 010-1234-5678 형식으로 적어 주세요.']);
         $store = $this->currentStore($request);
         if (! empty($data['terminal_id'])) {
             abort_unless(DB::table('store_terminals')->where('id', $data['terminal_id'])->where('store_id', $store->id)->where('is_active', true)->exists(), 422, '이 매장 단말기가 아니에요.');
         }
-        $order = $orders->placePos($store, $data['items'], $data['pay_method']);
+        $customer = ! empty($data['stamp_phone']) ? \App\Models\Customer::forPhone($data['stamp_phone']) : null;
+        $order = $orders->placePos($store, $data['items'], $data['pay_method'], $customer);
         if (! empty($data['terminal_id'])) {
             $order->update(['terminal_id' => $data['terminal_id'], 'card_approval_no' => $data['card_approval_no'], 'card_approved_at' => now()]);
         }
@@ -187,6 +190,8 @@ class PartnerController extends Controller
             'origin' => ['nullable', 'string', 'max:200'],
             'allergens' => ['nullable', 'string', 'max:200'],
             'price' => ['required', 'integer', 'min:0', 'max:10000000'],
+            // 1개당 적립 마일리지 (업체 부담, 판매가의 상한 % 이내 — 원본 auction_product.point)
+            'mileage_points' => ['nullable', 'integer', 'min:0', 'max:'.(int) floor((int) $request->input('price') * (float) \App\Models\Setting::get('mileage_product_max_rate') / 100)],
             'stock' => ['nullable', 'integer', 'min:0'],
             'stock_deduct_at' => ['required', 'in:order,payment'],
             'sort' => ['nullable', 'integer', 'min:0'],
@@ -211,7 +216,7 @@ class PartnerController extends Controller
 
         return DB::transaction(function () use ($request, $data, $product) {
             $fields = [
-                'name' => $data['name'], 'price' => $data['price'],
+                'name' => $data['name'], 'price' => $data['price'], 'mileage_points' => (int) ($data['mileage_points'] ?? 0),
                 'description' => $data['description'] ?? null, 'origin' => $data['origin'] ?? null, 'allergens' => $data['allergens'] ?? null,
                 'is_alcohol' => $request->boolean('is_alcohol'),
                 'stock_deduct_at' => $data['stock_deduct_at'], 'is_visible' => $request->boolean('is_visible'),
@@ -424,7 +429,7 @@ class PartnerController extends Controller
     // ── 공통 ──
 
     /** @return Collection<int, Store> */
-    private function vendorStores(Request $request): Collection
+    protected function vendorStores(Request $request): Collection
     {
         // 컨트롤러 인스턴스는 라우트에 캐시되어 요청 간에 재사용될 수 있다 → 캐시는 반드시 요청 객체에 둔다
         if (! $request->attributes->has('vendor_stores')) {
@@ -434,7 +439,7 @@ class PartnerController extends Controller
         return $request->attributes->get('vendor_stores');
     }
 
-    private function currentStore(Request $request): Store
+    protected function currentStore(Request $request): Store
     {
         $stores = $this->vendorStores($request);
         abort_if($stores->isEmpty(), 403, '운영 중인 매장이 없어요. 운영사에 매장 등록을 요청해 주세요.');
@@ -442,12 +447,12 @@ class PartnerController extends Controller
         return $stores->firstWhere('id', $request->session()->get('partner_store_id')) ?? $stores->first();
     }
 
-    private function authorizeStore(Request $request, int $storeId): void
+    protected function authorizeStore(Request $request, int $storeId): void
     {
         abort_unless($this->vendorStores($request)->contains('id', $storeId), 403);
     }
 
-    private function shared(Request $request): array
+    protected function shared(Request $request): array
     {
         return ['stores' => $this->vendorStores($request), 'store' => $this->currentStore($request), 'vendor' => $request->user()->vendor];
     }

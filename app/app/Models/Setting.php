@@ -13,6 +13,11 @@ class Setting extends Model
         'default_settlement_day' => '1',          // 월요일
         'default_payout_delay_days' => '3',
         'commission_vat_rate' => '10',            // 수수료 부가세 %
+        // 마일리지 (원본 HAPPY_CONFIG point_use_cut · CONF percent_point 대응)
+        'mileage_min_use' => '1000',              // 최소 사용액
+        'mileage_use_max_rate' => '100',          // 결제액 중 마일리지로 낼 수 있는 최대 %
+        'mileage_product_max_rate' => '10',       // 업체가 상품에 거는 적립금 상한 (판매가의 %)
+        'ticket_mileage_rate' => '1',             // 공연 관람 적립 (티켓 결제액의 %, 운영사 부담)
     ];
 
     protected $primaryKey = 'key';

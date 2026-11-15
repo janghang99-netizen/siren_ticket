@@ -19,6 +19,9 @@
             ['admin.stores.index', '매장', 'admin.stores.*'],
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],
             ['admin.settlements.index', '정산', 'admin.settlements.*'],
+            ['admin.coupons.index', '쿠폰·스탬프', 'admin.coupons.*'],
+            ['admin.customers.index', '고객·마일리지', 'admin.customers.*'],
+            ['admin.ledger', '혜택 원장', 'admin.ledger*'],
             ['admin.settings', '수수료·정산 설정', 'admin.settings*'],
             ['admin.audit', '감사 로그', 'admin.audit'],
         ]
@@ -29,6 +32,8 @@
             ['partner.inventory', '재고 원장', 'partner.inventory*'],
             ['partner.sales', '판매 내역', 'partner.sales|partner.orders.*'],
             ['partner.cancels', '취소 내역', 'partner.cancels'],
+            ['partner.coupons', '쿠폰', 'partner.coupons*'],
+            ['partner.stamp', '스탬프', 'partner.stamp*'],
             ['partner.settlements', '정산 내역', 'partner.settlements*'],
         ];
 @endphp

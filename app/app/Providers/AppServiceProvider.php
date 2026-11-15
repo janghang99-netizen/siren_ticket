@@ -10,7 +10,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        $this->app->bind(\App\Services\Benefits\BlockchainAnchor::class, fn ($app) => $app->make(config('siren.blockchain_anchor')));
     }
 
     public function boot(): void

@@ -4,7 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Enums\OrderStatus;
 use App\Models\CapacitySlot;
+use App\Models\Coupon;
+use App\Models\CouponIssue;
+use App\Models\Customer;
 use App\Models\Event;
+use App\Models\StampCard;
+use App\Models\StampProgram;
+use App\Services\Benefits\BenefitService;
+use App\Services\Benefits\PhoneVerificationService;
 use App\Models\Order;
 use App\Models\SeatSection;
 use App\Models\Store;
@@ -27,33 +34,41 @@ class FanController extends Controller
         return view('fan.home', ['events' => $events, 'headliner' => $events->first()]);
     }
 
-    public function concert(Event $event): View
+    public function concert(Request $request, Event $event, BenefitService $benefits): View
     {
         $event->load('sections');
+        $customer = $this->verifiedCustomer($request);
 
-        return view('fan.concert', ['event' => $event]);
+        return view('fan.concert', [
+            'event' => $event,
+            'member' => $request->user('member'),
+            'customer' => $customer,
+            'myCoupons' => $customer ? $benefits->usableCoupons($customer, 'ticket', null, $event) : collect(),
+            'freeCoupons' => $this->claimableCoupons($customer, 'ticket', null, $event),
+        ]);
     }
 
     public function purchase(Request $request, Event $event, TicketService $tickets): RedirectResponse
     {
+        $member = $request->user('member');   // 라우트에서 auth:member — 회원만 예매
         $data = $request->validate([
             'section_id' => ['required', 'integer'],
             'qty' => ['required', 'integer', 'min:1', 'max:'.$event->max_per_buyer],
-            'name' => ['required', 'string', 'max:30'],
-            'phone' => ['required', 'regex:/^01[0-9][- ]?\d{3,4}[- ]?\d{4}$/'],
             'agree_terms' => ['accepted'],
+            'coupon_issue_id' => ['nullable', 'integer'],
+            'mileage_use' => ['nullable', 'integer', 'min:0'],
         ], [
             'agree_terms.accepted' => '이용약관·개인정보 수집·취소 규정에 동의해야 예매할 수 있어요.',
             'section_id.required' => '구역을 먼저 골라 주세요.',
-            'name.required' => '예매자 이름을 적어 주세요.',
-            'phone.required' => '휴대폰 번호를 적어 주세요.',
-            'phone.regex' => '휴대폰 번호를 010-1234-5678 형식으로 적어 주세요.',
         ]);
 
         $section = SeatSection::findOrFail($data['section_id']);
+        $couponId = $data['coupon_issue_id'] ?? null;
+        $mileage = (int) ($data['mileage_use'] ?? 0);
 
         try {
-            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $data['name'], $data['phone'], now());
+            // 예매자 = 로그인한 회원 (가입 때 인증한 번호). 회원은 따로 문자 인증 없이 쿠폰·마일리지를 쓴다.
+            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $member->name, $member->phone, now(), $couponId, $mileage, $member);
         } catch (OrderException $e) {
             return back()->withInput()->withErrors(['section_id' => $e->getMessage()]);
         }
@@ -67,11 +82,12 @@ class FanController extends Controller
 
     public function tickets(Request $request): View
     {
-        $phone = preg_replace('/\D/', '', (string) $request->query('phone'));
-        if ($phone !== '') {
-            $found = Ticket::where('holder_phone', $phone)->pluck('ticket_no')->all();
-            $request->session()->put('ticket_nos', array_values(array_unique(array_merge($request->session()->get('ticket_nos', []), $found))));
+        // 회원: 내 계정의 티켓을 모두 보여 준다 (번호 조회 없이)
+        if ($member = $request->user('member')) {
+            $request->session()->put('ticket_nos', array_values(array_unique(array_merge(
+                $request->session()->get('ticket_nos', []), $member->tickets()->pluck('ticket_no')->all()))));
         }
+        $phone = '';
 
         // 취소한 티켓도 내역으로 보여 준다 (취소 수수료·환불액 확인)
         $tickets = Ticket::with(['event', 'section'])->whereIn('ticket_no', $request->session()->get('ticket_nos', []))
@@ -90,16 +106,99 @@ class FanController extends Controller
         return view('fan.stores', ['event' => $event, 'stores' => $stores, 'ticket' => $this->ticketFor($request, $event)]);
     }
 
-    public function menu(Request $request, Event $event, Store $store): View
+    public function menu(Request $request, Event $event, Store $store, BenefitService $benefits): View
     {
         $store->load(['vendor', 'products' => fn ($q) => $q->sellable()->orderBy('sort')->with('options')]);
         $slots = CapacitySlot::where('event_id', $event->id)->where('store_id', $store->id)
             ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
+        $customer = $this->verifiedCustomer($request);
 
         return view('fan.menu', [
             'event' => $event, 'store' => $store, 'slots' => $slots,
             'ticket' => $this->ticketFor($request, $event),
+            'customer' => $customer,
+            'myCoupons' => $customer ? $benefits->usableCoupons($customer, 'order', $store, null) : collect(),
+            'freeCoupons' => $this->claimableCoupons($customer, 'order', $store, null),
+            'stamp' => StampProgram::with('rewardCoupon.product')->where('store_id', $store->id)->where('is_active', true)->first(),
+            'stampCount' => $customer ? (int) StampCard::whereHas('program', fn ($q) => $q->where('store_id', $store->id))->where('customer_id', $customer->id)->value('count') : null,
         ]);
+    }
+
+    // ───────────────────────── 내 혜택 (휴대폰 인증) ─────────────────────────
+
+    public function benefits(Request $request): View
+    {
+        $customer = $this->verifiedCustomer($request);
+        if (! $customer) {
+            return view('fan.benefits', ['customer' => null, 'pendingPhone' => $request->session()->get('pending_phone')]);
+        }
+
+        return view('fan.benefits', [
+            'customer' => $customer,
+            'coupons' => $customer->couponIssues()->with('coupon.product', 'coupon.store', 'coupon.event')->latest()->get(),
+            'cards' => $customer->stampCards()->with('program.store', 'program.rewardCoupon.product')->get(),
+            'ledger' => $customer->ledger()->where('kind', 'mileage')->latest('id')->limit(30)->get(),
+            'freeCoupons' => Coupon::with('store', 'event', 'product')->where('is_public', true)->where('source', 'manual')->get()
+                ->filter(fn (Coupon $c) => $c->claimable())
+                ->reject(fn (Coupon $c) => CouponIssue::where('coupon_id', $c->id)->where('customer_id', $customer->id)->exists())->values(),
+        ]);
+    }
+
+    public function sendCode(Request $request, PhoneVerificationService $verify): RedirectResponse
+    {
+        $phone = $request->validate(['phone' => ['required', 'string', 'max:20']], ['phone.required' => '휴대폰 번호를 적어 주세요.'])['phone'];
+        try {
+            $code = $verify->send($phone);
+        } catch (OrderException $e) {
+            return back()->withInput()->withErrors(['phone' => $e->getMessage()]);
+        }
+        $request->session()->put('pending_phone', Customer::normalize($phone));
+
+        return back()->with('status', '인증번호를 보냈어요. 5분 안에 입력해 주세요.')->with('dev_code', $code);
+    }
+
+    public function verifyCode(Request $request, PhoneVerificationService $verify): RedirectResponse
+    {
+        $data = $request->validate(['phone' => ['required', 'string'], 'code' => ['required', 'digits:6']], ['code.digits' => '인증번호 6자리를 적어 주세요.']);
+        try {
+            $customer = $verify->verify($data['phone'], $data['code']);
+        } catch (OrderException $e) {
+            return back()->withErrors(['code' => $e->getMessage()]);
+        }
+        $request->session()->regenerate();
+        $request->session()->put('verified_phone', $customer->phone);
+        $request->session()->put('verified_until', now()->addMinutes(config('siren.phone_session_minutes'))->timestamp);
+        $request->session()->forget('pending_phone');
+
+        $back = $request->input('return');
+
+        return redirect()->to($back && str_starts_with($back, '/') && ! str_starts_with($back, '//') ? $back : route('benefits'))
+            ->with('status', '인증했어요. 이제 쿠폰과 마일리지를 쓸 수 있어요.');
+    }
+
+    public function forgetPhone(Request $request): RedirectResponse
+    {
+        $request->session()->forget(['verified_phone', 'verified_until']);
+
+        return redirect()->route('benefits')->with('status', '인증을 해제했어요.');
+    }
+
+    public function claimCoupon(Request $request, Coupon $coupon, BenefitService $benefits): RedirectResponse
+    {
+        $customer = $this->verifiedCustomer($request) ?? throw new OrderException('쿠폰을 받으려면 휴대폰 인증을 먼저 해 주세요.', 'verify_required');
+        abort_unless($coupon->is_public, 404);
+        $benefits->claim($coupon, $customer);
+
+        return back()->with('status', "‘{$coupon->name}’ 쿠폰을 받았어요.");
+    }
+
+    public function claimCode(Request $request, BenefitService $benefits): RedirectResponse
+    {
+        $customer = $this->verifiedCustomer($request) ?? throw new OrderException('쿠폰을 받으려면 휴대폰 인증을 먼저 해 주세요.', 'verify_required');
+        $code = $request->validate(['code' => ['required', 'string', 'max:30']], ['code.required' => '쿠폰 코드를 적어 주세요.'])['code'];
+        $issue = $benefits->claimByCode($code, $customer);
+
+        return back()->with('status', "‘{$issue->coupon->name}’ 쿠폰을 받았어요.");
     }
 
     public function placeOrder(Request $request, Event $event, Store $store, OrderService $orders): JsonResponse
@@ -113,12 +212,25 @@ class FanController extends Controller
             'items.*.dine_option' => ['nullable', 'in:매장,포장'],
             'agree_terms' => ['accepted'],
             'adult_confirmed' => ['boolean'],
+            'coupon_issue_id' => ['nullable', 'integer'],
+            'mileage_use' => ['nullable', 'integer', 'min:0'],
         ], ['agree_terms.accepted' => '주문 전에 이용약관과 판매자 정보 제공에 동의해 주세요.']);
 
+        $ticket = $this->ticketFor($request, $event);
+        $couponId = $data['coupon_issue_id'] ?? null;
+        $mileage = (int) ($data['mileage_use'] ?? 0);
+        $verified = $this->verifiedCustomer($request);
+        if (($couponId || $mileage > 0) && ! $verified) {
+            throw new OrderException('쿠폰·마일리지를 쓰려면 휴대폰 인증을 먼저 해 주세요.', 'verify_required');
+        }
+        // 적립 대상: 인증한 번호 > 티켓 예매 번호 (인증 없이도 적립은 받는다 — 쓰려면 인증)
+        $customer = $verified ?? ($ticket ? Customer::forPhone($ticket->holder_phone) : null);
+
         $order = $orders->place($store, $data['items'], 'card', (int) $data['slot_id'],
-            ticket: $this->ticketFor($request, $event),
+            ticket: $ticket,
             adultConfirmed: (bool) ($data['adult_confirmed'] ?? false),
-            termsAgreedAt: now());
+            termsAgreedAt: now(),
+            customer: $customer, couponIssueId: $couponId, mileageUse: $mileage);
 
         $request->session()->push('order_nos', $order->order_no);
 
@@ -241,6 +353,30 @@ class FanController extends Controller
         }
 
         return $ticket;
+    }
+
+    /** 이 세션에서 휴대폰 인증을 마친 고객 (유효 시간 안) */
+    private function verifiedCustomer(Request $request): ?Customer
+    {
+        // 로그인한 회원은 가입 때 인증을 마쳤으므로 회원의 고객 혜택을 그대로 쓴다
+        if ($member = $request->user('member')) {
+            return $member->customer;
+        }
+        $phone = $request->session()->get('verified_phone');
+        if (! $phone || $request->session()->get('verified_until', 0) < now()->timestamp) {
+            return null;
+        }
+
+        return Customer::where('phone', $phone)->first();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Coupon> 여기서 받을 수 있는 공개 쿠폰 (이미 받은 것 제외) */
+    private function claimableCoupons(?Customer $customer, string $scope, ?Store $store, ?Event $event)
+    {
+        return Coupon::with('product')->where('is_public', true)->where('source', 'manual')->where('scope', $scope)->get()
+            ->filter(fn (Coupon $c) => $c->claimable() && $c->appliesTo($store, $event))
+            ->reject(fn (Coupon $c) => $customer && CouponIssue::where('coupon_id', $c->id)->where('customer_id', $customer->id)->exists())
+            ->values();
     }
 
     private function authorizeOrder(Request $request, Order $order): void
