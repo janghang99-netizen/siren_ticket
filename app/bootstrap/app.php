@@ -19,7 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn ($request) => $request->is('member/*')
             ? route('member.account')
             : \App\Http\Controllers\AuthController::home($request->user()));
-        $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class]);
+        $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class, \App\Http\Middleware\SetLocale::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

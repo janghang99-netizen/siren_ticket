@@ -40,9 +40,10 @@ class OneTimeCodeService
             'ip' => $ip, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $text = "[SIREN] 인증번호 {$code} · 验证码 {$code} (10분 / 10分钟). 누구에게도 알려 주지 마세요 · 请勿告诉他人";
+        // 받는 사람이 고른 화면 언어로 보낸다
+        $text = __('[SIREN] 인증번호 :code (10분 안에 입력). 누구에게도 알려 주지 마세요.', ['code' => $code]);
         if ($channel === 'email') {
-            Mail::raw($text, fn ($m) => $m->to($destination)->subject('[SIREN] 인증번호 · 验证码 '.$code));
+            Mail::raw($text, fn ($m) => $m->to($destination)->subject(__('[SIREN] 인증번호 :code', ['code' => $code])));
 
             return in_array(config('mail.default'), ['log', 'array'], true) ? $code : null;
         }

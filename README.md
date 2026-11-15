@@ -69,6 +69,37 @@ docker compose exec -e APP_ENV=testing -e DB_DATABASE=siren_test -e SESSION_DRIV
 - 입장: 팬 화면의 입장 코드는 30초마다 바뀌는 서명 값이다. 캡처한 화면은 통과하지 못하고, 한 번 검표하면 다시 쓸 수 없다. 운영사 `/admin/check-in`에서 스캔한다.
 - 체인은 미정이다. `TicketChain`(티켓)·`BlockchainAnchor`(원장) 구현만 바꾸면 되고, 지금은 `local`로 기록만 남긴다.
 
+### 카이아 테스트넷(Kairos) 연동
+
+컨트랙트 `app/blockchain/contracts/SirenTicket.sol` — 양도 불가 ERC-721 + ERC-5192(잠긴 토큰). 운영사만 발행·소각·입장 표시, 전송·승인은 모두 막힘. 컴파일 결과는 `app/blockchain/build/SirenTicket.json`(solc 0.8.24, london).
+
+컨테이너 명령은 꼭 웹 서버 계정(`-u www-data`)으로 실행한다(root로 돌리면 로그 파일 권한이 바뀌어 사이트가 로그를 못 쓴다).
+
+```bash
+docker compose exec -u www-data app php artisan nft:operator
+```
+
+```bash
+docker compose exec -u www-data app php artisan nft:status
+```
+
+```bash
+docker compose exec -u www-data app php artisan nft:deploy
+```
+
+1. `nft:operator` — 운영사 키를 만들고 **주소만** 보여 준다(키는 볼륨 `storage/app/.kaia_operator_key`, 권한 600).
+2. 그 주소로 Kairos 수도꼭지(faucet)에서 테스트 KAIA를 받는다(로봇 확인이 있어 사람이 해야 한다).
+3. `nft:status`로 잔액 확인 → `nft:deploy`로 컨트랙트 배포(주소는 설정에 저장).
+4. `docker-compose.yml`의 app·scheduler 환경에 `SIREN_NFT_CHAIN: kaia`를 넣고 다시 띄우면, 이후 예매부터 카이아에 발행된다.
+
+- 거주 국가가 중국인 회원은 체인에 올리지 않고 로컬에만 기록한다(`config/siren.php`의 `nft.offchain_residence`).
+- 체인 전송이 실패해도 예매·취소·입장은 막지 않는다. 토큰을 "대기"로 두고 `nft:retry`(5분마다)가 다시 보낸다.
+- 수수료는 운영사 지갑이 낸다. 운영 단계에서는 운영사 키를 KMS·HSM 서명으로 바꾸고, 발행은 큐로 보낸다.
+
+### 거주 국가
+
+가입할 때 휴대폰 국가번호와 따로 **사는 나라**를 받는다(내 계정에서 변경 가능, 비밀번호 확인). 체인 기록과 향후 코인 기능은 국적·접속 위치가 아니라 거주 국가로 정한다 — 한국에 사는 중국인은 한국 거주, 한국에 잠시 온 중국 관광객은 중국 거주.
+
 ### 마일리지 → 토큰 → 글로벌 코인 (계획)
 
 지금 마일리지는 해시 체인 원장과 고객 지갑 위에서 돌아가므로, 체인이 정해지면 잔액을 토큰으로 옮길 수 있다. 다만 **거래·환전 가능한 코인으로 여는 순간 법적 성격이 바뀐다**:
@@ -78,6 +109,12 @@ docker compose exec -e APP_ENV=testing -e DB_DATABASE=siren_test -e SESSION_DRIV
 - 해외: 국가별 증권·결제 규제 (미국 SEC, EU MiCA 등)
 
 그래서 단계를 나눈다. ① 지금: 서비스 안에서만 쓰는 포인트(원장·지갑 준비 완료) → ② 양도 불가 포인트 토큰(체인 기록만) → ③ 법률 검토 후 거래 가능 코인. ③ 전에 반드시 법무 검토가 필요하다.
+
+## 다국어 (한국어 · 中文 · English)
+
+- 화면 위쪽에서 언어를 고른다. 처음엔 브라우저 언어로 정하고, 회원은 고른 언어가 계정에 저장된다. 한 화면에는 한 언어만 나온다.
+- 번역문은 `app/lang/zh_CN.json`, `app/lang/en.json` — 한국어 문장이 키라서, 번역이 빠진 문구는 한국어로 보인다. 자동 번역 서비스는 쓰지 않는다(중국에서 막히고, 약관·환불 문구는 정확해야 한다). 한국어가 아닌 화면에는 "약관·환불 규정은 한국어 원문 우선" 안내가 붙는다.
+- 지금 번역된 곳: 공통 레이아웃(머리말·메뉴·바닥글), 회원가입·로그인·새 기기 인증·2단계 인증·비밀번호 재설정·내 계정, 인증번호 문자·메일. 나머지 팬 화면(공연·예매·매장 주문·혜택)은 다음 단계.
 
 ## 회원 보안
 

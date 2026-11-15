@@ -129,7 +129,7 @@ class DatabaseSeeder extends Seeder
         // 팬 회원: 한국(휴대폰 인증), 중국(이메일 인증). 비밀번호는 개발용
         foreach ([['김팬', 'KR', '01012345678', null], ['李华', 'CN', '8613800138000', 'lihua@qq.com']] as [$name, $country, $phone, $email]) {
             $m = new \App\Models\Member([
-                'name' => $name, 'country' => $country, 'phone' => $phone, 'email' => $email, 'locale' => $country === 'CN' ? 'zh-CN' : 'ko',
+                'name' => $name, 'country' => $country, 'phone' => $phone, 'email' => $email, 'locale' => $country === 'CN' ? 'zh_CN' : 'ko', 'residence_country' => $country,
                 'phone_verified_at' => $email ? null : now(), 'email_verified_at' => $email ? now() : null,
                 'customer_id' => \App\Models\Customer::forPhone($phone)->id,
             ]);

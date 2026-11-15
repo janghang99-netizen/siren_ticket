@@ -64,6 +64,7 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
         Route::get('/account', 'account')->name('account');
         Route::post('/logout', 'logout')->name('logout');
         Route::put('/password', 'changePassword')->middleware('throttle:5,1')->name('password.change');
+        Route::put('/residence', 'updateResidence')->middleware('throttle:5,1')->name('residence');
         Route::post('/two-factor', 'twoFactorSetup')->name('two-factor.setup');
         Route::post('/two-factor/confirm', 'twoFactorConfirm')->middleware('throttle:10,1')->name('two-factor.confirm');
         Route::delete('/two-factor', 'twoFactorDisable')->middleware('throttle:5,1')->name('two-factor.disable');
@@ -71,6 +72,17 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
         Route::post('/logout-everywhere', 'logoutEverywhere')->name('logout-everywhere');
     });
 });
+
+// ── 화면 언어 고르기 (회원이면 계정에도 저장) ──
+Route::get('/lang/{locale}', function (\Illuminate\Http\Request $request, string $locale) {
+    abort_unless(isset(\App\Http\Middleware\SetLocale::SUPPORTED[$locale]), 404);
+    $request->session()->put('locale', $locale);
+    $request->user('member')?->forceFill(['locale' => $locale])->save();
+    // 보던 화면(같은 사이트)으로 돌아간다. 이전 주소가 없거나 다른 사이트면 홈으로 (API 주소로 돌아가지 않게)
+    $from = (string) $request->headers->get('referer');
+
+    return redirect()->to($from && parse_url($from, PHP_URL_HOST) === $request->getHost() ? $from : route('home'));
+})->name('locale');
 
 // ── NFT 티켓: 공개 메타데이터(tokenURI)·이미지, 팬 입장 코드 ──
 Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->name('nft.metadata');

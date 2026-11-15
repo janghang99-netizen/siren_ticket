@@ -31,6 +31,11 @@ class Ticket extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(Member::class);
+    }
+
     /** NFT 티켓 (회원 예매분만) */
     public function token(): \Illuminate\Database\Eloquent\Relations\HasOne
     {

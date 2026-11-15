@@ -8,49 +8,165 @@ use App\Models\Ticket;
 use App\Models\TicketToken;
 use App\Services\OrderException;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * NFT 티켓: 회원 예매 → 발행, 취소 → 소각, 입장 → 사용 처리.
- * 입장 코드는 30초마다 바뀌는 서명 값이라 스크린샷·캡처 공유로는 들어갈 수 없고, 한 번 검표하면 다시 못 쓴다.
- * 메타데이터에는 공연·좌석만 넣고 이름·번호 같은 개인정보는 넣지 않는다 (체인은 지울 수 없다).
+ *  - 체인 선택: 거주 국가가 체인 제외 국가(기본 중국)면 로컬 기록만, 아니면 설정된 체인(카이아 등).
+ *  - 체인 전송이 실패해도 예매·취소·입장은 막지 않는다 → 토큰을 pending/오류로 남기고 nft:retry 가 다시 보낸다.
+ *  - 입장 코드는 30초마다 바뀌는 서명 값이라 캡처로는 못 들어가고, 한 번 검표하면 다시 못 쓴다.
+ *  - 메타데이터에는 공연·좌석만 넣는다 (체인은 지울 수 없다).
  */
 class NftTicketService
 {
     private const ENTRY_WINDOW = 30;
 
-    public function __construct(private TicketChain $chain) {}
+    public function __construct(private TicketChain $chain, private LocalTicketChain $local) {}
 
-    public function walletFor(Customer $customer): CustomerWallet
+    /** 이 티켓을 기록할 체인 */
+    public function chainFor(Ticket $ticket): TicketChain
     {
-        return CustomerWallet::firstOrCreate(['customer_id' => $customer->id], [
-            'network' => $this->chain->network(), 'address' => $this->chain->createWallet($customer->id),
-        ]);
+        $residence = $ticket->member?->residence_country;
+
+        return in_array($residence, (array) config('siren.nft.offchain_residence', ['CN']), true) ? $this->local : $this->chain;
+    }
+
+    public function chainByNetwork(string $network): TicketChain
+    {
+        return $network === $this->local->network() ? $this->local : $this->chain;
+    }
+
+    /** 고객 지갑 (현재 체인 기준 하나). 개인키는 암호화해 저장 — 운영 단계에서는 KMS 로 옮긴다. */
+    public function walletFor(Customer $customer, TicketChain $chain): CustomerWallet
+    {
+        $wallet = CustomerWallet::where('customer_id', $customer->id)->first();
+        if ($wallet && $wallet->network === $chain->network()) {
+            return $wallet;
+        }
+        $made = $chain->createWallet($customer->id);
+        $attrs = ['network' => $chain->network(), 'address' => $made['address'], 'secret' => $made['secret']];
+
+        return $wallet ? tap($wallet)->update($attrs) : CustomerWallet::create(['customer_id' => $customer->id] + $attrs);
     }
 
     /** 회원 티켓만 발행 (비회원 시절 티켓·관리자 발급분은 토큰 없음) */
     public function mint(Ticket $ticket): ?TicketToken
     {
+        $ticket->loadMissing('member', 'customer', 'token');
         if (! $ticket->member_id || ! $ticket->customer_id || $ticket->status !== 'paid' || $ticket->token) {
             return $ticket->token;
         }
-        $wallet = $this->walletFor($ticket->customer);
-        $meta = $this->metadata($ticket);
-        $hash = hash('sha256', json_encode($meta, JSON_UNESCAPED_UNICODE));
-        $tokenId = (string) $ticket->id;
-        $tx = $this->chain->mint($tokenId, $wallet->address, route('nft.metadata', $tokenId), $hash);
+        $chain = $this->chainFor($ticket);
+        $wallet = $this->walletFor($ticket->customer, $chain);
+        $hash = hash('sha256', json_encode($this->metadata($ticket), JSON_UNESCAPED_UNICODE));
 
-        return TicketToken::create([
-            'ticket_id' => $ticket->id, 'network' => $this->chain->network(), 'contract' => $this->chain->contract(),
-            'token_id' => $tokenId, 'owner_address' => $wallet->address, 'status' => 'minted', 'transferable' => false,
-            'metadata_hash' => $hash, 'mint_tx' => $tx, 'minted_at' => now(),
+        $token = TicketToken::create([
+            'ticket_id' => $ticket->id, 'network' => $chain->network(), 'contract' => $chain->contract(),
+            'token_id' => (string) $ticket->id, 'owner_address' => $wallet->address, 'status' => 'pending', 'transferable' => false,
+            'metadata_hash' => $hash,
         ]);
+        $this->pushMint($token);
+
+        return $token->fresh();
+    }
+
+    /** 체인에 발행 전송 (실패하면 pending 으로 두고 오류를 남긴다) */
+    public function pushMint(TicketToken $token): bool
+    {
+        try {
+            $chain = $this->chainByNetwork($token->network);
+            $tx = $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash);
+            $token->update(['status' => 'minted', 'mint_tx' => $tx, 'minted_at' => now(), 'last_error' => null, 'contract' => $token->contract ?: $chain->contract()]);
+
+            return true;
+        } catch (Throwable $e) {
+            $token->update(['last_error' => mb_substr($e->getMessage(), 0, 250)]);
+            report($e);
+
+            return false;
+        }
     }
 
     public function burn(Ticket $ticket): void
     {
-        $token = TicketToken::where('ticket_id', $ticket->id)->where('status', 'minted')->first();
-        if ($token) {
-            $token->update(['status' => 'burned', 'burn_tx' => $this->chain->burn($token->token_id), 'burned_at' => now()]);
+        $token = TicketToken::where('ticket_id', $ticket->id)->whereIn('status', ['minted', 'pending'])->first();
+        if (! $token) {
+            return;
+        }
+        $wasMinted = $token->status === 'minted';
+        $token->update(['status' => 'burned', 'burned_at' => now()]);
+        if ($wasMinted) {
+            $this->pushBurn($token);
+        }
+    }
+
+    public function pushBurn(TicketToken $token): bool
+    {
+        try {
+            $token->update(['burn_tx' => $this->chainByNetwork($token->network)->burn($token->token_id), 'last_error' => null]);
+
+            return true;
+        } catch (Throwable $e) {
+            $token->update(['last_error' => mb_substr($e->getMessage(), 0, 250)]);
+            report($e);
+
+            return false;
+        }
+    }
+
+    public function pushUsed(TicketToken $token): bool
+    {
+        try {
+            $token->update(['used_tx' => $this->chainByNetwork($token->network)->markUsed($token->token_id), 'last_error' => null]);
+
+            return true;
+        } catch (Throwable $e) {
+            $token->update(['last_error' => mb_substr($e->getMessage(), 0, 250)]);
+            report($e);
+
+            return false;
+        }
+    }
+
+    /**
+     * 체인 전송을 못 한 것들 다시 보내기 (스케줄러). 발행이 늦게 된 경우 소각·입장 표시도 이어서 보낸다.
+     *
+     * @return array{mint:int, burn:int, used:int}
+     */
+    public function retryPending(int $limit = 50): array
+    {
+        $done = ['mint' => 0, 'burn' => 0, 'used' => 0];
+        foreach (TicketToken::where('status', 'pending')->limit($limit)->get() as $t) {
+            $done['mint'] += (int) $this->pushMint($t);
+        }
+        foreach (TicketToken::where('status', 'burned')->whereNull('burn_tx')->whereNotNull('mint_tx')->limit($limit)->get() as $t) {
+            $done['burn'] += (int) $this->pushBurn($t);
+        }
+        foreach (TicketToken::where('status', 'used')->whereNull('used_tx')->limit($limit)->get() as $t) {
+            if (! $t->mint_tx && $this->pushMintOnly($t)) {
+                $done['mint']++;
+            }
+            if ($t->fresh()->mint_tx) {
+                $done['used'] += (int) $this->pushUsed($t);
+            }
+        }
+
+        return $done;
+    }
+
+    /** 발행 전에 입장한 토큰: 상태는 used 로 두고 발행만 보낸다 */
+    private function pushMintOnly(TicketToken $token): bool
+    {
+        try {
+            $chain = $this->chainByNetwork($token->network);
+            $token->update(['mint_tx' => $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash),
+                'minted_at' => now(), 'contract' => $token->contract ?: $chain->contract(), 'last_error' => null]);
+
+            return true;
+        } catch (Throwable $e) {
+            $token->update(['last_error' => mb_substr($e->getMessage(), 0, 250)]);
+
+            return false;
         }
     }
 
@@ -103,7 +219,7 @@ class NftTicketService
             throw new OrderException('위조된 입장 코드예요.', 'forged_code');
         }
 
-        return DB::transaction(function () use ($ticketNo) {
+        $ticket = DB::transaction(function () use ($ticketNo) {
             $ticket = Ticket::with(['event', 'section', 'token'])->where('ticket_no', $ticketNo)->lockForUpdate()->firstOrFail();
             if ($ticket->event->isCancelled()) {
                 throw new OrderException('취소된 공연의 티켓이에요.', 'cancelled');
@@ -111,7 +227,7 @@ class NftTicketService
             if ($ticket->status === 'used') {
                 throw new OrderException('이미 입장한 티켓이에요. ('.$ticket->checked_in_at?->format('H:i:s').' 입장)', 'already_used', 409);
             }
-            if ($ticket->status !== 'paid' || ($ticket->token && $ticket->token->status !== 'minted')) {
+            if ($ticket->status !== 'paid' || ($ticket->token && ! in_array($ticket->token->status, ['minted', 'pending'], true))) {
                 throw new OrderException('쓸 수 없는 티켓이에요 (취소·소각됨).', 'invalid');
             }
             $ticket->update(['status' => 'used', 'checked_in_at' => now()]);
@@ -119,6 +235,12 @@ class NftTicketService
 
             return $ticket;
         });
+        // 체인 기록은 입장을 막지 않게 커밋 뒤에 (발행 전이면 재시도 명령이 발행 후 처리)
+        if ($ticket->token?->mint_tx) {
+            $this->pushUsed($ticket->token);
+        }
+
+        return $ticket;
     }
 
     private function sign(string $ticketNo, int $window): string

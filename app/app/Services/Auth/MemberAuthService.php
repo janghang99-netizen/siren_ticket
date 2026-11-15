@@ -45,7 +45,7 @@ class MemberAuthService
         if (RateLimiter::tooManyAttempts($ipKey, 20) || RateLimiter::tooManyAttempts($idKey, 5)) {
             $this->log(null, $idHash, 'throttled', $request);
             $wait = max(RateLimiter::availableIn($ipKey), RateLimiter::availableIn($idKey));
-            throw new OrderException("로그인 시도가 너무 많아요. {$wait}초 뒤에 다시 해 주세요.", 'throttled', 429);
+            throw new OrderException(__('로그인 시도가 너무 많아요. :s초 뒤에 다시 해 주세요.', ['s' => $wait]), 'throttled', 429);
         }
         RateLimiter::hit($ipKey, 60);
         RateLimiter::hit($idKey, 60);
@@ -58,7 +58,8 @@ class MemberAuthService
         }
         if ($member->isLocked()) {
             $this->log($member, $idHash, 'locked', $request);
-            throw new OrderException('여러 번 틀려서 잠시 잠겼어요. '.$member->locked_until->diffForHumans(now(), true).' 뒤에 다시 하거나 비밀번호를 재설정해 주세요.', 'locked', 423);
+            throw new OrderException(__('여러 번 틀려서 잠시 잠겼어요. :time 뒤에 다시 하거나 비밀번호를 재설정해 주세요.',
+                ['time' => $member->locked_until->locale(app()->getLocale())->diffForHumans(now(), true)]), 'locked', 423);
         }
         if (! Hash::check($password, $member->password)) {
             $fails = $member->failed_logins + 1;

@@ -37,13 +37,16 @@ class MemberController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:50'],
             'country' => ['required', 'in:'.implode(',', array_keys(Member::COUNTRIES))],
+            // 거주 국가: 휴대폰 국가와 따로. 체인 기록·향후 코인 기능의 기준 (한국에 사는 중국인 = KR)
+            'residence_country' => ['required', 'in:'.implode(',', array_keys(Member::COUNTRIES))],
             'phone' => ['required', 'string', 'max:25'],
             'email' => ['nullable', 'required_if:channel,email', 'email:rfc', 'max:190'],
             'channel' => ['required', 'in:sms,email'],
             'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
             'agree_terms' => ['accepted'],
             'agree_privacy' => ['accepted'],
-            'agree_overseas' => ['accepted_if:country,CN'],   // 중국 회원만 필수
+            // 중국 번호 또는 중국 거주 회원만 필수 (중국 개인정보보호법 국외 이전 동의)
+            'agree_overseas' => [($request->input('country') === 'CN' || $request->input('residence_country') === 'CN') ? 'accepted' : 'nullable'],
         ], [
             'email.required_if' => '이메일로 인증하려면 이메일을 적어 주세요.',
             'password.min' => '비밀번호는 10자 이상이어야 해요.',
@@ -52,7 +55,7 @@ class MemberController extends Controller
             'password.confirmed' => '비밀번호 확인이 달라요.',
             'agree_terms.accepted' => '이용약관에 동의해 주세요.',
             'agree_privacy.accepted' => '개인정보 수집·이용에 동의해 주세요.',
-            'agree_overseas.accepted_if' =>'중국 회원은 개인정보 국외(한국) 이전에 동의해야 가입할 수 있어요. (个人信息出境同意)',
+            'agree_overseas.accepted' => __('중국 회원은 개인정보 국외(한국) 이전에 동의해야 가입할 수 있어요.'),
         ]);
 
         $phone = Member::normalizePhone($data['country'], $data['phone']);
@@ -76,8 +79,9 @@ class MemberController extends Controller
         }
 
         $request->session()->put('member_signup', [
-            'name' => $data['name'], 'country' => $data['country'], 'phone' => $phone, 'email' => $email,
+            'name' => $data['name'], 'country' => $data['country'], 'residence_country' => $data['residence_country'], 'phone' => $phone, 'email' => $email,
             'channel' => $data['channel'], 'destination' => $dest, 'password_hash' => Hash::make($data['password']),
+            'locale' => app()->getLocale(),
             'at' => now()->timestamp,
         ]);
 
@@ -103,8 +107,9 @@ class MemberController extends Controller
                 throw new OrderException('이미 가입한 번호 또는 이메일이에요.', 'duplicate', 409);
             }
             $m = new Member([
-                'name' => $p['name'], 'country' => $p['country'], 'phone' => $p['phone'], 'email' => $p['email'],
-                'locale' => $p['country'] === 'CN' ? 'zh-CN' : 'ko',
+                'name' => $p['name'], 'country' => $p['country'], 'residence_country' => $p['residence_country'] ?? $p['country'],
+                'phone' => $p['phone'], 'email' => $p['email'],
+                'locale' => $p['locale'] ?? 'ko',   // 가입할 때 보던 화면 언어
                 'phone_verified_at' => $p['channel'] === 'sms' ? now() : null,
                 'email_verified_at' => $p['channel'] === 'email' ? now() : null,
                 'customer_id' => Customer::forPhone($p['phone'])->id,   // 비회원 때 쌓인 마일리지·쿠폰이 그대로 이어진다
@@ -283,6 +288,23 @@ class MemberController extends Controller
         $this->auth->changePassword($request, $member, $data['password']);
 
         return back()->with('status', '비밀번호를 바꿨어요. 다른 기기의 로그인은 모두 끊었어요.');
+    }
+
+    /** 거주 국가 변경 (이사·유학 등). 비밀번호 재확인. 코인 단계에서는 본인 확인 서류와 함께 바꾸게 한다. */
+    public function updateResidence(Request $request): RedirectResponse
+    {
+        $member = $request->user('member');
+        $data = $request->validate([
+            'residence_country' => ['required', 'in:'.implode(',', array_keys(Member::COUNTRIES))],
+            'password' => ['required', 'string'],
+            'agree_overseas' => [$request->input('residence_country') === 'CN' ? 'accepted' : 'nullable'],
+        ], ['agree_overseas.accepted' => __('중국 거주로 바꾸려면 개인정보 국외 이전에 동의해 주세요.')]);
+        if (! Hash::check($data['password'], $member->password)) {
+            return back()->withErrors(['residence' => '비밀번호가 맞지 않아요.']);
+        }
+        $member->forceFill(['residence_country' => $data['residence_country']])->save();
+
+        return back()->with('status', '거주 국가를 바꿨어요. 이후 예매하는 티켓부터 적용돼요.');
     }
 
     public function twoFactorSetup(Request $request): RedirectResponse

@@ -18,7 +18,7 @@ class MemberAuthTest extends TestCase
     private function signup(array $over = []): \Illuminate\Testing\TestResponse
     {
         return $this->post(route('member.signup.start'), $over + [
-            'name' => '김팬', 'country' => 'KR', 'phone' => '010-2222-3333', 'channel' => 'sms',
+            'name' => '김팬', 'country' => 'KR', 'residence_country' => $over['country'] ?? 'KR', 'phone' => '010-2222-3333', 'channel' => 'sms',
             'password' => 'blue-ocean-77', 'password_confirmation' => 'blue-ocean-77', 'agree_terms' => 1, 'agree_privacy' => 1,
         ]);
     }
@@ -50,7 +50,31 @@ class MemberAuthTest extends TestCase
         $this->assertNotNull($m->email_verified_at);
         $this->assertNull($m->phone_verified_at);
         $this->assertSame(['email', 'lihua@qq.com'], $m->stepUpChannel());   // 새 기기 인증도 이메일로
-        $this->assertSame('zh-CN', $m->locale);
+        $this->assertSame('CN', $m->residence_country);
+    }
+
+    public function test_screen_language_switches_without_mixing_languages(): void
+    {
+        // 브라우저가 중국어면 중국어로, 고르면 그 언어로 — 한 화면에 한 언어만
+        $this->withHeader('Accept-Language', 'zh-CN,zh;q=0.9')->get(route('member.login'))
+            ->assertOk()->assertSee('会员登录')->assertDontSee('회원 로그인')->assertSee('lang="zh-CN"', false);
+
+        $this->get(route('locale', 'en'))->assertRedirect();
+        $this->get(route('member.signup'))->assertOk()->assertSee('Only members can book tickets')->assertDontSee('仅限会员购票');
+
+        $this->get(route('locale', 'ko'));
+        $this->get(route('member.signup'))->assertOk()->assertSee('티켓 예매는 회원만 할 수 있어요');
+        $this->get(route('locale', 'fr'))->assertNotFound();
+
+        // 서버 오류 문구도 고른 언어로
+        $this->get(route('locale', 'zh_CN'));
+        $this->post(route('member.login.attempt'), ['identifier' => '01000000000', 'password' => 'whatever-1']);
+        $this->get(route('member.login'))->assertSee('账号或密码不正确。');
+
+        // 회원이 언어를 고르면 계정에 저장돼 다른 기기에서도 그 언어
+        $member = $this->actingAsMember();
+        $this->get(route('locale', 'en'));
+        $this->assertSame('en', $member->fresh()->locale);
     }
 
     public function test_phone_normalization_rejects_mismatched_country(): void

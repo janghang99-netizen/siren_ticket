@@ -31,8 +31,19 @@ return [
 
     // NFT 티켓: 체인 구현과 컨트랙트 주소. 체인이 정해지면 TicketChain 구현으로 바꾼다
     'nft' => [
-        'chain' => \App\Services\Nft\LocalTicketChain::class,
-        'contract' => env('SIREN_NFT_CONTRACT', '0x5152454e00000000000000000000000000000001'),
+        // local(체인에 안 올림) / kaia
+        'chain' => env('SIREN_NFT_CHAIN', 'local') === 'kaia' ? \App\Services\Nft\KaiaTicketChain::class : \App\Services\Nft\LocalTicketChain::class,
+        'local_contract' => '0x5152454e00000000000000000000000000000001',
+        // 거주 국가가 여기 있으면 체인에 올리지 않는다 (중국: 퍼블릭 체인 NFT·가상자산 금지)
+        'offchain_residence' => ['CN'],
+        'kaia' => [
+            'network' => env('SIREN_KAIA_NETWORK', 'kaia-kairos'),
+            'rpc' => env('SIREN_KAIA_RPC', 'https://public-en-kairos.node.kaia.io'),
+            'chain_id' => (int) env('SIREN_KAIA_CHAIN_ID', 1001),
+            'contract' => env('SIREN_KAIA_CONTRACT'),   // 비우면 nft:deploy 가 저장한 주소
+            'operator_key_file' => storage_path('app/.kaia_operator_key'),
+            'explorer' => env('SIREN_KAIA_EXPLORER', 'https://kairos.kaiascan.io'),
+        ],
     ],
 
     // 인증한 휴대폰 번호를 이 세션에서 몇 분 동안 유지할지

@@ -123,7 +123,7 @@
                 @else
                     <div class="rounded-2xl bg-paper px-4 py-4 text-sm">
                         <p class="font-bold">티켓 예매는 회원만 할 수 있어요</p>
-                        <p class="mt-1 text-xs text-mist">해외 팬도 가입할 수 있어요 (중국은 이메일 인증) · 海外粉丝也可以注册</p>
+                        <p class="mt-1 text-xs text-mist">{{ __('해외 팬도 가입할 수 있어요 (중국은 이메일 인증)') }}</p>
                         <div class="mt-3 flex gap-2">
                             <a href="{{ route('member.login', ['return' => request()->getRequestUri()]) }}" class="btn-ink !py-2.5 text-sm">로그인</a>
                             <a href="{{ route('member.signup') }}" class="btn-ghost !py-2.5 text-sm">회원가입</a>

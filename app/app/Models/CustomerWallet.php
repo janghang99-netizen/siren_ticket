@@ -13,6 +13,10 @@ class CustomerWallet extends Model
 {
     protected $guarded = ['id'];
 
+    protected $hidden = ['secret'];
+
+    protected $casts = ['secret' => 'encrypted'];
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);

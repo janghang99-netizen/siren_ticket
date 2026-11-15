@@ -11,17 +11,18 @@ class Member extends Authenticatable
 {
     /** 가입 가능 국가: 국가코드 => [국가번호, 이름]. 한국 외 번호는 국가번호를 붙여 저장한다. */
     public const COUNTRIES = [
-        'KR' => ['82', '대한민국'], 'CN' => ['86', '中国 중국'], 'JP' => ['81', '日本 일본'], 'TW' => ['886', '台灣 대만'],
-        'HK' => ['852', '香港 홍콩'], 'MO' => ['853', '澳門 마카오'], 'TH' => ['66', 'ไทย 태국'], 'VN' => ['84', 'Việt Nam 베트남'],
-        'PH' => ['63', 'Philippines 필리핀'], 'ID' => ['62', 'Indonesia 인도네시아'], 'SG' => ['65', 'Singapore 싱가포르'],
-        'MY' => ['60', 'Malaysia 말레이시아'], 'US' => ['1', 'United States 미국'],
+        // 이름은 한국어 — 화면에서 __() 로 각 언어로 바꾼다 (lang/*.json)
+        'KR' => ['82', '대한민국'], 'CN' => ['86', '중국'], 'JP' => ['81', '일본'], 'TW' => ['886', '대만'],
+        'HK' => ['852', '홍콩'], 'MO' => ['853', '마카오'], 'TH' => ['66', '태국'], 'VN' => ['84', '베트남'],
+        'PH' => ['63', '필리핀'], 'ID' => ['62', '인도네시아'], 'SG' => ['65', '싱가포르'],
+        'MY' => ['60', '말레이시아'], 'US' => ['1', '미국'],
     ];
 
     protected $guarded = ['id', 'password', 'two_factor_secret', 'two_factor_recovery_codes', 'failed_logins', 'locked_until', 'session_version'];
 
     protected $hidden = ['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'];
 
-    protected $attributes = ['failed_logins' => 0, 'session_version' => 1, 'locale' => 'ko', 'country' => 'KR'];
+    protected $attributes = ['failed_logins' => 0, 'session_version' => 1, 'locale' => 'ko', 'country' => 'KR', 'residence_country' => 'KR'];
 
     protected function casts(): array
     {
@@ -88,6 +89,12 @@ class Member extends Authenticatable
         }
 
         return static::whereIn('phone', $candidates)->first();
+    }
+
+    /** 거주 국가 이름 */
+    public function residenceLabel(): string
+    {
+        return self::COUNTRIES[$this->residence_country][1] ?? $this->residence_country;
     }
 
     public function isLocked(): bool

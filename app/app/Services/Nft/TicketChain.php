@@ -3,9 +3,8 @@
 namespace App\Services\Nft;
 
 /**
- * 티켓 NFT를 체인에 기록하는 자리. 체인이 정해지면(예: 이더리움 L2·폴리곤, 카이아, 기업용 허가형 체인)
- * 이 인터페이스로 구현을 만들고 config/siren.php 의 nft.chain 만 바꾼다.
- * 실체인 구현은 가스·지연이 있으므로 큐로 보내고, 결과 트랜잭션 해시를 ticket_tokens 에 채우는 방식을 권한다.
+ * 티켓 NFT를 체인에 기록하는 자리. 구현: LocalTicketChain(기록만), KaiaTicketChain(카이아).
+ * config/siren.php 의 nft.chain 으로 고르고, 중국 거주 회원은 항상 로컬(체인에 올리지 않음).
  */
 interface TicketChain
 {
@@ -13,12 +12,19 @@ interface TicketChain
 
     public function contract(): string;
 
-    /** 운영사 보관 지갑 주소 만들기 (실체인: KMS 에서 키를 만들고 주소만 돌려준다) */
-    public function createWallet(int $customerId): string;
+    /**
+     * 운영사 보관 지갑 만들기.
+     *
+     * @return array{address:string, secret:?string} secret 은 개인키(암호화해 저장) — 로컬은 null
+     */
+    public function createWallet(int $customerId): array;
 
     /** @return string 트랜잭션 해시 */
     public function mint(string $tokenId, string $to, string $metadataUri, string $metadataHash): string;
 
     /** @return string 트랜잭션 해시 */
     public function burn(string $tokenId): string;
+
+    /** 입장 표시 @return string 트랜잭션 해시 */
+    public function markUsed(string $tokenId): string;
 }
