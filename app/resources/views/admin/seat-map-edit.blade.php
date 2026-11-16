@@ -8,6 +8,7 @@
         'code' => $s->code, 'tier' => $s->tier, 'x' => $s->x, 'y' => $s->y, 'w' => $s->w, 'h' => $s->h,
         'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row,
     ])->values(),
+    'crop' => ['x' => $map->crop_x, 'y' => $map->crop_y, 'w' => $map->crop_w, 'h' => $map->crop_h],
 ])
 
 @section('content')
@@ -17,7 +18,11 @@
         tiers: initial.tiers || [],
         sections: initial.sections || [],
         sel: null,               // 고른 구역 순번
-        mode: 'select',          // select | draw
+        mode: 'select',          // select | draw | crop
+        crop: initial.crop || { x: 0, y: 0, w: 1, h: 1 },   // 팬에게 보여줄 영역 (범례·요약표·제목 제외)
+        get cropped() { return this.crop.w < 0.999 || this.crop.h < 0.999 },
+        resetCrop() { this.crop = { x: 0, y: 0, w: 1, h: 1 }; this.touch() },
+        cropBox() { const c = this.crop; return `left:${c.x * 100}%;top:${c.y * 100}%;width:${c.w * 100}%;height:${c.h * 100}%` },
         zoom: 1,
         activeTier: (initial.tiers && initial.tiers[0]) ? initial.tiers[0].key : null,
         q: '',
@@ -73,7 +78,10 @@
         },
         down(e, i = null, handle = false) {
             const p = this.point(e);
-            if (this.mode === 'draw' && i === null) {
+            if (this.mode === 'crop') {
+                this.crop = { x: p.x, y: p.y, w: 0, h: 0 };
+                this.drag = { kind: 'crop', ox: p.x, oy: p.y };
+            } else if (this.mode === 'draw' && i === null) {
                 if (!this.activeTier) { alert('등급을 먼저 만들어 주세요.'); return }
                 this.sections.push({ code: this.nextCode(), tier: this.activeTier, x: p.x, y: p.y, w: 0.001, h: 0.001, rows: 10, seats_per_row: 20 });
                 this.sel = this.sections.length - 1;
@@ -87,8 +95,14 @@
             e.preventDefault();
         },
         move(e) {
-            if (!this.drag || this.sel === null) return;
-            const p = this.point(e), s = this.sections[this.sel], d = this.drag;
+            if (!this.drag) return;
+            const p = this.point(e), d = this.drag;
+            if (d.kind === 'crop') {
+                this.crop = { x: Math.min(d.ox, p.x), y: Math.min(d.oy, p.y), w: Math.abs(p.x - d.ox), h: Math.abs(p.y - d.oy) };
+                this.touch(); return;
+            }
+            if (this.sel === null) return;
+            const s = this.sections[this.sel];
             if (d.kind === 'draw') {
                 s.x = Math.min(d.ox, p.x); s.y = Math.min(d.oy, p.y); s.w = Math.abs(p.x - d.ox); s.h = Math.abs(p.y - d.oy);
             } else if (d.kind === 'move') {
@@ -99,6 +113,10 @@
             this.touch();
         },
         up() {
+            if (this.drag?.kind === 'crop') {
+                if (this.crop.w < 0.1 || this.crop.h < 0.1) this.crop = { x: 0, y: 0, w: 1, h: 1 };   // 너무 작게 잡으면 전체
+                this.mode = 'select';
+            }
             if (this.drag?.kind === 'draw' && this.sel !== null) {
                 const s = this.sections[this.sel];
                 if (s.w < 0.006 || s.h < 0.006) { this.sections.splice(this.sel, 1); this.sel = null }
@@ -107,7 +125,7 @@
             this.drag = null;
         },
         box(s) { return `left:${s.x * 100}%;top:${s.y * 100}%;width:${s.w * 100}%;height:${s.h * 100}%;--c:${this.tierOf(s.tier).color}` },
-        payload() { return JSON.stringify({ tiers: this.tiers, sections: this.sections }) },
+        payload() { return JSON.stringify({ tiers: this.tiers, sections: this.sections, crop: this.crop }) },
     });
 </script>
 
@@ -120,7 +138,9 @@
             <div class="flex rounded-full bg-paper p-1 text-sm font-semibold" role="group" aria-label="편집 모드">
                 <button type="button" class="rounded-full px-4 py-1.5" :class="mode === 'select' ? 'bg-ink text-white' : 'text-mist'" @click="mode = 'select'">선택·이동</button>
                 <button type="button" class="rounded-full px-4 py-1.5" :class="mode === 'draw' ? 'bg-ink text-white' : 'text-mist'" @click="mode = 'draw'">＋ 구역 그리기</button>
+                <button type="button" class="rounded-full px-4 py-1.5" :class="mode === 'crop' ? 'bg-ink text-white' : 'text-mist'" @click="mode = 'crop'">보여줄 영역 자르기</button>
             </div>
+            <button type="button" x-show="cropped" x-cloak class="text-xs font-semibold text-mist underline" @click="resetCrop()">자르기 취소(전체 보이기)</button>
             <label x-show="mode === 'draw'" class="flex items-center gap-2 text-sm">
                 <span class="text-mist">새 구역 등급</span>
                 <select x-model="activeTier" class="field !w-auto !py-1.5 text-sm">
@@ -134,13 +154,15 @@
                 </template>
             </div>
         </div>
-        <p class="mb-3 text-xs text-mist" x-text="mode === 'draw' ? '배치도에서 구역 영역을 끌어 박스를 그리세요. 그린 뒤 오른쪽에서 구역 이름·열·좌석을 정해요.' : '박스를 눌러 고르고, 끌어서 옮기거나 오른쪽 아래 모서리를 끌어 크기를 맞추세요.'"></p>
+        <p class="mb-3 text-xs text-mist" x-text="mode === 'crop' ? '팬에게 보여줄 배치도 부분(무대·객석·게이트)을 끌어서 고르세요. 제목·범례·요약표는 빼면 잘려 나가요.' : (mode === 'draw' ? '배치도에서 구역 영역을 끌어 박스를 그리세요. 그린 뒤 오른쪽에서 구역 이름·열·좌석을 정해요.' : '박스를 눌러 고르고, 끌어서 옮기거나 오른쪽 아래 모서리를 끌어 크기를 맞추세요. 어둡게 덮인 부분은 팬에게 보이지 않아요.')"></p>
 
         <div class="max-h-[78vh] overflow-auto rounded-2xl bg-ink">
-            <div x-ref="stage" class="relative touch-none select-none" :style="`width:${zoom * 100}%`"
-                 :class="mode === 'draw' ? 'cursor-crosshair' : 'cursor-default'"
+            <div x-ref="stage" class="relative touch-none select-none overflow-hidden" :style="`width:${zoom * 100}%`"
+                 :class="mode === 'select' ? 'cursor-default' : 'cursor-crosshair'"
                  @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up()" @pointercancel="up()">
                 <img src="{{ $map->imageUrl() }}" alt="{{ $map->name }} 배치도" width="{{ $map->image_w }}" height="{{ $map->image_h }}" class="pointer-events-none block h-auto w-full" draggable="false">
+                {{-- 보여줄 영역: 바깥은 어둡게 (팬 화면에서는 잘려 나감) --}}
+                <div x-show="cropped || mode === 'crop'" class="pointer-events-none absolute z-20 rounded-sm border-2 border-dashed border-pick shadow-[0_0_0_9999px_rgba(10,8,20,.62)]" :style="cropBox()"></div>
                 <template x-for="(s, i) in sections" :key="i">
                     <div class="absolute rounded-[3px] border-2" :style="box(s)"
                          :class="sel === i ? 'z-10 border-white bg-[color-mix(in_srgb,var(--c)_45%,transparent)] shadow-[0_0_0_2px_#17132B]' : 'border-[var(--c)] bg-[color-mix(in_srgb,var(--c)_22%,transparent)] hover:border-white'"
@@ -166,7 +188,12 @@
 
         <section class="space-y-3 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
             <div class="grid gap-3 sm:grid-cols-2">
-                <div><label for="venue" class="label">공연장</label><input id="venue" name="venue" class="field !py-2.5" value="{{ old('venue', $map->venue) }}" required></div>
+                <div><label for="venue_id" class="label">공연장</label>
+                    <select id="venue_id" name="venue_id" class="field !py-2.5" required>
+                        @foreach ($venues as $v)
+                            <option value="{{ $v->id }}" @selected((int) old('venue_id', $map->venue_id) === $v->id)>{{ $v->name }}</option>
+                        @endforeach
+                    </select></div>
                 <div><label for="name" class="label">좌석표 이름</label><input id="name" name="name" class="field !py-2.5" value="{{ old('name', $map->name) }}" required></div>
             </div>
             <div class="grid grid-cols-2 gap-2 text-center">
@@ -251,8 +278,26 @@
     </form>
 </div>
 
-<div class="mt-8 flex flex-wrap gap-3">
-    <a href="{{ route('admin.seat-maps.index') }}" class="btn-ghost !py-2.5 text-sm">목록으로</a>
+{{-- 새 배치도 이미지 올리기 — AI 를 쓸 수 있으면 객석 목록·보여줄 영역을 새로 만든다 --}}
+<form method="POST" action="{{ route('admin.seat-maps.image', $map) }}" enctype="multipart/form-data" x-data="{ busy: false }" @submit="busy = true"
+      class="mt-8 max-w-3xl rounded-3xl bg-white p-5 ring-1 ring-ink/5">
+    @csrf
+    <h2 class="font-bold">배치도 이미지 바꾸기</h2>
+    <p class="mt-1 text-sm text-mist">기획사가 새 좌석 배치도를 주면 올리세요.
+        {{ $aiReady ? 'AI 로 읽기를 켜면 객석 목록과 보여줄 영역을 새 이미지로 다시 만들어요.' : '구역 박스는 새 이미지에 맞게 옮겨 주세요. (AI 판독을 쓰려면 서버에 ANTHROPIC_API_KEY 필요)' }}
+        @if ($map->events_count) 이 좌석표를 쓰는 공연이 있어서, 새 이미지는 <b>새 좌석표</b>로 만들어져요 (기존 공연은 그대로). @else 이미 만든 공연은 바뀌지 않아요. @endif</p>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required class="text-sm">
+        @if ($aiReady)
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="use_ai" value="1" checked> AI 로 읽기</label>
+        @endif
+        <button class="btn-ink !py-2 text-sm" :disabled="busy" x-text="busy ? '올리는 중…' : '새 이미지 올리기'">새 이미지 올리기</button>
+    </div>
+    @error('image')<p class="mt-2 text-sm text-signal">{{ $message }}</p>@enderror
+</form>
+
+<div class="mt-6 flex flex-wrap gap-3">
+    <a href="{{ $map->venue_id ? route('admin.venues.show', $map->venue_id) : route('admin.venues.index') }}" class="btn-ghost !py-2.5 text-sm">공연장으로</a>
     @if ($aiReady)
         <form method="POST" action="{{ route('admin.seat-maps.read', $map) }}" onsubmit="return confirm('AI 로 다시 읽으면 지금 구역이 판독 결과로 바뀌어요. 계속할까요?')">
             @csrf

@@ -10,13 +10,18 @@
     <section class="space-y-4 rounded-3xl bg-white p-6 ring-1 ring-ink/5">
         <div class="grid gap-4 sm:grid-cols-2">
             <div>
-                <label for="venue" class="label">공연장</label>
-                <input id="venue" name="venue" class="field" value="{{ old('venue') }}" placeholder="예: 고양종합운동장" required>
-                @error('venue')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                <label for="venue_id" class="label">공연장 <a href="{{ route('admin.venues.index') }}" class="font-normal text-stick">＋ 공연장 추가</a></label>
+                <select id="venue_id" name="venue_id" class="field" required>
+                    <option value="">공연장을 고르세요</option>
+                    @foreach ($venues as $v)
+                        <option value="{{ $v->id }}" @selected((int) old('venue_id', $venueId) === $v->id)>{{ $v->name }}</option>
+                    @endforeach
+                </select>
+                @error('venue_id')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label for="name" class="label">좌석표 이름 <span class="font-normal text-mist">(배치 구분)</span></label>
-                <input id="name" name="name" class="field" value="{{ old('name') }}" placeholder="예: 고양종합운동장 · 가로 무대" required>
+                <input id="name" name="name" class="field" value="{{ old('name') }}" placeholder="예: 가로 무대 / 세로 무대 / 360도" required>
                 @error('name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
         </div>
@@ -39,7 +44,7 @@
             @if ($aiReady)
                 <label class="mt-3 flex items-start gap-2">
                     <input type="checkbox" name="use_ai" value="1" class="mt-0.5" checked>
-                    <span><b>AI 로 읽기</b> — 범례에서 등급·가격·좌석 수를, 배치도에서 구역 이름·위치를 읽어 초안을 만들어요. 1~2분 걸릴 수 있어요.</span>
+                    <span><b>AI 로 읽기</b> — 범례에서 등급·가격·좌석 수를, 배치도에서 구역 이름·위치를 읽어 객석 목록을 만들고, 제목·범례·요약표를 뺀 배치도 부분만 팬에게 보이게 잘라요. 1~2분 걸릴 수 있어요.</span>
                 </label>
             @else
                 <p class="mt-2 rounded-2xl bg-paper px-3 py-2 text-xs text-mist">AI 판독을 쓰려면 서버에 <code>ANTHROPIC_API_KEY</code> 를 넣어 주세요. 지금은 다음 화면에서 이미지 위에 구역을 직접 그려요.</p>
@@ -49,7 +54,7 @@
         <button class="btn-ink w-full" :disabled="busy">
             <span x-text="busy ? '올리는 중… (AI 판독은 1~2분)' : '올리고 구역 만들기'">올리고 구역 만들기</span>
         </button>
-        <a href="{{ route('admin.seat-maps.index') }}" class="btn-ghost w-full">목록으로</a>
+        <a href="{{ $venueId ? route('admin.venues.show', $venueId) : route('admin.venues.index') }}" class="btn-ghost w-full">돌아가기</a>
     </aside>
 </form>
 @endsection

@@ -13,7 +13,32 @@ class SeatMap extends Model
 {
     protected $guarded = ['id'];
 
-    protected $casts = ['tiers' => 'array', 'image_w' => 'integer', 'image_h' => 'integer'];
+    protected $casts = [
+        'tiers' => 'array', 'image_w' => 'integer', 'image_h' => 'integer',
+        'crop_x' => 'float', 'crop_y' => 'float', 'crop_w' => 'float', 'crop_h' => 'float',
+    ];
+
+    public function venueRecord(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Venue::class, 'venue_id');
+    }
+
+    /**
+     * 팬에게 보여줄 영역(배치도만 — 범례·요약표·제목은 잘라 냄).
+     * 바깥 틀은 잘라 낸 영역의 비율, 안쪽은 원본 이미지를 키워 영역만 보이게 옮긴다. 구역 박스 좌표(원본 기준)는 그대로 쓴다.
+     */
+    public function frameStyle(): string
+    {
+        return sprintf('aspect-ratio: %.1f / %.1f', max(1, $this->crop_w * $this->image_w), max(1, $this->crop_h * $this->image_h));
+    }
+
+    public function innerStyle(): string
+    {
+        $w = max(.01, $this->crop_w);
+        $h = max(.01, $this->crop_h);
+
+        return sprintf('position:absolute;width:%.3f%%;left:%.3f%%;top:%.3f%%', 100 / $w, -100 * $this->crop_x / $w, -100 * $this->crop_y / $h);
+    }
 
     public function sections(): HasMany
     {

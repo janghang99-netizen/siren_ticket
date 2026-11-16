@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SeatMap;
+use App\Models\Venue;
 use App\Services\Audit;
 use App\Services\SeatMap\SeatMapReader;
 use App\Services\SeatMap\SeatMapReadFailed;
@@ -21,33 +22,41 @@ class SeatMapController extends Controller
 {
     public function __construct(private readonly SeatMapService $maps, private readonly SeatMapReader $reader) {}
 
-    public function index(): View
+    /** 좌석표 목록은 공연장 화면에서 공연장별로 본다 */
+    public function index(): RedirectResponse
     {
-        return view('admin.seat-maps', [
-            'maps' => SeatMap::with('sections')->withCount('events')->latest()->get(),
+        return redirect()->route('admin.venues.index');
+    }
+
+    public function create(Request $request): View
+    {
+        return view('admin.seat-map-create', [
+            'aiReady' => $this->reader->ready(),
+            'venues' => Venue::orderBy('name')->get(),
+            'venueId' => (int) $request->query('venue'),
         ]);
     }
 
-    public function create(): View
-    {
-        return view('admin.seat-map-create', ['aiReady' => $this->reader->ready()]);
-    }
+    private const IMAGE_RULES = ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'];
+
+    private const IMAGE_MESSAGES = [
+        'image.required' => '좌석 배치도 이미지를 올려 주세요.', 'image.max' => '이미지는 10MB 까지 올릴 수 있어요.',
+        'image.mimes' => 'JPG·PNG·WEBP 이미지만 올릴 수 있어요.',
+    ];
 
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
+            'venue_id' => ['required', 'integer', 'exists:venues,id'],
             'name' => ['required', 'string', 'max:80'],
-            'venue' => ['required', 'string', 'max:80'],
-            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'image' => self::IMAGE_RULES,
             'use_ai' => ['nullable', 'boolean'],
-        ], [
-            'image.required' => '좌석 배치도 이미지를 올려 주세요.', 'image.max' => '이미지는 10MB 까지 올릴 수 있어요.',
-            'image.mimes' => 'JPG·PNG·WEBP 이미지만 올릴 수 있어요.',
-        ]);
+        ], self::IMAGE_MESSAGES + ['venue_id.required' => '공연장을 골라 주세요.']);
+        $venue = Venue::findOrFail($data['venue_id']);
 
         $img = $this->maps->storeImage($request->file('image'));
         $map = SeatMap::create([
-            'name' => $data['name'], 'venue' => $data['venue'], 'image_path' => $img['path'],
+            'venue_id' => $venue->id, 'name' => $data['name'], 'venue' => $venue->name, 'image_path' => $img['path'],
             'image_w' => $img['w'], 'image_h' => $img['h'],
             'tiers' => [['key' => 't1', 'name' => '일반', 'color' => '#6C4BFF', 'price' => 0, 'seats' => 0]],
         ]);
@@ -64,8 +73,9 @@ class SeatMapController extends Controller
     public function edit(SeatMap $seatMap): View
     {
         return view('admin.seat-map-edit', [
-            'map' => $seatMap->load('sections')->loadCount('events'),
+            'map' => $seatMap->load(['sections', 'venueRecord'])->loadCount('events'),
             'aiReady' => $this->reader->ready(),
+            'venues' => Venue::orderBy('name')->get(),
         ]);
     }
 
@@ -73,19 +83,54 @@ class SeatMapController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
-            'venue' => ['required', 'string', 'max:80'],
+            'venue_id' => ['required', 'integer', 'exists:venues,id'],
             'payload' => ['required', 'string', 'max:500000'],
         ]);
         $clean = $this->maps->normalize(json_decode($data['payload'], true));
+        $venue = Venue::findOrFail($data['venue_id']);
 
-        $seatMap->update(['name' => $data['name'], 'venue' => $data['venue']]);
-        $this->maps->sync($seatMap, $clean['tiers'], $clean['sections']);
+        $seatMap->update(['name' => $data['name'], 'venue_id' => $venue->id, 'venue' => $venue->name]);
+        $this->maps->sync($seatMap, $clean['tiers'], $clean['sections'], $clean['crop']);
         Audit::log('seat_map.updated', $seatMap, "좌석표 저장 · {$seatMap->name} · 구역 ".count($clean['sections']).'개');
 
         $seats = array_sum(array_map(fn ($s) => $s['rows'] * $s['seats_per_row'], $clean['sections']));
 
         return redirect()->route('admin.seat-maps.edit', $seatMap)
             ->with('status', '좌석표를 저장했어요. 구역 '.count($clean['sections']).'개 · 좌석 '.number_format($seats).'석');
+    }
+
+    /**
+     * 배치도 이미지 다시 올리기 (기획사가 새 배치도를 준 경우). AI 를 쓸 수 있으면 등급·구역·보여줄 영역을 새로 만든다.
+     * 이미 만든 공연은 공연에 복사한 구역을 쓰므로 영향이 없다 (공연 화면 이미지는 예전 파일을 계속 쓴다).
+     */
+    public function replaceImage(Request $request, SeatMap $seatMap): RedirectResponse
+    {
+        $request->validate(['image' => self::IMAGE_RULES, 'use_ai' => ['nullable', 'boolean']], self::IMAGE_MESSAGES);
+        $img = $this->maps->storeImage($request->file('image'));
+        $fresh = ['image_path' => $img['path'], 'image_w' => $img['w'], 'image_h' => $img['h'],
+            'crop_x' => 0, 'crop_y' => 0, 'crop_w' => 1, 'crop_h' => 1, 'read_by' => 'manual'];
+
+        // 공연이 이미 쓰는 좌석표는 그대로 두고(팬 화면 배치도·구역 위치 유지) 새 좌석표로 만든다
+        $inUse = $seatMap->events()->exists();
+        if ($inUse) {
+            $target = $seatMap->replicate(['image_path', 'image_w', 'image_h'])->fill($fresh + ['name' => mb_substr($seatMap->name.' (새 배치도)', 0, 80)]);
+            $target->save();
+            $this->maps->sync($target, $seatMap->tiers, $seatMap->sections->map->only(['code', 'tier', 'x', 'y', 'w', 'h', 'rows', 'seats_per_row'])->all());
+        } else {
+            Storage::disk('local')->delete($seatMap->image_path);
+            $seatMap->update($fresh);
+            $target = $seatMap;
+        }
+        Audit::log('seat_map.image', $target, "좌석표 이미지 교체 · {$target->name}");
+
+        $status = $request->boolean('use_ai') && $this->reader->ready()
+            ? $this->readWithAi($target)
+            : '새 배치도를 올렸어요. 구역 박스 위치와 보여줄 영역을 새 이미지에 맞춰 주세요.';
+        if ($inUse) {
+            $status = '이 좌석표를 쓰는 공연이 있어 새 좌석표로 만들었어요. '.$status;
+        }
+
+        return redirect()->route('admin.seat-maps.edit', $target)->with('status', $status);
     }
 
     /** AI 로 다시 읽기 — 지금 구역을 판독 결과로 바꾼다 */
@@ -128,7 +173,7 @@ class SeatMapController extends Controller
             return 'AI 로 읽지 못했어요: '.$e->getMessage();
         }
         $draft = $this->maps->draft($read);
-        $this->maps->sync($map, $draft['tiers'], $draft['sections']);
+        $this->maps->sync($map, $draft['tiers'], $draft['sections'], $draft['crop']);
         $map->update(['read_by' => 'ai']);
         Audit::log('seat_map.read', $map, '좌석표 AI 판독 · 등급 '.count($draft['tiers']).'개 · 구역 '.count($draft['sections']).'개');
 

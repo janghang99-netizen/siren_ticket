@@ -40,12 +40,14 @@ class AdminController extends Controller
 
     public function eventCreate(): View
     {
-        return view('admin.event-form', ['event' => null, 'seatMaps' => \App\Models\SeatMap::with('sections')->latest()->get()]);
+        return view('admin.event-form', ['event' => null, 'seatMaps' => \App\Models\SeatMap::with('sections')->latest()->get(),
+            'venues' => \App\Models\Venue::orderBy('name')->get()]);
     }
 
     public function eventEdit(Event $event): View
     {
-        return view('admin.event-form', ['event' => $event->load(['sections', 'seatMap']), 'seatMaps' => collect()]);
+        return view('admin.event-form', ['event' => $event->load(['sections', 'seatMap']), 'seatMaps' => collect(),
+            'venues' => \App\Models\Venue::orderBy('name')->get()]);
     }
 
     public function eventStore(Request $request, VenueSetup $venue, \App\Services\SeatMap\SeatMapService $maps): RedirectResponse
@@ -58,6 +60,9 @@ class AdminController extends Controller
             'tiers.*.capacity' => ['required_without:seat_map_id', 'integer', 'min:1', 'max:5000'],
         ]);
         $seatMap = filled($data['seat_map_id'] ?? null) ? \App\Models\SeatMap::find($data['seat_map_id']) : null;
+        if ($seatMap?->venue_id) {
+            $data['venue_id'] = $seatMap->venue_id;   // 좌석표의 공연장으로 맞춘다
+        }
 
         $event = DB::transaction(function () use ($data, $venue, $maps, $seatMap) {
             $event = Event::create($this->eventFields($data) + [
@@ -334,7 +339,8 @@ class AdminController extends Controller
         return $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'artist' => ['required', 'string', 'max:60'],
-            'venue' => ['required', 'string', 'max:60'],
+            'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
+            'venue' => ['required_without:venue_id', 'nullable', 'string', 'max:60'],   // 목록에 없는 공연장은 이름으로 (자동 추가)
             'starts_at' => ['required', 'date'],
             'doors_at' => ['nullable', 'date', 'before:starts_at'],
             'sales_open_at' => ['nullable', 'date', 'before:starts_at'],
@@ -342,7 +348,7 @@ class AdminController extends Controller
             'max_per_buyer' => ['required', 'integer', 'min:1', 'max:10'],
         ], [
             'name.required' => '공연명을 적어 주세요.', 'artist.required' => '아티스트를 적어 주세요.',
-            'starts_at.required' => '공연 시작 일시를 골라 주세요.',
+            'starts_at.required' => '공연 시작 일시를 골라 주세요.', 'venue.required_without' => '공연장을 골라 주세요.',
             'doors_at.before' => '입장 시각은 공연 시작보다 빨라야 해요.',
             'sales_open_at.before' => '예매 오픈은 공연 시작보다 빨라야 해요.',
         ]);
@@ -350,7 +356,13 @@ class AdminController extends Controller
 
     private function eventFields(array $d): array
     {
-        return collect($d)->only(['name', 'artist', 'venue', 'starts_at', 'doors_at', 'sales_open_at', 'theme_color', 'max_per_buyer'])->all();
+        // 공연장: 목록에서 고른 공연장(이름은 표시용으로 같이 저장), 이름만 오면 목록에 추가
+        $venue = filled($d['venue_id'] ?? null)
+            ? \App\Models\Venue::findOrFail($d['venue_id'])
+            : \App\Models\Venue::firstOrCreate(['name' => trim((string) $d['venue'])]);
+
+        return collect($d)->only(['name', 'artist', 'starts_at', 'doors_at', 'sales_open_at', 'theme_color', 'max_per_buyer'])->all()
+            + ['venue' => $venue->name, 'venue_id' => $venue->id];
     }
 
     private function validateVendor(Request $request): array

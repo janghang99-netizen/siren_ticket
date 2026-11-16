@@ -36,6 +36,10 @@ class ClaudeSeatMapReader implements SeatMapReader
     - x, y, w, h: the block's bounding box as fractions of the whole image width and height (0 to 1);
       x, y is the top-left corner. Be as precise as you can.
     Do not include the stage, B-stage, FOH/mixing booths, gates, aisles, the legend, summary boxes or titles.
+
+    map_area — the bounding box (fractions 0 to 1, x, y = top-left) of the venue drawing itself: the stage, every seat
+    block and the gate/zone labels around it. Leave out the title, the legend/price list, summary or revenue boxes
+    and any other panels, so that cropping the image to map_area shows only the venue.
     TXT;
 
     private const SCHEMA = [
@@ -60,8 +64,14 @@ class ClaudeSeatMapReader implements SeatMapReader
                 'required' => ['code', 'tier', 'x', 'y', 'w', 'h'],
                 'additionalProperties' => false,
             ]],
+            'map_area' => [
+                'type' => 'object',
+                'properties' => ['x' => ['type' => 'number'], 'y' => ['type' => 'number'], 'w' => ['type' => 'number'], 'h' => ['type' => 'number']],
+                'required' => ['x', 'y', 'w', 'h'],
+                'additionalProperties' => false,
+            ],
         ],
-        'required' => ['tiers', 'sections'],
+        'required' => ['tiers', 'sections', 'map_area'],
         'additionalProperties' => false,
     ];
 
@@ -111,6 +121,6 @@ class ClaudeSeatMapReader implements SeatMapReader
             throw new SeatMapReadFailed('읽은 결과 형식이 맞지 않아요. 다시 시도하거나 직접 그려 주세요.');
         }
 
-        return ['tiers' => $out['tiers'], 'sections' => $out['sections']];
+        return ['tiers' => $out['tiers'], 'sections' => $out['sections'], 'map_area' => is_array($out['map_area'] ?? null) ? $out['map_area'] : null];
     }
 }

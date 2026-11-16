@@ -28,6 +28,12 @@ class Event extends Model
     }
 
     /** 좌석표(이미지 배치도)를 쓰는 공연이면 그 좌석표. 없으면 기본 아레나 보울 좌석도. */
+    /** 공연장 목록의 공연장 (venue 글자 칼럼은 화면 표시용 이름) */
+    public function venueRecord(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Venue::class, 'venue_id');
+    }
+
     public function seatMap(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(SeatMap::class);

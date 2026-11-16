@@ -198,6 +198,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 Route::post('/admin/openmarket_export.php', [\App\Http\Controllers\EisController::class, 'orders'])
     ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)->middleware('throttle:60,1');
 
+// ── 슈퍼어드민: 공연장 목록 ──
+Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:super-admin'])
+    ->controller(\App\Http\Controllers\VenueController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/', 'store')->name('store');
+        Route::get('/{venue}', 'show')->whereNumber('venue')->name('show');
+        Route::put('/{venue}', 'update')->whereNumber('venue')->name('update');
+        Route::delete('/{venue}', 'destroy')->whereNumber('venue')->name('destroy');
+    });
+
 // ── 슈퍼어드민: 공연장 좌석표 (배치도 이미지 → 등급·구역·좌석) ──
 Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 'can:super-admin'])
     ->controller(\App\Http\Controllers\SeatMapController::class)->group(function () {
@@ -206,6 +216,7 @@ Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 
         Route::post('/', 'store')->name('store');
         Route::get('/{seatMap}', 'edit')->whereNumber('seatMap')->name('edit');
         Route::put('/{seatMap}', 'update')->whereNumber('seatMap')->name('update');
+        Route::post('/{seatMap}/image', 'replaceImage')->whereNumber('seatMap')->name('image');
         Route::post('/{seatMap}/read', 'reread')->whereNumber('seatMap')->middleware('throttle:10,1')->name('read');
         Route::delete('/{seatMap}', 'destroy')->whereNumber('seatMap')->name('destroy');
     });

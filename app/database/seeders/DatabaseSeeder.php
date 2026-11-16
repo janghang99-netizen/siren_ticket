@@ -34,9 +34,10 @@ class DatabaseSeeder extends Seeder
             ['asteria-2026-seoul-d2', 'ASTERIA WORLD TOUR 〈ORBIT〉 IN SEOUL · DAY 2', '아스테리아', 4, 17, '#6C4BFF', 4],
             ['nova9-fanmeeting', 'NOVA9 FANMEETING 〈SIGNAL〉', 'NOVA9', 10, 17, '#FF4F8B', 2],
         ];
+        $arena = \App\Models\Venue::create(['name' => '서울아레나', 'address' => '서울 도봉구 창동 (데모)', 'note' => '기본 아레나 보울 좌석도']);
         foreach ($schedule as $i => [$slug, $name, $artist, $days, $hour, $color, $max]) {
             $event = Event::create([
-                'slug' => $slug, 'name' => $name, 'artist' => $artist, 'venue' => '서울아레나',
+                'slug' => $slug, 'name' => $name, 'artist' => $artist, 'venue' => $arena->name, 'venue_id' => $arena->id,
                 'starts_at' => now()->addDays($days)->setTime($hour, 0), 'doors_at' => now()->addDays($days)->setTime($hour - 1, 30),
                 'sales_open_at' => now()->subDay(), 'theme_color' => $color, 'max_per_buyer' => $max,
             ]);

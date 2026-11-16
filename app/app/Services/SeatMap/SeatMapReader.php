@@ -13,8 +13,10 @@ interface SeatMapReader
      * @param  string  $image  이미지 바이트
      * @return array{
      *     tiers: list<array{name:string,color:string,price:int,seats:int}>,
-     *     sections: list<array{code:string,tier:int,x:float,y:float,w:float,h:float}>
-     * } sections.tier 는 tiers 의 0부터 시작하는 순번, x·y·w·h 는 이미지 너비·높이 대비 0~1
+     *     sections: list<array{code:string,tier:int,x:float,y:float,w:float,h:float}>,
+     *     map_area?: array{x:float,y:float,w:float,h:float}|null
+     * } sections.tier 는 tiers 의 0부터 시작하는 순번, x·y·w·h 는 이미지 너비·높이 대비 0~1.
+     *   map_area 는 배치도 그림 영역 (범례·요약표·제목을 뺀 부분) — 팬에게는 이 영역만 보여 준다
      *
      * @throws SeatMapReadFailed
      */

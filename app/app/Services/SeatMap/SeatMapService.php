@@ -84,7 +84,20 @@ class SeatMapService
                 'rows' => 1, 'seats_per_row' => self::DEFAULT_PER_ROW];
         }
 
-        return ['tiers' => $tiers, 'sections' => $this->distribute($tiers, $sections)];
+        $area = $read['map_area'] ?? null;
+        $crop = is_array($area) ? $this->crop($area) : self::FULL;
+
+        return ['tiers' => $tiers, 'sections' => $this->distribute($tiers, $sections), 'crop' => $crop];
+    }
+
+    public const FULL = ['x' => 0.0, 'y' => 0.0, 'w' => 1.0, 'h' => 1.0];
+
+    /** 보여줄 영역 정리 — 너무 작으면(10% 미만) 잘못 읽은 것으로 보고 전체를 보여 준다 */
+    public function crop(array $c): array
+    {
+        [$x, $y, $w, $h] = $this->box((float) ($c['x'] ?? 0), (float) ($c['y'] ?? 0), (float) ($c['w'] ?? 1), (float) ($c['h'] ?? 1));
+
+        return ($w < .1 || $h < .1) ? self::FULL : ['x' => $x, 'y' => $y, 'w' => $w, 'h' => $h];
     }
 
     /**
@@ -166,14 +179,15 @@ class SeatMapService
             $sections[] = ['code' => $code, 'tier' => $s['tier'], 'x' => $x, 'y' => $y, 'w' => $w, 'h' => $h, 'rows' => $rows, 'seats_per_row' => $per];
         }
 
-        return ['tiers' => array_values($tiers), 'sections' => $sections];
+        return ['tiers' => array_values($tiers), 'sections' => $sections,
+            'crop' => is_array($payload['crop'] ?? null) ? $this->crop($payload['crop']) : self::FULL];
     }
 
-    /** 등급·구역 저장 (구역은 통째로 바꾼다 — 이미 만든 공연에는 영향 없음) */
-    public function sync(SeatMap $map, array $tiers, array $sections): void
+    /** 등급·구역·보여줄 영역 저장 (구역은 통째로 바꾼다 — 이미 만든 공연에는 영향 없음) */
+    public function sync(SeatMap $map, array $tiers, array $sections, ?array $crop = null): void
     {
-        DB::transaction(function () use ($map, $tiers, $sections) {
-            $map->update(['tiers' => $tiers]);
+        DB::transaction(function () use ($map, $tiers, $sections, $crop) {
+            $map->update(['tiers' => $tiers] + ($crop ? ['crop_x' => $crop['x'], 'crop_y' => $crop['y'], 'crop_w' => $crop['w'], 'crop_h' => $crop['h']] : []));
             $map->sections()->delete();
             foreach ($sections as $i => $s) {
                 $map->sections()->create($s + ['sort' => $i]);

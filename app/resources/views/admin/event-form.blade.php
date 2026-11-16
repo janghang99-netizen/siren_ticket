@@ -6,7 +6,8 @@
 @php($dt = fn ($field, $fallback = null) => old($field, $e?->{$field}?->format('Y-m-d\TH:i') ?? $fallback))
 
 @section('content')
-<form method="POST" action="{{ $e ? route('admin.events.update', $e->id) : route('admin.events.store') }}" class="grid max-w-5xl gap-6 xl:grid-cols-[1fr_360px]">
+<form method="POST" action="{{ $e ? route('admin.events.update', $e->id) : route('admin.events.store') }}" class="grid max-w-5xl gap-6 xl:grid-cols-[1fr_360px]"
+      x-data="{ venue: @js((string) old('venue_id', $e?->venue_id ?? '')), map: @js((string) old('seat_map_id', '')) }">
     @csrf
     @if ($e) @method('PUT') @endif
 
@@ -20,8 +21,15 @@
                     @error('artist')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="venue" class="label">공연장</label>
-                    <input id="venue" name="venue" class="field" value="{{ old('venue', $e?->venue ?? '서울아레나') }}" required>
+                    <label for="venue_id" class="label">공연장 <a href="{{ route('admin.venues.index') }}" class="font-normal text-stick">공연장 목록</a></label>
+                    <select id="venue_id" name="venue_id" class="field" x-model="venue" @change="map = ''" required>
+                        <option value="">공연장을 고르세요</option>
+                        @foreach ($venues as $v)
+                            <option value="{{ $v->id }}">{{ $v->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('venue_id')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+                    @error('venue')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
                 </div>
             </div>
             <div>
@@ -61,7 +69,7 @@
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
             @if (! $e)
                 {{-- 좌석 배치: 공연장 좌석표(배치도 이미지) 또는 기본 아레나 보울 --}}
-                <div x-data="{ map: @js((string) old('seat_map_id', '')) }">
+                <div>
                     <h2 class="font-bold">좌석 배치</h2>
                     <p class="mt-1 text-sm text-mist">공연장 좌석표를 고르면 그 배치도의 구역·등급·좌석으로 예매가 열리고, 팬이 좌석을 직접 골라요.
                         <a href="{{ route('admin.seat-maps.index') }}" class="row-link text-ink">좌석표 관리</a></p>
@@ -71,13 +79,15 @@
                             <span><b>기본 아레나 보울</b><span class="block text-xs opacity-70">플로어·1층·2층 17구역 · 좌석 자동 배정</span></span>
                         </label>
                         @foreach ($seatMaps as $m)
-                            <label class="flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition" :class="map === '{{ $m->id }}' ? 'bg-ink text-white ring-ink' : 'bg-paper ring-transparent'">
+                            <label x-show="venue === '{{ $m->venue_id }}'" class="flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition" :class="map === '{{ $m->id }}' ? 'bg-ink text-white ring-ink' : 'bg-paper ring-transparent'">
                                 <input type="radio" name="seat_map_id" value="{{ $m->id }}" x-model="map" class="mt-1" @disabled($m->sections->isEmpty())>
                                 <span class="min-w-0"><b class="block truncate">{{ $m->name }}</b>
                                     <span class="block text-xs opacity-70">{{ $m->venue }} · 구역 {{ $m->sections->count() }}개 · {{ number_format($m->totalSeats()) }}석{{ $m->sections->isEmpty() ? ' (구역 없음)' : '' }}</span></span>
                             </label>
                         @endforeach
                     </div>
+                    <p x-show="venue && !@js($seatMaps->pluck('venue_id')->map(fn ($id) => (string) $id)->values()).includes(venue)" class="mt-2 text-xs text-mist">
+                        이 공연장에는 아직 좌석표가 없어요. <a :href="@js(route('admin.seat-maps.create')) + '?venue=' + venue" class="row-link text-ink">좌석 배치도 올리기</a></p>
                     @error('seat_map_id')<p class="mt-2 text-sm text-signal">{{ $message }}</p>@enderror
                     <p x-show="map !== ''" x-cloak class="mt-3 rounded-2xl bg-paper px-4 py-3 text-xs text-mist">등급별 가격·좌석 수는 좌석표에서 가져와요. 등록 후 구역별 가격은 여기서 바꿀 수 있어요.</p>
                 <div x-show="map === ''" class="mt-6">
