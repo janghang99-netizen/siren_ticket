@@ -16,6 +16,12 @@
                     <p class="font-bold">아직 좌석표가 없어요</p>
                     <p class="mt-1 text-sm text-mist">기획사가 준 좌석 배치도 이미지를 올리면 등급·구역·좌석 목록이 만들어져요.</p>
                     <a href="{{ route('admin.seat-maps.create', ['venue' => $venue->id]) }}" class="btn-ink mt-4">좌석 배치도 올리기</a>
+                    <form method="POST" action="{{ route('admin.venues.temp-seat-map', $venue) }}" class="mx-auto mt-4 flex max-w-sm items-center justify-center gap-2 text-sm">
+                        @csrf
+                        <span class="text-mist">배치도가 없으면</span>
+                        <input name="seats" type="number" min="1" value="{{ $venue->seats }}" class="field num !w-28 !py-2 text-sm" aria-label="객석 수" required>
+                        <button class="btn-ghost !py-2 text-sm">석 임시 좌석표</button>
+                    </form>
                 </div>
             @else
                 <ul class="grid gap-4 md:grid-cols-2">
@@ -32,6 +38,9 @@
                                     <span class="chip">구역 <b class="num ml-1">{{ $m->sections->count() }}</b></span>
                                     <span class="chip">좌석 <b class="num ml-1">{{ number_format($m->totalSeats()) }}</b></span>
                                     <span class="chip">공연 <b class="num ml-1">{{ $m->events_count }}</b></span>
+                                    @if ($m->read_by === 'temp')<span class="chip">임시</span>@endif
+                                    @php($gap = app(\App\Services\SeatMap\SeatMapService::class)->seatGapNote($m->setRelation('venueRecord', $venue)))
+                                    @if ($gap)<span class="chip !bg-signal/10 !text-signal" title="{{ $gap }}">객석 수 확인</span>@endif
                                     @if ($m->read_by === 'ai')<span class="chip">AI 판독</span>@endif
                                 </p>
                                 <div class="mt-3 flex flex-wrap gap-1">

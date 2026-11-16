@@ -67,7 +67,21 @@ class VenueController extends Controller
         $venue = Venue::create($data);
         Audit::log('venue.created', $venue, "공연장 등록 · {$venue->name}");
 
-        return redirect()->route('admin.venues.show', $venue)->with('status', "‘{$venue->name}’ 공연장을 만들었어요. 좌석 배치도 이미지를 올려 좌석표를 만드세요.");
+        // 등록하면 바로 좌석 배치도 올리기로 (배치도가 아직 없으면 그 화면에서 임시 좌석표를 만들 수 있다)
+        return redirect()->route('admin.seat-maps.create', ['venue' => $venue->id])
+            ->with('status', "‘{$venue->name}’ 공연장을 만들었어요. 이어서 기획사 좌석 배치도를 올려 주세요.");
+    }
+
+    /** 배치도가 아직 없을 때: 객석 수만큼 '일반석' 임시 좌석표 (구역 여러 개, 좌석 자동 배치) */
+    public function tempSeatMap(Request $request, Venue $venue, \App\Services\SeatMap\SeatMapService $maps): RedirectResponse
+    {
+        $data = $request->validate(['seats' => ['required', 'integer', 'min:1', 'max:'.\App\Services\SeatMap\SeatMapService::TEMP_MAX_SEATS]],
+            ['seats.required' => '객석 수를 적어 주세요.', 'seats.max' => '임시 좌석표는 '.number_format(\App\Services\SeatMap\SeatMapService::TEMP_MAX_SEATS).'석까지 만들 수 있어요.']);
+        $map = $maps->makeTemporary($venue, (int) $data['seats']);
+        Audit::log('seat_map.temp', $map, "임시 좌석표 · {$venue->name} · {$data['seats']}석");
+
+        return redirect()->route('admin.seat-maps.edit', $map)
+            ->with('status', '임시 좌석표를 만들었어요 (구역 '.$map->sections()->count().'개 · '.number_format($map->fresh()->load('sections')->totalSeats()).'석). 등급 가격을 정하고 저장하세요. 배치도를 받으면 이미지를 바꿔 올리면 돼요.');
     }
 
     public function show(Venue $venue): View

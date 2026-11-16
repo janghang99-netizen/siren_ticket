@@ -9,7 +9,7 @@
         'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row,
     ])->values(),
     'crop' => ['x' => $map->crop_x, 'y' => $map->crop_y, 'w' => $map->crop_w, 'h' => $map->crop_h],
-])
+] + ['venueSeats' => (int) ($map->venueRecord?->seats ?? 0)])
 
 @section('content')
 <script>
@@ -30,6 +30,8 @@
         dirty: false,
         get current() { return this.sel === null ? null : this.sections[this.sel] },
         get totalSeats() { return this.sections.reduce((n, s) => n + s.rows * s.seats_per_row, 0) },
+        venueSeats: initial.venueSeats || 0,   // 공연장(KOPIS) 객석 수
+        get seatGap() { return this.venueSeats && this.totalSeats ? Math.round(Math.abs(this.totalSeats - this.venueSeats) / this.venueSeats * 100) : 0 },
         get filtered() {
             const q = this.q.trim().toUpperCase();
             return this.sections.map((s, i) => ({ s, i })).filter(({ s }) => !q || s.code.toUpperCase().includes(q));
@@ -200,6 +202,11 @@
                 <div class="rounded-2xl bg-paper px-3 py-2"><p class="text-xs text-mist">구역</p><p class="num text-xl font-black" x-text="sections.length"></p></div>
                 <div class="rounded-2xl bg-paper px-3 py-2"><p class="text-xs text-mist">좌석</p><p class="num text-xl font-black" x-text="won(totalSeats)"></p></div>
             </div>
+            <p x-show="venueSeats" class="text-xs" :class="seatGap > 10 ? 'rounded-2xl bg-signal/10 px-3 py-2 font-semibold text-signal' : 'text-mist'">
+                공연장 객석 <span class="num" x-text="won(venueSeats)"></span>석
+                <span x-show="seatGap > 10" x-text="'— 좌석표와 ' + seatGap + '% 달라요. 열·좌석 수를 확인해 주세요 (무대 배치에 따라 다를 수 있어요)'"></span>
+                <span x-show="seatGap <= 10">와 비슷해요</span>
+            </p>
         </section>
 
         <section class="rounded-3xl bg-white p-5 ring-1 ring-ink/5">

@@ -255,4 +255,34 @@ class SeatMapTest extends TestCase
         $this->assertSame([1, 2], $t->pluck('seat_no')->all());
         $this->getJson(route('concerts.seats', [$event, $bowl->id]))->assertNotFound();
     }
+
+    /** 공연장 등록 → 바로 배치도 올리기, 배치도가 없으면 객석 수만큼 임시 좌석표, 좌석 수 차이 경고 */
+    public function test_venue_flow_temp_seat_map_and_seat_gap_warning(): void
+    {
+        $this->actingAs($this->admin)->post(route('admin.venues.store'), ['name' => '체조경기장', 'seats' => 15000])
+            ->assertRedirect(route('admin.seat-maps.create', ['venue' => \App\Models\Venue::where('name', '체조경기장')->value('id')]));
+        $dome = \App\Models\Venue::where('name', '체조경기장')->firstOrFail();
+        $this->get(route('admin.seat-maps.create', ['venue' => $dome->id]))->assertOk()->assertSee('임시 좌석표 만들기');
+
+        $this->post(route('admin.venues.temp-seat-map', $dome), ['seats' => 15000])->assertRedirect();
+        $map = SeatMap::where('venue_id', $dome->id)->with('sections')->firstOrFail();
+        $this->assertSame('temp', $map->read_by);
+        $this->assertCount(8, $map->sections);                                   // 2,000석 이하 구역 8개
+        $this->assertSame(15000, $map->totalSeats());
+        $this->assertLessThanOrEqual(2000, $map->sections->max(fn ($s) => $s->capacity()));
+        Storage::disk('local')->assertExists($map->image_path);
+        $this->assertNull(app(\App\Services\SeatMap\SeatMapService::class)->seatGapNote($map));
+
+        // 바로 공연 등록에 쓸 수 있다
+        $this->post(route('admin.events.store'), [
+            'artist' => '그룹', 'venue_id' => $dome->id, 'name' => '투어', 'starts_at' => now()->addMonth()->format('Y-m-d\TH:i'),
+            'theme_color' => '#6C4BFF', 'max_per_buyer' => 4, 'seat_map_id' => $map->id,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(15000, (int) \App\Models\Event::latest('id')->first()->sections()->sum('capacity'));
+
+        // 좌석 수를 크게 바꾸면 저장할 때 경고
+        $payload = json_encode(['tiers' => $map->tiers, 'sections' => [['code' => 'A1', 'tier' => 't1', 'x' => .1, 'y' => .2, 'w' => .2, 'h' => .2, 'rows' => 10, 'seats_per_row' => 20]]]);
+        $this->put(route('admin.seat-maps.update', $map), ['name' => $map->name, 'venue_id' => $dome->id, 'payload' => $payload])
+            ->assertSessionHas('status', fn ($s) => str_contains($s, '공연장 객석 15,000석과'));
+    }
 }

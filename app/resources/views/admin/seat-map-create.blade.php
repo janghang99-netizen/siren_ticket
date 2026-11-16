@@ -57,4 +57,30 @@
         <a href="{{ $venueId ? route('admin.venues.show', $venueId) : route('admin.venues.index') }}" class="btn-ghost w-full">돌아가기</a>
     </aside>
 </form>
+
+{{-- 배치도가 아직 없을 때: 객석 수만큼 임시 좌석표 --}}
+<section class="mt-6 max-w-5xl rounded-3xl bg-white p-5 ring-1 ring-ink/5"
+         x-data="{ venue: @js((string) old('venue_id', $venueId ?: '')), seatsBy: @js($venues->mapWithKeys(fn ($v) => [$v->id => (int) $v->seats])), seats: '' }"
+         x-init="seats = seatsBy[venue] || ''">
+    <h2 class="font-bold">기획사 배치도가 아직 없나요?</h2>
+    <p class="mt-1 text-sm text-mist">공연장 객석 수만큼 <b>‘일반석’ 임시 좌석표</b>를 만들어 바로 공연을 등록할 수 있어요. 2,000석씩 구역으로 나눠 좌석이 자동으로 배치되고, 배치도를 받으면 이미지를 바꿔 올리면 돼요.</p>
+    <form method="POST" :action="@js(route('admin.venues.temp-seat-map', 0)).replace('/0/', '/' + venue + '/')" class="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
+        @csrf
+        <div>
+            <label for="temp-venue" class="label">공연장</label>
+            <select id="temp-venue" x-model="venue" @change="seats = seatsBy[venue] || ''" class="field !py-2.5" required>
+                <option value="">공연장을 고르세요</option>
+                @foreach ($venues as $v)
+                    <option value="{{ $v->id }}">{{ $v->name }}{{ $v->seats ? ' · '.number_format($v->seats).'석' : '' }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label for="temp-seats" class="label">객석 수</label>
+            <input id="temp-seats" name="seats" type="number" min="1" max="{{ \App\Services\SeatMap\SeatMapService::TEMP_MAX_SEATS }}" x-model="seats" class="field num !py-2.5" required>
+        </div>
+        <button class="btn-ghost !py-2.5" :disabled="!venue || !seats">임시 좌석표 만들기</button>
+    </form>
+    @error('seats')<p class="mt-2 text-sm text-signal">{{ $message }}</p>@enderror
+</section>
 @endsection

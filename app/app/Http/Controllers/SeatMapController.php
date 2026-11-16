@@ -95,8 +95,10 @@ class SeatMapController extends Controller
 
         $seats = array_sum(array_map(fn ($s) => $s['rows'] * $s['seats_per_row'], $clean['sections']));
 
+        $gap = $this->maps->seatGapNote($seatMap->fresh());
+
         return redirect()->route('admin.seat-maps.edit', $seatMap)
-            ->with('status', '좌석표를 저장했어요. 구역 '.count($clean['sections']).'개 · 좌석 '.number_format($seats).'석');
+            ->with('status', '좌석표를 저장했어요. 구역 '.count($clean['sections']).'개 · 좌석 '.number_format($seats).'석'.($gap ? ' — '.$gap : ''));
     }
 
     /**

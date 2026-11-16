@@ -23,6 +23,94 @@ class SeatMapService
 
     public const MAX_SECTIONS = 500;
 
+    public const TEMP_MAX_SEATS = 80000;
+
+    public const TEMP_PER_SECTION = 2000;   // 임시 좌석표 구역당 최대 좌석 (팬 화면 좌석 고르기가 무겁지 않게)
+
+    /**
+     * 배치도가 아직 없을 때 쓰는 임시 좌석표: '일반석' 한 등급, 객석 수를 2,000석 이하 구역 여러 개로 나누고
+     * 무대 + 구역 칸이 그려진 간단한 배치도 이미지를 만든다. 기획사 배치도를 받으면 이미지를 바꿔 올리면 된다.
+     */
+    public function makeTemporary(\App\Models\Venue $venue, int $seats): SeatMap
+    {
+        $seats = max(1, min(self::TEMP_MAX_SEATS, $seats));
+        $n = (int) ceil($seats / self::TEMP_PER_SECTION);
+        $cols = (int) ceil(sqrt($n * 1.6));
+        $gridRows = (int) ceil($n / $cols);
+
+        [$W, $H] = [1600, 1000];
+        [$left, $top, $right, $bottom, $gap] = [80, 190, 1520, 960, 18];
+        $bw = ($right - $left - $gap * ($cols - 1)) / $cols;
+        $bh = ($bottom - $top - $gap * ($gridRows - 1)) / $gridRows;
+
+        $sections = [];
+        $base = intdiv($seats, $n);
+        for ($i = 0; $i < $n; $i++) {
+            $per = $base + ($i < $seats % $n ? 1 : 0);
+            [$r, $c] = [intdiv($i, $cols), $i % $cols];
+            $spr = min(25, $per);
+            $sections[] = [
+                'code' => chr(65 + $r).($c + 1), 'tier' => 't1',
+                'x' => round(($left + $c * ($bw + $gap)) / $W, 4), 'y' => round(($top + $r * ($bh + $gap)) / $H, 4),
+                'w' => round($bw / $W, 4), 'h' => round($bh / $H, 4),
+                'rows' => (int) ceil($per / $spr), 'seats_per_row' => $spr,
+            ];
+        }
+
+        $path = 'seat-maps/'.Str::random(40).'.png';
+        Storage::disk('local')->put($path, $this->drawTemporary($W, $H, $sections));
+
+        $tiers = [['key' => 't1', 'name' => '일반석', 'color' => '#6C4BFF', 'price' => 0, 'seats' => $seats]];
+        $map = SeatMap::create([
+            'venue_id' => $venue->id, 'venue' => $venue->name, 'name' => '임시 좌석표 · '.number_format($seats).'석',
+            'image_path' => $path, 'image_w' => $W, 'image_h' => $H, 'tiers' => $tiers, 'read_by' => 'temp',
+        ]);
+        $this->sync($map, $tiers, $sections);
+
+        return $map;
+    }
+
+    /** 임시 배치도 PNG — 무대와 구역 칸 (GD 가 없으면 1px 이미지) */
+    private function drawTemporary(int $W, int $H, array $sections): string
+    {
+        if (! function_exists('imagecreatetruecolor')) {
+            return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        }
+        $im = imagecreatetruecolor($W, $H);
+        $bg = imagecolorallocate($im, 23, 19, 43);
+        $stage = imagecolorallocate($im, 241, 238, 248);
+        $block = imagecolorallocate($im, 108, 75, 255);
+        $edge = imagecolorallocate($im, 160, 140, 255);
+        $ink = imagecolorallocate($im, 23, 19, 43);
+        $white = imagecolorallocate($im, 255, 255, 255);
+        imagefill($im, 0, 0, $bg);
+        imagefilledrectangle($im, (int) ($W * .3), 50, (int) ($W * .7), 130, $stage);
+        imagestring($im, 5, (int) ($W / 2) - 20, 82, 'STAGE', $ink);
+        foreach ($sections as $s) {
+            [$x, $y, $x2, $y2] = [(int) ($s['x'] * $W), (int) ($s['y'] * $H), (int) (($s['x'] + $s['w']) * $W), (int) (($s['y'] + $s['h']) * $H)];
+            imagefilledrectangle($im, $x, $y, $x2, $y2, $block);
+            imagerectangle($im, $x, $y, $x2, $y2, $edge);
+            imagestring($im, 5, (int) (($x + $x2) / 2) - 8, (int) (($y + $y2) / 2) - 8, $s['code'], $white);
+        }
+        ob_start();
+        imagepng($im);
+
+        return (string) ob_get_clean();
+    }
+
+    /** 좌석표 좌석 수가 공연장(KOPIS) 객석 수와 10% 넘게 다르면 안내 문구 */
+    public function seatGapNote(SeatMap $map): ?string
+    {
+        $venueSeats = (int) ($map->venueRecord?->seats ?? 0);
+        $total = $map->loadMissing('sections')->totalSeats();
+        if ($venueSeats <= 0 || $total <= 0 || abs($total - $venueSeats) / $venueSeats <= .1) {
+            return null;
+        }
+
+        return sprintf('좌석표 좌석 %s석이 공연장 객석 %s석과 %d%% 달라요. 열·좌석 수를 확인해 주세요. (무대 배치에 따라 다를 수 있어요)',
+            number_format($total), number_format($venueSeats), (int) round(abs($total - $venueSeats) / $venueSeats * 100));
+    }
+
     /** @return array{path:string,w:int,h:int} */
     public function storeImage(UploadedFile $file): array
     {

@@ -207,6 +207,7 @@ Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:s
         Route::get('/catalog/{catalog}', 'catalogShow')->whereNumber('catalog')->middleware('throttle:60,1')->name('catalog.show');
         Route::get('/{venue}', 'show')->whereNumber('venue')->name('show');
         Route::put('/{venue}', 'update')->whereNumber('venue')->name('update');
+        Route::post('/{venue}/temp-seat-map', 'tempSeatMap')->whereNumber('venue')->name('temp-seat-map');
         Route::delete('/{venue}', 'destroy')->whereNumber('venue')->name('destroy');
     });
 
