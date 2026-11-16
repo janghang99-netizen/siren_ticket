@@ -50,6 +50,18 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/display/{store}/data', 'displayData')->name('display.data');
 });
 
+// ── 1:1 문의 (원본 happy_inquiry) — 회원 또는 휴대폰 인증 고객 ──
+Route::controller(\App\Http\Controllers\InquiryController::class)->group(function () {
+    Route::get('/inquiries', 'index')->name('inquiries.index');
+    Route::post('/inquiries', 'store')->middleware('throttle:5,1')->name('inquiries.store');
+    Route::get('/inquiries/{inquiry}', 'show')->whereNumber('inquiry')->name('inquiries.show');
+});
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(\App\Http\Controllers\InquiryController::class)->group(function () {
+    Route::get('/inquiries', 'adminIndex')->name('inquiries.index');
+    Route::get('/inquiries/{inquiry}', 'adminShow')->whereNumber('inquiry')->name('inquiries.show');
+    Route::put('/inquiries/{inquiry}/answer', 'answer')->whereNumber('inquiry')->name('inquiries.answer');
+});
+
 // ── 팬 회원: 가입 · 로그인 · 계정 보안 (관리 로그인과 별개) ──
 Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\MemberController::class)->group(function () {
     Route::middleware('guest:member')->group(function () {

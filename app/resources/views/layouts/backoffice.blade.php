@@ -20,6 +20,7 @@
             ['admin.vendors.index', '입점업체', 'admin.vendors.*'],
             ['admin.stores.index', '매장', 'admin.stores.*'],
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],
+            ['admin.inquiries.index', '1:1 문의', 'admin.inquiries.*'],
             ['admin.settlements.index', '정산', 'admin.settlements.*'],
             ['admin.coupons.index', '쿠폰·스탬프', 'admin.coupons.*'],
             ['admin.customers.index', '고객·마일리지', 'admin.customers.*'],

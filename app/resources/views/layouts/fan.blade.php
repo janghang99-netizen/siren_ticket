@@ -55,6 +55,7 @@
                 <a href="{{ route('policy', 'terms') }}">이용약관</a>
                 <a href="{{ route('policy', 'privacy') }}">개인정보 처리방침</a>
                 <a href="{{ route('policy', 'refund') }}">취소·환불 규정</a>
+                <a href="{{ route('inquiries.index') }}">1:1 문의</a>
                 <a href="{{ route('partner.apply') }}">매장 입점 신청</a>
             </nav>
             {{-- 운영사 사업자 정보 (원본 다담다 하단과 같은 항목 — 운영사 설정에서 고친다) --}}
