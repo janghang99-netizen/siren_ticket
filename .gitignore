@@ -1,0 +1,2 @@
+# docker compose 가 읽는 비밀 값 (KOPIS_API_KEY, ANTHROPIC_API_KEY 등) — 커밋하지 않는다
+.env
