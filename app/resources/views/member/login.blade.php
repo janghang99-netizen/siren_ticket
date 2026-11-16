@@ -23,6 +23,7 @@
             <a href="{{ route('member.signup') }}" class="row-link">{{ __('회원가입') }}</a>
         </div>
     </form>
+    @include('member.partials.social-buttons', ['title' => 'SNS 계정으로 로그인'])
     <p class="mt-4 text-xs leading-relaxed text-mist">{{ __('처음 쓰는 기기에서 로그인하면 휴대폰이나 이메일로 인증번호를 한 번 더 받아요. 여러 번 틀리면 계정이 잠시 잠겨요.') }}</p>
     {{-- 운영사·입점업체 계정은 팬 회원과 따로 — 관리 화면 로그인으로 --}}
     <a href="{{ route('login') }}" class="mt-4 flex items-center justify-between rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold ring-1 ring-ink/10">

@@ -153,4 +153,9 @@ class Member extends Authenticatable
     {
         return $this->hasMany(Ticket::class);
     }
+
+    public function socialAccounts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(MemberSocialAccount::class);
+    }
 }

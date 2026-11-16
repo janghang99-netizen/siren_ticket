@@ -29,11 +29,12 @@ class MemberController extends Controller
 
     public function signupForm(Request $request): View
     {
-        return view('member.signup', ['pending' => $request->session()->get('member_signup')]);
+        return view('member.signup', ['pending' => $request->session()->get('member_signup'), 'social' => $this->socialPending($request)]);
     }
 
     public function signupStart(Request $request): RedirectResponse
     {
+        $social = $this->socialPending($request);   // SNS 로 들어온 가입: 비밀번호 없이 휴대폰(이메일) 인증만
         $data = $request->validate([
             'name' => ['required', 'string', 'max:50'],
             'country' => ['required', 'in:'.implode(',', array_keys(Member::COUNTRIES))],
@@ -42,7 +43,7 @@ class MemberController extends Controller
             'phone' => ['required', 'string', 'max:25'],
             'email' => ['nullable', 'required_if:channel,email', 'email:rfc', 'max:190'],
             'channel' => ['required', 'in:sms,email'],
-            'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
+            'password' => [$social ? 'nullable' : 'required', 'confirmed', Password::min(10)->letters()->numbers()],
             'agree_terms' => ['accepted'],
             'agree_privacy' => ['accepted'],
             // 중국 번호 또는 중국 거주 회원만 필수 (중국 개인정보보호법 국외 이전 동의)
@@ -63,12 +64,17 @@ class MemberController extends Controller
             return back()->withInput()->withErrors(['phone' => '이 나라의 휴대폰 번호 형식이 아니에요.']);
         }
         $email = ! empty($data['email']) ? mb_strtolower($data['email']) : null;
-        if ($this->weakPassword($data['password'], $phone, $email)) {
+        if (! empty($data['password']) && $this->weakPassword($data['password'], $phone, $email)) {
             return back()->withInput()->withErrors(['password' => '너무 쉬운 비밀번호예요. 휴대폰 번호·이메일·흔한 단어가 들어가지 않게 해 주세요.']);
         }
-        // 이미 가입한 번호·이메일: 안내는 하되 비밀번호 재설정으로 유도
-        if (Member::where('phone', $phone)->exists() || ($email && Member::where('email', $email)->exists())) {
+        // 이미 가입한 번호·이메일: 안내는 하되 비밀번호 재설정으로 유도.
+        // SNS 가입이면: 인증받을 번호(이메일)의 기존 회원에 SNS 를 연결한다 (인증번호로 본인 확인)
+        $existing = Member::where('phone', $phone)->when($email, fn ($q) => $q->orWhere('email', $email))->first();
+        if ($existing && ! $social) {
             return back()->withInput()->withErrors(['phone' => '이미 가입한 번호 또는 이메일이에요. 로그인하거나 비밀번호를 재설정해 주세요.']);
+        }
+        if ($existing && ($data['channel'] === 'sms' ? $existing->phone !== $phone : $existing->email !== $email)) {
+            return back()->withInput()->withErrors(['phone' => '이미 다른 회원이 쓰는 번호 또는 이메일이에요. 고객센터로 문의해 주세요.']);
         }
 
         $dest = $data['channel'] === 'email' ? $email : $phone;
@@ -80,7 +86,9 @@ class MemberController extends Controller
 
         $request->session()->put('member_signup', [
             'name' => $data['name'], 'country' => $data['country'], 'residence_country' => $data['residence_country'], 'phone' => $phone, 'email' => $email,
-            'channel' => $data['channel'], 'destination' => $dest, 'password_hash' => Hash::make($data['password']),
+            'channel' => $data['channel'], 'destination' => $dest,
+            'password_hash' => Hash::make($data['password'] ?? \Illuminate\Support\Str::random(48)),   // SNS 가입: 아무도 모르는 비밀번호 (필요하면 재설정)
+            'link_member_id' => $existing?->id,
             'locale' => app()->getLocale(),
             'at' => now()->timestamp,
         ]);
@@ -102,7 +110,21 @@ class MemberController extends Controller
             return back()->withErrors(['code' => $e->getMessage()]);
         }
 
-        $member = DB::transaction(function () use ($p) {
+        $social = $this->socialPending($request);
+        if (! empty($p['link_member_id'])) {
+            // SNS → 기존 회원 연결 (인증번호로 본인 확인 끝)
+            $member = Member::findOrFail($p['link_member_id']);
+            if ($social) {
+                $this->linkSocial($member, $social);
+            }
+            $request->session()->forget(['member_signup', 'member_social']);
+            $request->session()->put('member_pending', ['id' => $member->id, 'remember' => true, 'at' => now()->timestamp]);
+            $this->auth->complete($request, $member, trustDevice: true);
+
+            return redirect()->intended(route('member.account'))->with('status', "기존 계정에 {$this->socialLabel($social)} 로그인을 연결했어요.");
+        }
+
+        $member = DB::transaction(function () use ($p, $social) {
             if (Member::where('phone', $p['phone'])->exists() || ($p['email'] && Member::where('email', $p['email'])->exists())) {
                 throw new OrderException('이미 가입한 번호 또는 이메일이에요.', 'duplicate', 409);
             }
@@ -115,10 +137,13 @@ class MemberController extends Controller
                 'customer_id' => Customer::forPhone($p['phone'])->id,   // 비회원 때 쌓인 마일리지·쿠폰이 그대로 이어진다
             ]);
             $m->forceFill(['password' => $p['password_hash'], 'password_changed_at' => now()])->save();   // 이미 해시된 값은 다시 해시하지 않는다
+            if ($social) {
+                $this->linkSocial($m, $social);
+            }
 
             return $m;
         });
-        $request->session()->forget('member_signup');
+        $request->session()->forget(['member_signup', 'member_social']);
         $request->session()->put('member_pending', ['id' => $member->id, 'remember' => false, 'at' => now()->timestamp]);
         $this->auth->complete($request, $member, trustDevice: true);
 
@@ -359,6 +384,34 @@ class MemberController extends Controller
     }
 
     /** 쉬운 비밀번호 거르기: 번호·이메일 포함, 흔한 비밀번호, 같은 문자 반복 */
+    /** 내 계정에서 SNS 연결 끊기 */
+    public function socialUnlink(Request $request, string $provider): RedirectResponse
+    {
+        $request->user('member')->socialAccounts()->where('provider', $provider)->delete();
+
+        return back()->with('status', (\App\Services\Auth\SocialAuth::PROVIDERS[$provider] ?? 'SNS').' 연결을 끊었어요.');
+    }
+
+    /** SNS 로 들어와 가입(연결)을 기다리는 중 (30분) */
+    private function socialPending(Request $request): ?array
+    {
+        $s = $request->session()->get('member_social');
+
+        return $s && $s['at'] >= now()->subMinutes(30)->timestamp ? $s : null;
+    }
+
+    private function linkSocial(Member $member, array $social): void
+    {
+        \App\Models\MemberSocialAccount::updateOrCreate(
+            ['provider' => $social['provider'], 'provider_user_id' => $social['id']],
+            ['member_id' => $member->id, 'email' => $social['email']]);
+    }
+
+    private function socialLabel(?array $social): string
+    {
+        return \App\Services\Auth\SocialAuth::PROVIDERS[$social['provider'] ?? ''] ?? 'SNS';
+    }
+
     private function weakPassword(string $password, string $phone, ?string $email): bool
     {
         $lower = mb_strtolower($password);

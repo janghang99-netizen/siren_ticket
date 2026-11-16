@@ -21,6 +21,13 @@ x-app-env: &app-env
   # 상품명 번역(Claude API) 키 — 호스트 환경 변수에서 넘겨받는다. 비어 있으면 상품명도 구글 번역이 맡는다
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   KOPIS_API_KEY: ${KOPIS_API_KEY:-}
+  # SNS 로그인 키 (루트 .env 에 넣는다 — 비어 있으면 그 SNS 버튼이 숨는다)
+  NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+  NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+  KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+  KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
 services:
   db:

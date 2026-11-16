@@ -3,7 +3,13 @@
 
 @section('content')
     <p class="eyebrow mt-2">{{ __('회원가입') }}</p>
-    <h1 class="mt-2 text-2xl font-black">{{ __('티켓 예매는 회원만 할 수 있어요') }}</h1>
+    <h1 class="mt-2 text-2xl font-black">{{ $ticketing ? __('티켓 예매는 회원만 할 수 있어요') : $site['brand_name'].' 회원가입' }}</h1>
+    @if ($social)
+        <p class="mt-3 rounded-2xl bg-stick/10 px-4 py-3 text-sm"><b>{{ \App\Services\Auth\SocialAuth::PROVIDERS[$social['provider']] ?? 'SNS' }}</b> 계정으로 가입 중이에요.
+            휴대폰 인증만 하면 끝나요. 이미 가입한 번호면 그 계정에 연결돼요.</p>
+    @else
+        @include('member.partials.social-buttons')
+    @endif
 
     @if ($pending)
         {{-- 2단계: 인증번호 --}}
@@ -29,7 +35,7 @@
         @csrf
         <div>
             <label for="name" class="label">{{ __('이름') }} <span class="font-normal text-mist">({{ __('티켓 예매자 이름') }})</span></label>
-            <input id="name" name="name" class="field" value="{{ old('name') }}" autocomplete="name" required>
+            <input id="name" name="name" class="field" value="{{ old('name', $social['name'] ?? '') }}" autocomplete="name" required>
             @error('name')<p class="mt-1 text-sm text-signal">{{ __($message) }}</p>@enderror
         </div>
         <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-2">
@@ -61,7 +67,7 @@
 
         <div>
             <label for="email" class="label">{{ __('이메일') }} <span class="font-normal text-mist" x-text="channel === 'email' ? @js('('.__('인증에 써요').')') : @js('('.__('선택').')')"></span></label>
-            <input id="email" name="email" type="email" class="field" value="{{ old('email') }}" autocomplete="email" :required="channel === 'email'" placeholder="name@example.com">
+            <input id="email" name="email" type="email" class="field" value="{{ old('email', $social['email'] ?? '') }}" autocomplete="email" :required="channel === 'email'" placeholder="name@example.com">
             @error('email')<p class="mt-1 text-sm text-signal">{{ __($message) }}</p>@enderror
         </div>
 
@@ -74,6 +80,7 @@
             <p x-show="country === 'CN'" class="mt-2 text-xs text-mist">{{ __('중국 번호는 해외 문자가 차단되는 경우가 많아 이메일 인증을 권해요. (QQ메일·163메일 가능)') }}</p>
         </fieldset>
 
+        @unless ($social)
         <div class="grid gap-2 sm:grid-cols-2">
             <div>
                 <label for="password" class="label">{{ __('비밀번호') }}</label>
@@ -86,6 +93,7 @@
         </div>
         <p class="-mt-2 text-xs text-mist">{{ __('10자 이상, 영문과 숫자를 섞어 주세요. 휴대폰 번호·이메일·흔한 비밀번호는 쓸 수 없어요. 다른 사이트와 같은 비밀번호는 피해 주세요.') }}</p>
         @error('password')<p class="-mt-2 text-sm text-signal">{{ __($message) }}</p>@enderror
+        @endunless
 
         <div class="space-y-2 rounded-2xl bg-paper p-4 text-sm">
             <label class="flex items-start gap-2"><input type="checkbox" name="agree_terms" value="1" class="mt-0.5" @checked(old('agree_terms')) required>

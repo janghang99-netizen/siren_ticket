@@ -50,6 +50,12 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/display/{store}/data', 'displayData')->name('display.data');
 });
 
+// ── 팬 회원 SNS 로그인 (네이버·카카오·구글) ──
+Route::controller(\App\Http\Controllers\SocialLoginController::class)->prefix('member/oauth')->name('member.oauth')->group(function () {
+    Route::get('/{provider}', 'redirect')->whereIn('provider', ['naver', 'kakao', 'google'])->middleware('throttle:20,1');
+    Route::get('/{provider}/callback', 'callback')->whereIn('provider', ['naver', 'kakao', 'google'])->middleware('throttle:20,1')->name('.callback');
+});
+
 // ── 1:1 문의 (원본 happy_inquiry) — 회원 또는 휴대폰 인증 고객 ──
 Route::controller(\App\Http\Controllers\InquiryController::class)->group(function () {
     Route::get('/inquiries', 'index')->name('inquiries.index');
@@ -80,6 +86,7 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
     });
     Route::middleware('auth:member')->group(function () {
         Route::get('/account', 'account')->name('account');
+        Route::delete('/social/{provider}', 'socialUnlink')->whereIn('provider', ['naver', 'kakao', 'google'])->name('social.unlink');
         Route::post('/logout', 'logout')->name('logout');
         Route::put('/password', 'changePassword')->middleware('throttle:5,1')->name('password.change');
         Route::put('/residence', 'updateResidence')->middleware('throttle:5,1')->name('residence');

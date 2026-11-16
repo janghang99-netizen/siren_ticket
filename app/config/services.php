@@ -34,6 +34,11 @@ return [
     ],
 
     // 공연예술통합전산망(KOPIS) 오픈API — 전국 공연장(공연시설) 목록. 키는 kopis.or.kr 에서 무료 발급
+    // SNS 로그인 (키가 없으면 버튼이 숨는다). 콜백: {APP_URL}/member/oauth/{naver|kakao|google}/callback
+    'naver' => ['client_id' => env('NAVER_CLIENT_ID'), 'client_secret' => env('NAVER_CLIENT_SECRET')],
+    'kakao' => ['client_id' => env('KAKAO_REST_API_KEY'), 'client_secret' => env('KAKAO_CLIENT_SECRET')],
+    'google' => ['client_id' => env('GOOGLE_CLIENT_ID'), 'client_secret' => env('GOOGLE_CLIENT_SECRET')],
+
     'kopis' => [
         'key' => env('KOPIS_API_KEY'),
     ],

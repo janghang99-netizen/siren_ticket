@@ -33,6 +33,32 @@
     </section>
 
     {{-- 2단계 인증 --}}
+    {{-- SNS 로그인 연결 (네이버·카카오·구글) --}}
+    @php($linked = $member->socialAccounts()->pluck('provider')->all())
+    @php($providers = \App\Services\Auth\SocialAuth::enabled())
+    @if ($providers || $linked)
+        <section class="mt-4 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
+            <h2 class="font-bold">SNS 로그인 연결</h2>
+            @error('social')<p role="alert" class="mt-2 text-sm font-semibold text-signal">{{ $message }}</p>@enderror
+            <ul class="mt-3 space-y-2 text-sm">
+                @foreach (\App\Services\Auth\SocialAuth::PROVIDERS as $p => $label)
+                    @continue(! isset($providers[$p]) && ! in_array($p, $linked, true))
+                    <li class="flex items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-2.5">
+                        <span><b>{{ $label }}</b> <span class="text-mist">{{ in_array($p, $linked, true) ? '연결됨' : '연결 안 됨' }}</span></span>
+                        @if (in_array($p, $linked, true))
+                            <form method="POST" action="{{ route('member.social.unlink', $p) }}" onsubmit="return confirm('{{ $label }} 연결을 끊을까요? 휴대폰 번호·비밀번호로는 계속 로그인할 수 있어요.')">
+                                @csrf @method('DELETE')
+                                <button class="text-xs font-semibold text-signal">연결 끊기</button>
+                            </form>
+                        @else
+                            <a href="{{ route('member.oauth', $p) }}" class="text-xs font-semibold text-stick">연결하기</a>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+        </section>
+    @endif
+
     <section class="mt-4 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
         <h2 class="font-bold">{{ __('2단계 인증') }} <span class="text-xs font-normal text-mist">{{ __('비밀번호가 새도 계정을 지켜요 (권장)') }}</span></h2>
         @if ($recoveryCodes)
