@@ -1,7 +1,7 @@
 @extends('layouts.fan')
 @section('title', $store->name)
 @section('tab', 'order')
-@section('theme', $event->theme_color)
+@if ($event) @section('theme', $event->theme_color) @endif
 
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 @php($menu = $store->products->map(fn ($p) => [
@@ -19,7 +19,7 @@
 @php($mileageRate = (int) \App\Models\Setting::get('mileage_use_max_rate'))
 
 @section('header-action')
-    <a href="{{ route('stores.index', $event) }}" class="text-sm font-semibold text-stick">매장 목록</a>
+    <a href="{{ $event ? route('stores.index', $event) : route('shop.index') }}" class="text-sm font-semibold text-stick">매장 목록</a>
 @endsection
 
 @section('content')
@@ -101,7 +101,7 @@
         async order() {
             this.busy = true; this.error = '';
             try {
-                const res = await api('{{ route('stores.order', [$event, $store]) }}', 'POST', {
+                const res = await api('{{ $event ? route('stores.order', [$event, $store]) : route('shop.order', $store) }}', 'POST', {
                     slot_id: this.slotId,
                     agree_terms: this.agree,
                     adult_confirmed: this.adult,
@@ -115,8 +115,20 @@
         },
      }">
 
-    <p class="eyebrow mt-2">{{ $event->venue }}</p>
+    <p class="eyebrow mt-2">{{ $event?->venue ?? $store->area ?? '매장' }}</p>
     <h1 class="mt-2 text-2xl font-black">{{ $store->name }}</h1>
+    @unless ($event)
+        @if (! $store->is_open)
+            <p class="mt-2 inline-block rounded-full bg-ink/10 px-3 py-1 text-xs font-semibold">준비중 — 지금은 주문을 받지 않아요</p>
+        @endif
+        @if ($store->address || $store->hours || $store->holidays)
+            <dl class="mt-3 space-y-1 text-sm text-ink/70">
+                @if ($store->address)<div class="flex gap-2"><dt class="w-12 shrink-0 text-mist">주소</dt><dd>{{ $store->address }}</dd></div>@endif
+                @if ($store->hours)<div class="flex gap-2"><dt class="w-12 shrink-0 text-mist">영업</dt><dd>{{ $store->hours }}</dd></div>@endif
+                @if ($store->holidays)<div class="flex gap-2"><dt class="w-12 shrink-0 text-mist">휴무</dt><dd>{{ $store->holidays }}</dd></div>@endif
+            </dl>
+        @endif
+    @endunless
     @if ($ticket)
         <p class="mt-1 text-sm text-mist"><b class="text-ink">{{ $ticket->seatLabel() }}</b> 티켓으로 주문해요</p>
     @endif
@@ -147,6 +159,7 @@
     </section>
 
     {{-- 주문 시간대: 매장 처리량만큼만 받는다 (카운트·시간 중 먼저 오는 쪽으로 마감) --}}
+    @if ($event)
     <fieldset class="mt-6">
         <legend class="label">언제 받으세요?</legend>
         <div class="grid grid-cols-3 gap-2">
@@ -162,6 +175,7 @@
         </div>
         <p x-show="!slots.some(s => s.open)" class="mt-2 text-sm font-semibold text-signal">오늘 이 매장의 미리 주문이 모두 마감됐어요.</p>
     </fieldset>
+    @endif
 
     {{-- 다른 매장 장바구니: 묶음결제는 같은 매장끼리만 --}}
     <div x-show="other" x-cloak class="mt-6 rounded-2xl bg-signal/10 px-4 py-3 text-sm ring-1 ring-signal/20" role="status">
@@ -239,7 +253,7 @@
                                 class="rounded-full px-3 py-1.5" :class="dine === d ? 'bg-ink text-paper' : 'text-mist'" x-text="d"></button>
                     </template>
                 </div>
-                <button type="button" @click="order()" :disabled="busy || !slotId || !ready" class="btn-ink ml-auto !py-3 text-sm">
+                <button type="button" @click="order()" :disabled="busy || (slots.length && !slotId) || !ready" class="btn-ink ml-auto !py-3 text-sm">
                     <span class="num" x-text="won(pay) + '원'"></span>
                     <span x-text="busy ? '주문 중…' : '주문하기'"></span>
                 </button>

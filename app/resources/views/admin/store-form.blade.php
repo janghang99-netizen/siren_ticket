@@ -42,6 +42,24 @@
     </div>
     <div class="grid gap-4 sm:grid-cols-2">
         <div>
+            <label for="area" class="label">지역 <span class="font-normal text-mist">(선택)</span></label>
+            <input id="area" name="area" class="field" value="{{ old('area', $s?->area) }}" placeholder="예: 쌍문동">
+        </div>
+        <div>
+            <label for="address" class="label">주소 <span class="font-normal text-mist">(선택)</span></label>
+            <input id="address" name="address" class="field" value="{{ old('address', $s?->address) }}" placeholder="예: 서울 도봉구 노해로60길 65 1층">
+        </div>
+        <div>
+            <label for="hours" class="label">영업시간 <span class="font-normal text-mist">(선택)</span></label>
+            <input id="hours" name="hours" class="field" value="{{ old('hours', $s?->hours) }}" placeholder="예: 평일 11:00~20:00">
+        </div>
+        <div>
+            <label for="holidays" class="label">휴무 <span class="font-normal text-mist">(선택)</span></label>
+            <input id="holidays" name="holidays" class="field" value="{{ old('holidays', $s?->holidays) }}" placeholder="예: 매주 토·일 / 공휴일">
+        </div>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+        <div>
             <label for="commission_rate" class="label">수수료율 (%)</label>
             <input id="commission_rate" name="commission_rate" type="number" step="0.01" min="0" max="50" class="field num" x-model="rate" required>
             <p class="mt-1 text-xs text-mist">바꾸면 이후 주문부터 적용돼요.</p>

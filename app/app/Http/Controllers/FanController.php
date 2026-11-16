@@ -31,8 +31,9 @@ class FanController extends Controller
     {
         $events = Event::with('sections')->where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
 
-        $headliner = $events->first();
-        $stores = $headliner ? $this->eventStores($headliner) : collect();
+        // 티켓 판매를 쓰면 가장 가까운 공연이 홈의 주인공. 안 쓰면(다담다) 상시 매장 주문이 홈.
+        $headliner = \App\Models\Setting::ticketingEnabled() ? $events->first() : null;
+        $stores = $headliner ? $this->eventStores($headliner) : $this->openStores();
 
         // 메인에 보일 메뉴 — 사진 있는 것 먼저, 매장마다 고르게
         $picks = $stores->flatMap(fn ($s) => $s->products->filter(fn ($p) => ! $p->isSoldOut())
@@ -42,14 +43,18 @@ class FanController extends Controller
         return view('fan.home', ['events' => $events, 'headliner' => $headliner, 'stores' => $stores, 'picks' => $picks]);
     }
 
-    /** 하단 '매장주문' 탭 — 가장 가까운 공연의 매장 목록으로 */
+    /** 하단 '매장주문' 탭 — 상시 매장 주문 (공연과 상관없이 늘 연다. 원본 다담다 기본 동작) */
     public function orderEntry(): RedirectResponse
     {
-        $event = Event::where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->first();
+        return redirect()->route('shop.index');
+    }
 
-        return $event
-            ? redirect()->route('stores.index', $event)
-            : redirect()->route('home')->with('status', '지금 주문 받는 공연이 없어요. 공연이 열리면 매장 주문도 열려요.');
+    /** 상시 주문 매장 (승인된 업체만, 영업 종료 매장도 보이되 주문은 막힘) */
+    private function openStores()
+    {
+        return Store::whereHas('vendor', fn ($q) => $q->where('state', 'approved'))
+            ->with(['products' => fn ($q) => $q->sellable()->orderBy('sort')])
+            ->orderByDesc('is_open')->orderBy('id')->get();
     }
 
     /** 그 공연에서 주문 받는 매장 (승인된 업체만) */
@@ -147,20 +152,41 @@ class FanController extends Controller
     {
         $stores = $this->eventStores($event);
 
-        return view('fan.stores', ['event' => $event, 'stores' => $stores, 'ticket' => $this->ticketFor($request, $event)]);
+        return view('fan.stores', ['event' => $event, 'stores' => $stores, 'ticket' => $this->ticketFor($request, $event), 'events' => collect()]);
+    }
+
+    /** 상시 매장 목록. 오늘 공연이 있으면 '공연 시간대 미리 주문'으로 가는 길도 같이 보인다. */
+    public function shop(): View
+    {
+        $events = Event::where('status', 'scheduled')->whereBetween('starts_at', [now()->subHours(6), now()->endOfDay()])
+            ->whereHas('capacitySlots')->orderBy('starts_at')->get();
+
+        return view('fan.stores', ['event' => null, 'stores' => $this->openStores(), 'ticket' => null, 'events' => $events]);
     }
 
     public function menu(Request $request, Event $event, Store $store, BenefitService $benefits): View
     {
+        return $this->menuView($request, $event, $store, $benefits);
+    }
+
+    public function shopMenu(Request $request, Store $store, BenefitService $benefits): View
+    {
+        abort_if($store->vendor_id && ! $store->vendor?->isActive(), 404);
+
+        return $this->menuView($request, null, $store, $benefits);
+    }
+
+    private function menuView(Request $request, ?Event $event, Store $store, BenefitService $benefits): View
+    {
         $store->load(['vendor', 'products' => fn ($q) => $q->sellable()->with(['options', 'category'])]);
         $store->setRelation('products', \App\Models\Product::menuOrder($store->products));   // 카테고리 순서 → 상품 순서
-        $slots = CapacitySlot::where('event_id', $event->id)->where('store_id', $store->id)
-            ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get();
+        $slots = $event ? CapacitySlot::where('event_id', $event->id)->where('store_id', $store->id)
+            ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get() : collect();
         $customer = $this->verifiedCustomer($request);
 
         return view('fan.menu', [
             'event' => $event, 'store' => $store, 'slots' => $slots,
-            'ticket' => $this->ticketFor($request, $event),
+            'ticket' => $event ? $this->ticketFor($request, $event) : null,
             'customer' => $customer,
             'myCoupons' => $customer ? $benefits->usableCoupons($customer, 'order', $store, null) : collect(),
             'freeCoupons' => $this->claimableCoupons($customer, 'order', $store, null),
@@ -248,8 +274,19 @@ class FanController extends Controller
 
     public function placeOrder(Request $request, Event $event, Store $store, OrderService $orders): JsonResponse
     {
+        return $this->orderAt($request, $event, $store, $orders);
+    }
+
+    /** 상시 주문 — 공연 시간대(주문 수량 제한) 없이 받는다 */
+    public function shopOrder(Request $request, Store $store, OrderService $orders): JsonResponse
+    {
+        return $this->orderAt($request, null, $store, $orders);
+    }
+
+    private function orderAt(Request $request, ?Event $event, Store $store, OrderService $orders): JsonResponse
+    {
         $data = $request->validate([
-            'slot_id' => ['required', 'integer'],
+            'slot_id' => [$event ? 'required' : 'nullable', 'integer'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer'],
             'items.*.option_id' => ['nullable', 'integer'],
@@ -261,7 +298,7 @@ class FanController extends Controller
             'mileage_use' => ['nullable', 'integer', 'min:0'],
         ], ['agree_terms.accepted' => '주문 전에 이용약관과 판매자 정보 제공에 동의해 주세요.']);
 
-        $ticket = $this->ticketFor($request, $event);
+        $ticket = $event ? $this->ticketFor($request, $event) : null;
         $couponId = $data['coupon_issue_id'] ?? null;
         $mileage = (int) ($data['mileage_use'] ?? 0);
         $verified = $this->verifiedCustomer($request);
@@ -271,7 +308,7 @@ class FanController extends Controller
         // 적립 대상: 인증한 번호 > 티켓 예매 번호 (인증 없이도 적립은 받는다 — 쓰려면 인증)
         $customer = $verified ?? ($ticket ? Customer::forPhone($ticket->holder_phone) : null);
 
-        $order = $orders->place($store, $data['items'], 'card', (int) $data['slot_id'],
+        $order = $orders->place($store, $data['items'], 'card', $event ? (int) $data['slot_id'] : null,
             ticket: $ticket,
             adultConfirmed: (bool) ($data['adult_confirmed'] ?? false),
             termsAgreedAt: now(),

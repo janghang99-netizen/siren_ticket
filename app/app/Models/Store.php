@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Store extends Model
 {
-    protected $fillable = ['vendor_id', 'code', 'name', 'commission_rate', 'is_open'];
+    protected $fillable = ['vendor_id', 'code', 'name', 'area', 'address', 'hours', 'holidays', 'commission_rate', 'is_open'];
 
     public function vendor(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {

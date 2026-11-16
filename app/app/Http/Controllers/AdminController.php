@@ -645,6 +645,10 @@ class AdminController extends Controller
             'code' => ['required', 'alpha_dash', 'max:30', Rule::unique('stores', 'code')->ignore($store?->id)],
             'name' => ['required', 'string', 'max:60'],
             'commission_rate' => ['required', 'numeric', 'min:0', 'max:50'],
+            'area' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string', 'max:160'],
+            'hours' => ['nullable', 'string', 'max:120'],
+            'holidays' => ['nullable', 'string', 'max:120'],
         ], [
             'vendor_id.required' => '운영 업체를 골라 주세요.',
             'code.required' => '매장 코드를 적어 주세요.',

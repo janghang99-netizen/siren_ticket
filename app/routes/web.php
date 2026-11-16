@@ -18,6 +18,10 @@ Route::controller(FanController::class)->group(function () {
     Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->middleware('ticketing')->name('tickets.cancel');
 
     Route::get('/order', 'orderEntry')->name('order.entry');                      // 하단 '매장주문' 탭
+    // 상시 매장 주문 (공연과 상관없이 — 원본 다담다 기본 동작)
+    Route::get('/stores', 'shop')->name('shop.index');
+    Route::get('/stores/{store}', 'shopMenu')->name('shop.menu');
+    Route::post('/stores/{store}/orders', 'shopOrder')->middleware('throttle:30,1')->name('shop.order');
     Route::get('/concerts/{event}/stores', 'stores')->name('stores.index');
     Route::get('/concerts/{event}/stores/{store}', 'menu')->name('stores.menu');
     Route::post('/concerts/{event}/stores/{store}/orders', 'placeOrder')->middleware('throttle:30,1')->name('stores.order');

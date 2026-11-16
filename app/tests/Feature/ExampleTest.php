@@ -9,10 +9,10 @@ class ExampleTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** 공연이 하나도 없어도 홈은 빈 상태 안내로 열린다. */
+    /** 공연도 매장도 없어도 홈은 상시 매장 주문 화면(빈 상태 안내)으로 열린다. */
     public function test_home_renders_empty_state(): void
     {
-        $this->get('/')->assertOk()->assertSee('예정된 공연이 없어요');
+        $this->get('/')->assertOk()->assertSee('먼저 주문하고')->assertSee('지금 주문 받는 매장이 아직 없어요');
     }
 
     /** 시드 데이터로 주요 화면이 모두 열린다. */

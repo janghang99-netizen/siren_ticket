@@ -45,7 +45,7 @@ class TicketingToggleTest extends TestCase
 
         // 팬: 예매·내 티켓은 막히고 매장 주문으로
         $this->get(route('concerts.show', $this->event))->assertRedirect(route('stores.index', $this->event));
-        $this->get(route('tickets'))->assertRedirect(route('home'));
+        $this->get(route('tickets'))->assertRedirect(route('shop.index'));
         $home = $this->get(route('home'))->assertOk();
         $home->assertDontSee('좌석 고르기')->assertDontSee('내 티켓')->assertSee('매장주문');
         $this->get(route('stores.index', $this->event))->assertOk();

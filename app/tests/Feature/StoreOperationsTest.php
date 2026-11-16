@@ -57,10 +57,10 @@ class StoreOperationsTest extends TestCase
             ->assertSee(route('stores.menu', [$event, $this->store]), false)
             ->assertSee(route('order.entry'), false);                   // 하단 '매장주문' 탭
 
-        $this->get(route('order.entry'))->assertRedirect(route('stores.index', $event));
-
+        // 하단 '매장주문' 탭은 공연과 상관없이 상시 매장 목록으로 (원본 다담다)
+        $this->get(route('order.entry'))->assertRedirect(route('shop.index'));
         $event->update(['status' => 'cancelled']);
-        $this->get(route('order.entry'))->assertRedirect(route('home'));
+        $this->get(route('order.entry'))->assertRedirect(route('shop.index'));
     }
 
     public function test_demo_product_images_attach_once(): void

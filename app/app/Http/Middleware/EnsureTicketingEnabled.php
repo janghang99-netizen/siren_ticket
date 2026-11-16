@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * 공연 티켓 판매 기능이 꺼져 있으면 티켓 관련 화면을 막는다.
  *  - 운영사 화면: 설정 화면으로 보내고 안내
- *  - 팬 화면: 그 공연의 매장 주문으로(공연이 있으면), 아니면 홈으로
+ *  - 팬 화면: 그 공연의 매장 주문으로(공연이 있으면), 아니면 상시 매장 주문으로
  *  - API·JSON: 404
  */
 class EnsureTicketingEnabled
@@ -30,6 +30,6 @@ class EnsureTicketingEnabled
 
         return $event instanceof \App\Models\Event
             ? redirect()->route('stores.index', $event)
-            : redirect()->route('home');
+            : redirect()->route('shop.index');
     }
 }

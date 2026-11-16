@@ -7,8 +7,10 @@
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])
 
 @section('content')
-    @if ($headliner)
-        @php($e = $headliner)
+    @php($e = $headliner)
+    @php($menuUrl = fn ($s) => $e ? route('stores.menu', [$e, $s]) : route('shop.menu', $s))
+    @php($listUrl = $e ? route('stores.index', $e) : route('shop.index'))
+    @if ($e)
 
         {{-- ① 오늘의 공연 — 좌석 예매 · 매장 주문 두 갈래 --}}
         <section class="fandom-soft relative mt-2 overflow-hidden rounded-[28px] shadow-[0_24px_60px_-28px_rgba(23,19,43,.35)] animate-rise">
@@ -51,16 +53,25 @@
                 </a>
             </div>
         </section>
+    @else
+        {{-- ① 상시 매장 주문 (원본 다담다 홈: 먼저 주문하고 빠른 픽업) --}}
+        <section class="fandom-soft relative mt-2 overflow-hidden rounded-[28px] px-5 pb-5 pt-6 shadow-[0_24px_60px_-28px_rgba(23,19,43,.35)] animate-rise">
+            <span class="eyebrow !text-ink/50">다담다 매장 주문</span>
+            <h1 class="mt-3 text-[34px] font-black leading-[1.08] tracking-tight">먼저 주문하고<br>빠른 픽업!</h1>
+            <p class="mt-2 text-sm font-medium text-ink/65">줄 서지 말고 미리 주문하고, 번호가 노랗게 뜨면 받아 가세요.</p>
+            <a href="{{ $listUrl }}" class="btn-ink mt-5 w-full">매장 {{ $stores->count() }}곳 보고 주문하기</a>
+        </section>
+    @endif
 
-        {{-- ② 공연장 매장 --}}
+        {{-- ② 매장 --}}
         <section class="mt-10" aria-labelledby="stores-title">
             <div class="flex items-end justify-between gap-3">
                 <div>
-                    <p class="eyebrow">Siren Order</p>
+                    <p class="eyebrow">{{ $e ? '공연장 매장' : '매장 쇼케이스' }}</p>
                     <h2 id="stores-title" class="mt-1 text-xl font-black tracking-tight">줄 서지 말고, 미리 주문</h2>
                 </div>
                 @if ($stores->isNotEmpty())
-                    <a href="{{ route('stores.index', $e) }}" class="shrink-0 text-sm font-semibold text-stick">전체 매장</a>
+                    <a href="{{ $listUrl }}" class="shrink-0 text-sm font-semibold text-stick">전체 매장</a>
                 @endif
             </div>
 
@@ -81,16 +92,16 @@
             </ol>
 
             @if ($stores->isEmpty())
-                <p class="mt-4 rounded-3xl bg-white px-5 py-8 text-center text-sm text-mist ring-1 ring-ink/5">이 공연에는 주문 받는 매장이 아직 없어요.</p>
+                <p class="mt-4 rounded-3xl bg-white px-5 py-8 text-center text-sm text-mist ring-1 ring-ink/5">{{ $e ? '이 공연에는 주문 받는 매장이 아직 없어요.' : '지금 주문 받는 매장이 아직 없어요.' }}</p>
             @else
                 <ul class="-mx-4 mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
                     @foreach ($stores as $store)
-                        @php($slots = $store->capacitySlots->sortBy(fn ($s) => array_search($s->slot, array_keys($slotNames))))
+                        @php($slots = $e ? $store->capacitySlots->sortBy(fn ($s) => array_search($s->slot, array_keys($slotNames))) : collect())
                         @php($now = $slots->first(fn ($s) => $s->isOpen()))
                         @php($shots = $store->products->filter(fn ($p) => $p->image_path)->take(3)->values())
                         <li class="w-[15.5rem] shrink-0 snap-start animate-rise" style="animation-delay: {{ 80 + $loop->index * 60 }}ms">
-                            <a href="{{ route('stores.menu', [$e, $store]) }}"
-                               @class(['block overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5 transition hover:ring-ink/20', 'opacity-60' => ! $store->is_open || ! $now])>
+                            <a href="{{ $menuUrl($store) }}"
+                               @class(['block overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5 transition hover:ring-ink/20', 'opacity-60' => ! $store->is_open || ($e && ! $now)])>
                                 <div class="relative grid h-32 grid-cols-3 gap-0.5 bg-paper-deep">
                                     @forelse ($shots as $i => $p)
                                         <img src="{{ $p->imageUrl() }}" alt="" loading="lazy"
@@ -102,7 +113,9 @@
                                     @endforelse
                                     <span class="absolute left-3 top-3">
                                         @if (! $store->is_open)
-                                            <span class="chip bg-ink/80 text-white">영업 종료</span>
+                                            <span class="chip bg-ink/80 text-white">준비중</span>
+                                        @elseif (! $e)
+                                            <span class="chip bg-white/90 text-ink"><span class="h-1.5 w-1.5 rounded-full bg-[#2BB673]" aria-hidden="true"></span>바로 픽업</span>
                                         @elseif ($now)
                                             <span class="chip bg-white/90 text-ink"><span class="h-1.5 w-1.5 rounded-full bg-[#2BB673]" aria-hidden="true"></span>{{ $slotNames[$now->slot] }} 주문 중</span>
                                         @else
@@ -112,6 +125,7 @@
                                 </div>
                                 <div class="px-4 pb-4 pt-3">
                                     <h3 class="truncate text-base font-bold">{{ $store->name }}</h3>
+                                    @if (! $e && $store->area)<p class="text-[11px] font-semibold text-mist">{{ $store->area }}</p>@endif
                                     <p class="mt-0.5 truncate text-xs text-mist">{{ $store->products->take(3)->pluck('name')->join(' · ') ?: '메뉴 준비 중' }}</p>
                                     @if ($now)
                                         <div class="mt-3 flex items-center gap-2">
@@ -137,7 +151,7 @@
                     @foreach ($picks as $p)
                         @php($store = $stores->firstWhere('id', $p->store_id))
                         <li class="animate-rise" style="animation-delay: {{ 120 + $loop->index * 40 }}ms">
-                            <a href="{{ route('stores.menu', [$e, $store]) }}" class="group block">
+                            <a href="{{ $menuUrl($store) }}" class="group block">
                                 <div class="relative aspect-[4/3] overflow-hidden rounded-3xl bg-paper-deep ring-1 ring-ink/5">
                                     @if ($p->image_path)
                                         <img src="{{ $p->imageUrl() }}" alt="" loading="lazy" class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]">
@@ -159,15 +173,16 @@
                         </li>
                     @endforeach
                 </ul>
-                <a href="{{ route('stores.index', $e) }}" class="btn-stick mt-5 w-full">매장 전체 보고 주문하기</a>
+                <a href="{{ $listUrl }}" class="btn-stick mt-5 w-full">매장 전체 보고 주문하기</a>
             </section>
         @endif
 
-        {{-- ④ 다른 공연 --}}
-        @if ($events->count() > 1)
-            <h2 class="mt-10 mb-3 text-lg font-bold">다른 공연</h2>
+        {{-- ④ 다른 공연 (티켓 판매를 안 쓰면: 공연 일정 — 공연 시간대에 맞춰 매장 미리 주문) --}}
+        @php($others = $headliner ? $events->skip(1) : $events)
+        @if ($others->isNotEmpty())
+            <h2 class="mt-10 mb-3 text-lg font-bold">{{ $headliner ? '다른 공연' : '공연 일정' }}</h2>
             <ul class="space-y-3">
-                @foreach ($events->skip(1) as $e)
+                @foreach ($others as $e)
                     <li>
                         <a href="{{ $ticketing ? route('concerts.show', $e) : route('stores.index', $e) }}" class="flex items-stretch overflow-hidden rounded-2xl bg-white ring-1 ring-ink/5 transition hover:ring-stick/40">
                             <span class="fandom-gradient w-2 shrink-0" style="--theme: {{ $e->theme_color }}"></span>
@@ -186,10 +201,4 @@
                 @endforeach
             </ul>
         @endif
-    @else
-        <div class="mt-16 text-center">
-            <p class="text-lg font-bold">예정된 공연이 없어요</p>
-            <p class="mt-1 text-sm text-mist">새 공연이 열리면 좌석 예매와 공연장 매장 주문이 여기에 보여요.</p>
-        </div>
-    @endif
 @endsection
