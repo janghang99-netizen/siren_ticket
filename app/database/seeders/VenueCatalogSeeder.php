@@ -37,6 +37,9 @@ class VenueCatalogSeeder extends Seeder
 
     public function run(): void
     {
+        if (VenueCatalog::where('source', 'kopis')->exists()) {
+            return;   // KOPIS 공식 목록이 있으면 기본 목록은 넣지 않는다
+        }
         foreach (self::VENUES as [$name, $sido, $gugun, $address]) {
             VenueCatalog::updateOrCreate(['source' => 'seed', 'name' => $name], ['sido' => $sido, 'gugun' => $gugun, 'address' => $address]);
         }

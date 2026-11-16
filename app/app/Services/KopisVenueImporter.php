@@ -54,8 +54,20 @@ class KopisVenueImporter
                 break;
             }
         }
+        $removed = ($added + $updated) > 0 ? $this->removeSeedList() : 0;
 
-        return ['added' => $added, 'updated' => $updated];
+        return ['added' => $added, 'updated' => $updated, 'removed' => $removed];
+    }
+
+    /**
+     * KOPIS 공식 목록이 들어오면 임시 기본 목록(source=seed)은 지운다.
+     * 이미 공연장이 연결해 쓰는 줄만 남긴다 (공연장 정보는 그대로).
+     */
+    public function removeSeedList(): int
+    {
+        $inUse = \App\Models\Venue::whereNotNull('catalog_id')->pluck('catalog_id');
+
+        return VenueCatalog::where('source', 'seed')->whereNotIn('id', $inUse)->delete();
     }
 
     /** 시설 하나의 상세(주소·객석·위치·홀 목록)를 받아 채운다 */

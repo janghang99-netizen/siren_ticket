@@ -40,8 +40,18 @@ class VenueCatalogTest extends TestCase
             'kopis.or.kr/openApi/restful/prfplc/*' => Http::response(self::DETAIL),
             'kopis.or.kr/openApi/restful/prfplc*' => Http::response(self::LIST),
         ]);
-        $this->artisan('venues:import-kopis')->assertSuccessful();
+        // 키 받기 전 기본 목록 — 공연장이 쓰는 1곳만 남기고 KOPIS 가 들어오면 정리
+        $this->seed(VenueCatalogSeeder::class);
+        $used = VenueCatalog::where('source', 'seed')->firstOrFail();
+        $keep = Venue::create(['name' => '기존 공연장', 'catalog_id' => $used->id]);
+
+        $this->artisan('venues:import-kopis')->expectsOutputToContain('기본 목록 정리 '.(count(VenueCatalogSeeder::VENUES) - 1).'곳')->assertSuccessful();
         $this->assertSame(2, VenueCatalog::where('source', 'kopis')->count());
+        $this->assertSame([$used->id], VenueCatalog::where('source', 'seed')->pluck('id')->all());
+        $this->seed(VenueCatalogSeeder::class);   // KOPIS 가 있으면 다시 넣지 않는다
+        $this->assertSame(1, VenueCatalog::where('source', 'seed')->count());
+        $keep->delete();
+        $used->delete();
         $park = VenueCatalog::where('kopis_id', 'FC000025')->firstOrFail();
         $this->assertSame(['올림픽공원', '서울', '송파구'], [$park->name, $park->sido, $park->gugun]);
         $this->assertTrue($park->needsDetail());

@@ -38,7 +38,7 @@ Artisan::command('venues:import-kopis {--details : 시설마다 상세(주소·�
     }
     try {
         $r = $kopis->importList(fn ($page, $n) => $this->line("  {$page}쪽 · {$n}곳"));
-        $this->info("공연시설 새로 {$r['added']}곳 · 갱신 {$r['updated']}곳");
+        $this->info("공연시설 새로 {$r['added']}곳 · 갱신 {$r['updated']}곳 · 기본 목록 정리 {$r['removed']}곳");
         if ($this->option('details')) {
             $todo = \App\Models\VenueCatalog::where('source', 'kopis')->whereNull('address')->get();
             $bar = $this->output->createProgressBar($todo->count());
