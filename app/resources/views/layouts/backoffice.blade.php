@@ -14,6 +14,7 @@
     $nav = $user->isSuperAdmin()
         ? [
             ['admin.events.index', '공연 일정', 'admin.events.*'],
+            ['admin.seat-maps.index', '공연장 좌석표', 'admin.seat-maps.*'],
             ['admin.tickets.index', '티켓 판매', 'admin.tickets.*'],
             ['admin.check-in', '입장 검표', 'admin.check-in*'],
             ['admin.vendors.index', '입점업체', 'admin.vendors.*'],

@@ -29,7 +29,7 @@
             </div>
 
             <div class="relative -mb-2 px-10 pt-1">
-                @include('partials.bowl', ['event' => $e, 'class' => 'w-full'])
+                @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e, 'class' => 'w-full'])
             </div>
 
             <div class="relative grid grid-cols-2 gap-2 p-3">

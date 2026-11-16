@@ -6,14 +6,30 @@
 @php($days = ['일', '월', '화', '수', '목', '금', '토'])
 @php($sections = $event->sections->map(fn ($s) => [
     'id' => $s->id, 'code' => $s->code, 'tier' => $s->tier, 'name' => $s->name,
-    'price' => $s->price, 'left' => $s->remaining(),
+    'price' => $s->price, 'left' => $s->remaining(), 'grid' => $s->hasSeatGrid(), 'color' => $s->color,
 ])->values())
+@php($hasMap = (bool) $event->seat_map_id)
 
 @section('header-action')
     <a href="{{ route('stores.index', $event) }}" class="text-sm font-semibold text-stick">공연장 매장</a>
 @endsection
 
 @section('content')
+<script>
+    // 좌석표 공연: 구역 좌석 격자 HTML (수천 석도 빠르게 — 버튼마다 Alpine 바인딩을 걸지 않고 한 번에 그린다)
+    window.seatGridHtml = (g, chosen) => {
+        let h = '';
+        for (let r = 1; r <= g.rows; r++) {
+            h += `<div class="seat-row"><span class="seat-row-no">${r}열</span>`;
+            for (let n = 1; n <= g.per; n++) {
+                const k = r + '-' + n, t = g.taken.has(k), c = chosen.includes(k);
+                h += `<button type="button" data-seat="${k}" class="seat${t ? ' is-taken' : ''}${c ? ' is-chosen' : ''}"${t ? ' disabled' : ` aria-pressed="${c}"`} aria-label="${r}열 ${n}번${t ? ' 판매됨' : ''}">${n}</button>`;
+            }
+            h += '</div>';
+        }
+        return h;
+    };
+</script>
 <div x-data="{
         sections: @js($sections),
         selected: @js((int) old('section_id') ?: null),
@@ -21,7 +37,36 @@
         max: {{ $event->max_per_buyer }},
         get section() { return this.sections.find(s => s.id === this.selected) },
         get limit() { return this.section ? Math.min(this.max, this.section.left) : this.max },
-        pick(id) { this.selected = id; this.qty = Math.min(this.qty, this.limit); this.$nextTick(() => this.$refs.panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })) },
+        pick(id) {
+            this.selected = id;
+            if (this.section?.grid) { this.chosen = []; this.qty = 0; this.loadSeats(); this.$nextTick(() => this.$refs.seatPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' })); return }
+            this.qty = Math.max(1, Math.min(this.qty, this.limit)); this.$nextTick(() => this.$refs.panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+        },
+        // ── 좌석표 공연: 구역 좌석 고르기 (열 × 열당 좌석, 팔린 좌석은 회색) ──
+        seatsUrl: @js(route('concerts.seats', [$event, 0])),
+        grid: null, chosen: [], seatMsg: '', loadingSeats: false, mapZoom: false,
+        async loadSeats() {
+            this.grid = null; this.seatMsg = ''; this.loadingSeats = true;
+            try {
+                const r = await fetch(this.seatsUrl.replace('/sections/0/', '/sections/' + this.selected + '/'), { headers: { Accept: 'application/json' } });
+                if (!r.ok) throw new Error();
+                const d = await r.json();
+                this.grid = { rows: d.rows, per: d.per_row, taken: new Set(d.taken) };
+                this.section.left = d.left;
+            } catch (e) { this.seatMsg = '좌석을 불러오지 못했어요. 구역을 다시 눌러 주세요.' }
+            this.loadingSeats = false;
+            this.$nextTick(() => this.drawSeats());
+        },
+        drawSeats() { if (this.grid && this.$refs.seats) this.$refs.seats.innerHTML = window.seatGridHtml(this.grid, this.chosen) },
+        toggleSeat(e) {
+            const b = e.target.closest('[data-seat]'); if (!b || b.disabled) return;
+            const k = b.dataset.seat, i = this.chosen.indexOf(k);
+            if (i >= 0) { this.chosen.splice(i, 1); b.classList.remove('is-chosen'); b.setAttribute('aria-pressed', 'false') }
+            else if (this.chosen.length >= this.limit) { this.seatMsg = '한 번에 ' + this.limit + '석까지 고를 수 있어요.'; return }
+            else { this.chosen.push(k); b.classList.add('is-chosen'); b.setAttribute('aria-pressed', 'true') }
+            this.seatMsg = ''; this.qty = this.chosen.length;
+        },
+        seatLabel(k) { const [r, n] = k.split('-'); return r + '열 ' + n + '번' },
         coupons: @js($myCoupons->map(fn ($i) => ['id' => $i->id, 'label' => $i->coupon->benefitLabel(), 'kind' => $i->coupon->kind, 'value' => $i->coupon->value, 'max' => $i->coupon->max_discount, 'min' => $i->coupon->min_amount])->values()),
         couponId: @js(old('coupon_issue_id', '')),
         balance: {{ (int) ($customer?->mileage_balance ?? 0) }},
@@ -35,7 +80,7 @@
         },
         get mileageCap() { return Math.min(this.balance, Math.floor((this.total - this.discount) * {{ (int) \App\Models\Setting::get('mileage_use_max_rate') }} / 100)) },
         get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ (int) \App\Models\Setting::get('mileage_min_use') }} ? m : 0 },
-     }">
+     }" x-init="selected && section?.grid && loadSeats()">
 
     <section class="mt-2 animate-rise">
         <p class="eyebrow">{{ $event->venue }}</p>
@@ -56,10 +101,21 @@
     <section class="mt-8" aria-labelledby="seat-title">
         <div class="flex items-end justify-between">
             <h2 id="seat-title" class="text-lg font-bold">구역 고르기</h2>
-            <p class="text-xs text-mist">밝을수록 좌석이 많이 남았어요</p>
+            <p class="text-xs text-mist">{{ $hasMap ? '배치도에서 구역을 누르세요' : '밝을수록 좌석이 많이 남았어요' }}</p>
         </div>
         <div class="mt-3 rounded-[28px] bg-white p-3 ring-1 ring-ink/5">
-            @include('partials.bowl', ['event' => $event, 'interactive' => true])
+            @if ($hasMap)
+                {{-- 기획사 배치도는 휴대폰에서 작아서 크게 보기(가로 스크롤) --}}
+                <div class="overflow-x-auto rounded-2xl">
+                    <div :style="mapZoom ? 'width: 240%' : ''">
+                        @include('partials.seatmap', ['event' => $event, 'interactive' => true])
+                    </div>
+                </div>
+                <button type="button" class="mt-2 w-full rounded-full bg-paper py-2 text-sm font-semibold" @click="mapZoom = !mapZoom"
+                        x-text="mapZoom ? '배치도 작게 보기' : '배치도 크게 보기 (옆으로 밀어서 보기)'">배치도 크게 보기</button>
+            @else
+                @include('partials.bowl', ['event' => $event, 'interactive' => true])
+            @endif
         </div>
 
         {{-- 구역 목록 — 좌석도를 쓰기 어려운 경우에도 고를 수 있게 --}}
@@ -71,16 +127,47 @@
                             :class="selected === s.id ? 'bg-ink text-white ring-ink' : 'bg-white ring-ink/10 hover:ring-ink/40'">
                         <span class="num block font-bold" x-text="s.code"></span>
                         <span class="block text-xs" :class="selected === s.id ? 'text-white/70' : (s.left ? 'text-mist' : 'text-signal font-semibold')"
-                              x-text="s.left ? s.tier + '석 · ' + won(s.left) + '석' : '매진'"></span>
+                              x-text="s.left ? s.tier + (s.grid ? '' : '석') + ' · ' + won(s.left) + '석' : '매진'"></span>
                     </button>
                 </li>
             </template>
         </ul>
     </section>
 
+    {{-- 좌석표 공연: 고른 구역의 좌석 고르기 --}}
+    <section x-ref="seatPanel" x-show="section && section.grid" x-cloak class="mt-6 scroll-mt-20 rounded-[28px] bg-white p-4 ring-1 ring-ink/5" aria-labelledby="seat-grid-title">
+        <div class="flex items-end justify-between gap-2">
+            <h2 id="seat-grid-title" class="text-lg font-bold"><span class="num" x-text="section?.code"></span>구역 좌석</h2>
+            <p class="text-xs text-mist">1인 <span class="num" x-text="limit"></span>석까지</p>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-3 text-[11px] text-mist">
+            <span class="flex items-center gap-1"><span class="seat-key"></span>선택 가능</span>
+            <span class="flex items-center gap-1"><span class="seat-key is-chosen"></span>내가 고른 좌석</span>
+            <span class="flex items-center gap-1"><span class="seat-key is-taken"></span>판매됨</span>
+        </div>
+        <p x-show="loadingSeats" class="mt-4 text-sm text-mist">좌석을 불러오는 중…</p>
+        <div x-ref="seats" @click="toggleSeat($event)" class="seat-grid mt-3 max-h-[55vh] overflow-auto rounded-2xl bg-paper p-2" role="group" aria-label="좌석"></div>
+        <p x-show="seatMsg" x-text="seatMsg" role="status" class="mt-2 text-sm font-semibold text-signal"></p>
+        <div x-show="chosen.length" class="mt-3 flex flex-wrap gap-1.5">
+            <template x-for="k in chosen" :key="k"><span class="chip num" x-text="section?.code + ' · ' + seatLabel(k)"></span></template>
+        </div>
+    </section>
+    <style>
+        .seat-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; width: max-content }
+        .seat-row-no { position: sticky; left: 0; z-index: 1; width: 2.6rem; flex: none; padding-right: 4px; font: 600 10px/1 var(--font-num, inherit); color: #8A84A3; background: inherit; text-align: right }
+        .seat-grid .seat-row-no { background: var(--color-paper, #F4F1FA) }
+        .seat, .seat-key { width: 26px; height: 26px; flex: none; border-radius: 7px 7px 4px 4px; background: #fff; box-shadow: inset 0 0 0 1px rgba(23,19,43,.18); font: 600 9px/26px inherit; color: #8A84A3; text-align: center; transition: transform .1s }
+        .seat-key { display: inline-block; width: 14px; height: 14px; border-radius: 4px }
+        .seat:not(:disabled):hover { box-shadow: inset 0 0 0 2px var(--theme, #6C4BFF); color: #17132B }
+        .seat:not(:disabled):active { transform: scale(.92) }
+        .seat.is-chosen, .seat-key.is-chosen { background: #17132B; color: #fff; box-shadow: 0 0 0 2px var(--theme, #6C4BFF) }
+        .seat.is-taken, .seat-key.is-taken { background: rgba(23,19,43,.12); box-shadow: none; color: transparent; cursor: not-allowed }
+    </style>
+
     <form method="POST" action="{{ route('concerts.purchase', $event) }}" x-ref="panel" class="mt-8 scroll-mt-20">
         @csrf
         <input type="hidden" name="section_id" :value="selected">
+        <template x-if="section && section.grid"><div><template x-for="k in chosen" :key="k"><input type="hidden" name="seats[]" :value="k"></template></div></template>
 
         @error('section_id')
             <p role="alert" class="mb-3 rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">{{ $message }}</p>
@@ -90,7 +177,7 @@
             <template x-if="section">
                 <div class="flex h-[68px] items-start justify-between">
                     <div>
-                        <p class="eyebrow" x-text="section.tier + '석'"></p>
+                        <p class="eyebrow" x-text="section.tier + (section.grid ? '' : '석')"></p>
                         <p class="num mt-1 text-3xl font-black"><span x-text="section.code"></span><span class="ml-1 font-sans text-base font-bold">구역</span></p>
                     </div>
                     <p class="num text-right text-lg font-bold"><span x-text="won(section.price)"></span><span class="font-sans text-sm">원</span></p>
@@ -106,7 +193,11 @@
             <div class="perforation my-5"></div>
 
             <div class="space-y-4">
-                <div class="flex items-center justify-between">
+                <div x-show="section && section.grid" class="flex items-center justify-between">
+                    <span class="label !mb-0">고른 좌석</span>
+                    <span class="num font-bold" x-text="chosen.length ? chosen.map(seatLabel).join(', ') : '위에서 좌석을 골라 주세요'"></span>
+                </div>
+                <div x-show="!(section && section.grid)" class="flex items-center justify-between">
                     <span class="label !mb-0">매수 <span class="font-normal text-mist">(1인 {{ $event->max_per_buyer }}매까지)</span></span>
                     <div class="flex items-center gap-1 rounded-full bg-paper p-1">
                         <button type="button" class="size-9 rounded-full bg-white text-lg font-bold disabled:opacity-30" @click="qty--" :disabled="qty <= 1" aria-label="한 장 빼기">−</button>
@@ -167,8 +258,8 @@
             @if ($event->salesOpen() && ! $member)
                 <a href="{{ route('member.login', ['return' => request()->getRequestUri()]) }}" class="btn-ink mt-6 w-full text-base">로그인하고 예매하기</a>
             @elseif ($event->salesOpen())
-                <button class="btn-ink mt-6 w-full text-base" :disabled="!section">
-                    <span x-text="section ? won(total - discount - mileageUse) + '원 결제하기' : '구역을 골라 주세요'">결제하기</span>
+                <button class="btn-ink mt-6 w-full text-base" :disabled="!section || (section.grid && !chosen.length)">
+                    <span x-text="!section ? '구역을 골라 주세요' : (section.grid && !chosen.length ? '좌석을 골라 주세요' : won(total - discount - mileageUse) + '원 결제하기')">결제하기</span>
                 </button>
             @else
                 <button class="btn-ink mt-6 w-full text-base" disabled>지금은 예매 기간이 아니에요</button>

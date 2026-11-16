@@ -40,33 +40,38 @@ class AdminController extends Controller
 
     public function eventCreate(): View
     {
-        return view('admin.event-form', ['event' => null]);
+        return view('admin.event-form', ['event' => null, 'seatMaps' => \App\Models\SeatMap::with('sections')->latest()->get()]);
     }
 
     public function eventEdit(Event $event): View
     {
-        return view('admin.event-form', ['event' => $event->load('sections')]);
+        return view('admin.event-form', ['event' => $event->load(['sections', 'seatMap']), 'seatMaps' => collect()]);
     }
 
-    public function eventStore(Request $request, VenueSetup $venue): RedirectResponse
+    public function eventStore(Request $request, VenueSetup $venue, \App\Services\SeatMap\SeatMapService $maps): RedirectResponse
     {
+        // 좌석표를 고르면 그 배치도의 구역·좌석으로, 아니면 기본 아레나 보울(등급별 가격·구역당 좌석)
         $data = $this->validateEvent($request) + $request->validate([
-            'tiers' => ['required', 'array'],
-            'tiers.*.price' => ['required', 'integer', 'min:0'],
-            'tiers.*.capacity' => ['required', 'integer', 'min:1', 'max:5000'],
+            'seat_map_id' => ['nullable', 'integer', 'exists:seat_maps,id'],
+            'tiers' => ['required_without:seat_map_id', 'array'],
+            'tiers.*.price' => ['required_without:seat_map_id', 'integer', 'min:0'],
+            'tiers.*.capacity' => ['required_without:seat_map_id', 'integer', 'min:1', 'max:5000'],
         ]);
+        $seatMap = filled($data['seat_map_id'] ?? null) ? \App\Models\SeatMap::find($data['seat_map_id']) : null;
 
-        $event = DB::transaction(function () use ($data, $venue) {
+        $event = DB::transaction(function () use ($data, $venue, $maps, $seatMap) {
             $event = Event::create($this->eventFields($data) + [
                 'slug' => Carbon::parse($data['starts_at'])->format('Ymd-Hi').'-'.Str::lower(Str::random(5)),
             ]);
-            $venue->createSections($event, $data['tiers']);
+            $seatMap ? $maps->applyToEvent($event, $seatMap) : $venue->createSections($event, $data['tiers']);
             $venue->ensureSlots($event);
 
             return $event;
         });
+        $sections = $event->sections()->count();
+        $seats = (int) $event->sections()->sum('capacity');
 
-        return redirect()->route('admin.events.index')->with('status', "‘{$event->name}’ 공연을 등록했어요. 좌석 구역 17개와 매장별 주문 시간대가 함께 만들어졌어요.");
+        return redirect()->route('admin.events.index')->with('status', "‘{$event->name}’ 공연을 등록했어요. 좌석 구역 {$sections}개(".number_format($seats).'석)와 매장별 주문 시간대가 함께 만들어졌어요.');
     }
 
     public function eventUpdate(Request $request, Event $event, VenueSetup $venue): RedirectResponse
@@ -83,6 +88,11 @@ class AdminController extends Controller
 
             foreach ($data['sections'] ?? [] as $id => $s) {
                 $section = SeatSection::where('event_id', $event->id)->findOrFail($id);
+                if ($section->hasSeatGrid()) {   // 좌석표 구역: 좌석 수 = 열 × 열당 좌석 (가격만 바꾼다)
+                    $section->update(['price' => $s['price']]);
+
+                    continue;
+                }
                 if ((int) $s['capacity'] < $section->sold) {
                     throw new OrderException("{$section->code}구역은 이미 {$section->sold}석이 팔려서 그보다 적게 줄일 수 없어요.");
                 }

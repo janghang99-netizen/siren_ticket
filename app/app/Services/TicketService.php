@@ -23,9 +23,11 @@ class TicketService
      * @return Collection<int, Ticket>
      */
     public function purchase(Event $event, SeatSection $section, int $qty, string $name, string $phone, ?\Carbon\CarbonInterface $termsAgreedAt = null,
-        ?int $couponIssueId = null, int $mileageUse = 0, ?\App\Models\Member $member = null): Collection
+        ?int $couponIssueId = null, int $mileageUse = 0, ?\App\Models\Member $member = null, ?array $seats = null): Collection
     {
         $phone = preg_replace('/\D/', '', $phone);
+        // 좌석표 공연: 팬이 고른 좌석 (열-번). 보울 공연은 지금처럼 자동 배정.
+        $picked = $section->hasSeatGrid() ? $this->pickedSeats($section, $seats ?? [], $qty) : null;
 
         if ($section->event_id !== $event->id) {
             throw new OrderException('이 공연의 구역이 아닙니다.');
@@ -37,7 +39,7 @@ class TicketService
             throw new OrderException("한 번에 1~{$event->max_per_buyer}매까지 예매할 수 있어요.");
         }
 
-        $bought = DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt, $couponIssueId, $mileageUse, $member) {
+        $bought = DB::transaction(function () use ($event, $section, $qty, $name, $phone, $termsAgreedAt, $couponIssueId, $mileageUse, $member, $picked) {
             // 1인 매수 제한: 같은 번호 또는 같은 회원 (번호를 바꿔 가며 사는 리셀 방지)
             $owned = Ticket::where('event_id', $event->id)
                 ->where(fn ($q) => $q->where('holder_phone', $phone)->when($member, fn ($q) => $q->orWhere('member_id', $member->id)))
@@ -70,8 +72,8 @@ class TicketService
                 'seat_section_id' => $section->id,
                 'customer_id' => $customer->id,
                 'member_id' => $member?->id,
-                'row_no' => intdiv($first + $i, self::SEATS_PER_ROW) + 1,
-                'seat_no' => (($first + $i) % self::SEATS_PER_ROW) + 1,
+                'row_no' => $picked ? $picked[$i][0] : intdiv($first + $i, self::SEATS_PER_ROW) + 1,
+                'seat_no' => $picked ? $picked[$i][1] : (($first + $i) % self::SEATS_PER_ROW) + 1,
                 'holder_name' => $name,
                 'holder_phone' => $phone,
                 'price' => $section->price,
@@ -80,6 +82,18 @@ class TicketService
                 'paid_at' => now(),
                 'terms_agreed_at' => $termsAgreedAt,
             ]));
+
+            // 고른 좌석 잡기 — (구역, 열, 번) 유일 키라 같은 좌석을 두 사람이 동시에 사도 한 명만 성공한다
+            if ($picked) {
+                try {
+                    DB::table('taken_seats')->insert($tickets->map(fn (Ticket $t) => [
+                        'event_id' => $event->id, 'seat_section_id' => $section->id, 'row_no' => $t->row_no, 'seat_no' => $t->seat_no,
+                        'ticket_id' => $t->id, 'created_at' => now(), 'updated_at' => now(),
+                    ])->all());
+                } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+                    throw new OrderException('방금 다른 분이 예매한 좌석이 있어요. 좌석을 다시 골라 주세요.', 'seat_taken', 409);
+                }
+            }
 
             if ($couponIssueId || $mileageUse > 0) {
                 app(BenefitService::class)->applyToBooking($tickets, $customer, $event, $bookingNo, $couponIssueId, $mileageUse);
@@ -95,6 +109,32 @@ class TicketService
         }
 
         return $bought->map->fresh(['token']);
+    }
+
+    /**
+     * 고른 좌석 검사: "열-번" 문자열 목록 → [[열, 번], ...] (열·번 순). 매수와 개수가 같아야 하고 격자 안이어야 한다.
+     *
+     * @return list<array{0:int,1:int}>
+     */
+    private function pickedSeats(SeatSection $section, array $seats, int $qty): array
+    {
+        $picked = [];
+        foreach ($seats as $seat) {
+            if (! is_string($seat) || ! preg_match('/^(\d{1,3})-(\d{1,3})$/', $seat, $m)) {
+                throw new OrderException('좌석 정보가 올바르지 않아요. 좌석을 다시 골라 주세요.');
+            }
+            [$row, $no] = [(int) $m[1], (int) $m[2]];
+            if ($row < 1 || $row > $section->rows || $no < 1 || $no > $section->seats_per_row) {
+                throw new OrderException("{$section->code}구역에 없는 좌석이에요. 좌석을 다시 골라 주세요.");
+            }
+            $picked["{$row}-{$no}"] = [$row, $no];
+        }
+        if (count($picked) !== $qty || count($seats) !== $qty) {
+            throw new OrderException("좌석을 {$qty}개 골라 주세요.", 'seat_count');
+        }
+        ksort($picked, SORT_NATURAL);
+
+        return array_values($picked);
     }
 
     /** 운영사 티켓 취소: 전액 환불, 좌석은 다시 판매로. 입장한 티켓은 취소 불가. */
@@ -162,6 +202,7 @@ class TicketService
             // 현금은 결제한 만큼에서 수수료를 빼고 돌려주고, 쓴 마일리지·쿠폰은 혜택 원장으로 되돌린다
             $ticket->update(['refund_amount' => app(BenefitService::class)->releaseTicket($ticket, $fee)]);
             SeatSection::whereKey($ticket->seat_section_id)->where('sold', '>', 0)->decrement('sold');
+            DB::table('taken_seats')->where('ticket_id', $ticket->id)->delete();   // 좌석표 공연: 그 좌석을 다시 판매
 
             return $ticket;
         });

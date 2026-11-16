@@ -63,7 +63,7 @@ class FanController extends Controller
 
     public function concert(Request $request, Event $event, BenefitService $benefits): View
     {
-        $event->load('sections');
+        $event->load(['sections', 'seatMap']);
         $customer = $this->verifiedCustomer($request);
 
         return view('fan.concert', [
@@ -75,6 +75,19 @@ class FanController extends Controller
         ]);
     }
 
+    /** 좌석표 공연: 구역의 좌석 격자와 이미 팔린 좌석 ("열-번") */
+    public function seats(Event $event, int $section): \Illuminate\Http\JsonResponse
+    {
+        $s = SeatSection::where('event_id', $event->id)->findOrFail($section);
+        abort_unless($s->hasSeatGrid(), 404);
+
+        return response()->json([
+            'rows' => $s->rows, 'per_row' => $s->seats_per_row, 'left' => $s->remaining(),
+            'taken' => \Illuminate\Support\Facades\DB::table('taken_seats')->where('seat_section_id', $s->id)
+                ->get(['row_no', 'seat_no'])->map(fn ($t) => $t->row_no.'-'.$t->seat_no)->values(),
+        ])->header('Cache-Control', 'no-store');
+    }
+
     public function purchase(Request $request, Event $event, TicketService $tickets): RedirectResponse
     {
         $member = $request->user('member');   // 라우트에서 auth:member — 회원만 예매
@@ -84,18 +97,20 @@ class FanController extends Controller
             'agree_terms' => ['accepted'],
             'coupon_issue_id' => ['nullable', 'integer'],
             'mileage_use' => ['nullable', 'integer', 'min:0'],
+            'seats' => ['nullable', 'array', 'max:'.$event->max_per_buyer],
+            'seats.*' => ['string', 'max:8'],
         ], [
             'agree_terms.accepted' => '이용약관·개인정보 수집·취소 규정에 동의해야 예매할 수 있어요.',
             'section_id.required' => '구역을 먼저 골라 주세요.',
         ]);
 
-        $section = SeatSection::findOrFail($data['section_id']);
+        $section = SeatSection::where('event_id', $event->id)->findOrFail($data['section_id']);
         $couponId = $data['coupon_issue_id'] ?? null;
         $mileage = (int) ($data['mileage_use'] ?? 0);
 
         try {
             // 예매자 = 로그인한 회원 (가입 때 인증한 번호). 회원은 따로 문자 인증 없이 쿠폰·마일리지를 쓴다.
-            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $member->name, $member->phone, now(), $couponId, $mileage, $member);
+            $bought = $tickets->purchase($event, $section, (int) $data['qty'], $member->name, $member->phone, now(), $couponId, $mileage, $member, $data['seats'] ?? null);
         } catch (OrderException $e) {
             return back()->withInput()->withErrors(['section_id' => $e->getMessage()]);
         }

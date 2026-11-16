@@ -16,7 +16,15 @@ class SeatSection extends Model
         'ring' => 'integer',
         'start_deg' => 'integer',
         'end_deg' => 'integer',
+        'x' => 'float', 'y' => 'float', 'w' => 'float', 'h' => 'float',
+        'rows' => 'integer', 'seats_per_row' => 'integer',
     ];
+
+    /** 좌석표 공연 구역: 열 × 열당 좌석 격자가 있어 팬이 좌석을 직접 고른다. (보울 구역은 자동 배정) */
+    public function hasSeatGrid(): bool
+    {
+        return $this->rows !== null && $this->seats_per_row !== null;
+    }
 
     public function event(): BelongsTo
     {

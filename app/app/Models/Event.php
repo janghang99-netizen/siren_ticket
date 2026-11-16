@@ -24,7 +24,13 @@ class Event extends Model
 
     public function sections(): HasMany
     {
-        return $this->hasMany(SeatSection::class)->orderBy('ring')->orderBy('start_deg');
+        return $this->hasMany(SeatSection::class)->orderBy('ring')->orderBy('start_deg')->orderBy('id');
+    }
+
+    /** 좌석표(이미지 배치도)를 쓰는 공연이면 그 좌석표. 없으면 기본 아레나 보울 좌석도. */
+    public function seatMap(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(SeatMap::class);
     }
 
     public function tickets(): HasMany

@@ -60,6 +60,27 @@
 
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
             @if (! $e)
+                {{-- 좌석 배치: 공연장 좌석표(배치도 이미지) 또는 기본 아레나 보울 --}}
+                <div x-data="{ map: @js((string) old('seat_map_id', '')) }">
+                    <h2 class="font-bold">좌석 배치</h2>
+                    <p class="mt-1 text-sm text-mist">공연장 좌석표를 고르면 그 배치도의 구역·등급·좌석으로 예매가 열리고, 팬이 좌석을 직접 골라요.
+                        <a href="{{ route('admin.seat-maps.index') }}" class="row-link text-ink">좌석표 관리</a></p>
+                    <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                        <label class="flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition" :class="map === '' ? 'bg-ink text-white ring-ink' : 'bg-paper ring-transparent'">
+                            <input type="radio" name="seat_map_id" value="" x-model="map" class="mt-1">
+                            <span><b>기본 아레나 보울</b><span class="block text-xs opacity-70">플로어·1층·2층 17구역 · 좌석 자동 배정</span></span>
+                        </label>
+                        @foreach ($seatMaps as $m)
+                            <label class="flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition" :class="map === '{{ $m->id }}' ? 'bg-ink text-white ring-ink' : 'bg-paper ring-transparent'">
+                                <input type="radio" name="seat_map_id" value="{{ $m->id }}" x-model="map" class="mt-1" @disabled($m->sections->isEmpty())>
+                                <span class="min-w-0"><b class="block truncate">{{ $m->name }}</b>
+                                    <span class="block text-xs opacity-70">{{ $m->venue }} · 구역 {{ $m->sections->count() }}개 · {{ number_format($m->totalSeats()) }}석{{ $m->sections->isEmpty() ? ' (구역 없음)' : '' }}</span></span>
+                            </label>
+                        @endforeach
+                    </div>
+                    @error('seat_map_id')<p class="mt-2 text-sm text-signal">{{ $message }}</p>@enderror
+                    <p x-show="map !== ''" x-cloak class="mt-3 rounded-2xl bg-paper px-4 py-3 text-xs text-mist">등급별 가격·좌석 수는 좌석표에서 가져와요. 등록 후 구역별 가격은 여기서 바꿀 수 있어요.</p>
+                <div x-show="map === ''" class="mt-6">
                 <h2 class="font-bold">좌석 등급 · 가격</h2>
                 <p class="mt-1 text-sm text-mist">플로어(VIP) 3구역, 1층(R) 6구역, 2층(S) 8구역이 만들어져요. 등록 후 구역별로 바꿀 수 있어요.</p>
                 <div class="mt-4 grid gap-3 sm:grid-cols-3">
@@ -67,11 +88,13 @@
                         <div class="rounded-2xl bg-paper p-4">
                             <p class="font-bold">{{ $tier }}석 <span class="text-xs font-normal text-mist">{{ $desc }}</span></p>
                             <label class="mt-3 block text-xs text-mist" for="tier-{{ $tier }}-price">가격(원)</label>
-                            <input id="tier-{{ $tier }}-price" name="tiers[{{ $tier }}][price]" type="number" min="0" step="1000" class="field num !py-2.5" value="{{ old("tiers.$tier.price", $price) }}" required>
+                            <input id="tier-{{ $tier }}-price" name="tiers[{{ $tier }}][price]" :disabled="map !== ''" type="number" min="0" step="1000" class="field num !py-2.5" value="{{ old("tiers.$tier.price", $price) }}" required>
                             <label class="mt-2 block text-xs text-mist" for="tier-{{ $tier }}-cap">구역당 좌석 수</label>
-                            <input id="tier-{{ $tier }}-cap" name="tiers[{{ $tier }}][capacity]" type="number" min="1" max="5000" class="field num !py-2.5" value="{{ old("tiers.$tier.capacity", $cap) }}" required>
+                            <input id="tier-{{ $tier }}-cap" name="tiers[{{ $tier }}][capacity]" :disabled="map !== ''" type="number" min="1" max="5000" class="field num !py-2.5" value="{{ old("tiers.$tier.capacity", $cap) }}" required>
                         </div>
                     @endforeach
+                </div>
+                </div>
                 </div>
             @else
                 <h2 class="font-bold">구역별 가격 · 좌석 수</h2>
@@ -86,7 +109,15 @@
                                 <tr>
                                     <td class="py-2"><span class="num font-bold">{{ $s->code }}</span> <span class="text-xs text-mist">{{ $s->tier }}</span></td>
                                     <td class="py-2 pr-2"><input name="sections[{{ $s->id }}][price]" type="number" min="0" step="1000" class="field num !py-2" value="{{ old("sections.{$s->id}.price", $s->price) }}" aria-label="{{ $s->code }}구역 가격"></td>
-                                    <td class="py-2 pr-2"><input name="sections[{{ $s->id }}][capacity]" type="number" min="{{ $s->sold }}" max="5000" class="field num !py-2" value="{{ old("sections.{$s->id}.capacity", $s->capacity) }}" aria-label="{{ $s->code }}구역 좌석 수"></td>
+                                    <td class="py-2 pr-2">
+                                        @if ($s->hasSeatGrid())
+                                            {{-- 좌석표 구역: 좌석 수 = 열 × 열당 좌석 (좌석표에서 정함) --}}
+                                            <input type="hidden" name="sections[{{ $s->id }}][capacity]" value="{{ $s->capacity }}">
+                                            <span class="num text-sm">{{ number_format($s->capacity) }}</span> <span class="text-xs text-mist">{{ $s->rows }}열×{{ $s->seats_per_row }}</span>
+                                        @else
+                                            <input name="sections[{{ $s->id }}][capacity]" type="number" min="{{ $s->sold }}" max="5000" class="field num !py-2" value="{{ old("sections.{$s->id}.capacity", $s->capacity) }}" aria-label="{{ $s->code }}구역 좌석 수">
+                                        @endif
+                                    </td>
                                     <td class="num py-2 text-right">{{ number_format($s->sold) }}</td>
                                 </tr>
                             @endforeach
@@ -100,7 +131,7 @@
     <div class="space-y-4">
         @if ($e)
             <div class="rounded-3xl bg-ink p-4">
-                @include('partials.bowl', ['event' => $e])
+                @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e])
             </div>
         @endif
         @if ($e?->isCancelled())

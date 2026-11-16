@@ -13,6 +13,7 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/concerts/{event}', 'concert')->name('concerts.show');
     // 티켓 예매는 회원만 (매장 음식 주문은 비회원 그대로)
     Route::post('/concerts/{event}/tickets', 'purchase')->middleware(['auth:member', 'throttle:20,1'])->name('concerts.purchase');
+    Route::get('/concerts/{event}/sections/{section}/seats', 'seats')->whereNumber('section')->middleware('throttle:120,1')->name('concerts.seats');   // 좌석표 공연: 구역 좌석 현황
     Route::get('/tickets', 'tickets')->name('tickets');
     Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->name('tickets.cancel');
 
@@ -76,7 +77,9 @@ Route::prefix('member')->name('member.')->controller(\App\Http\Controllers\Membe
 
 // ── 번역 (원본 다담다 방식): 상품명 AI 번역 사전 · 구글 오역 교정 사전 — 공개 JSON ──
 // 상품 이미지 (storage/app/products)
-Route::get('/media/products/{file}', [\App\Http\Controllers\ProductImageController::class, 'show'])
+Route::get('/media/seat-maps/{file}', [\App\Http\Controllers\SeatMapController::class, 'image'])
+    ->where('file', '[A-Za-z0-9]{20,80}\.(jpg|jpeg|png|webp)')->name('media.seat-map');
+Route::get('/media/products/{file}',[\App\Http\Controllers\ProductImageController::class, 'show'])
     ->where('file', '[A-Za-z0-9]{20,80}\.(jpg|jpeg|png|webp)')->name('media.product');
 Route::get('/translate/dict/{lang}', [\App\Http\Controllers\TranslationController::class, 'dict'])->whereIn('lang', ['en', 'ja', 'zh'])->name('translate.dict');
 
@@ -194,6 +197,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 // 원본 다담다 주소 호환: EIS 판매내역 pull (서명 검증, CSRF 제외)
 Route::post('/admin/openmarket_export.php', [\App\Http\Controllers\EisController::class, 'orders'])
     ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)->middleware('throttle:60,1');
+
+// ── 슈퍼어드민: 공연장 좌석표 (배치도 이미지 → 등급·구역·좌석) ──
+Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 'can:super-admin'])
+    ->controller(\App\Http\Controllers\SeatMapController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/new', 'create')->name('create');
+        Route::post('/', 'store')->name('store');
+        Route::get('/{seatMap}', 'edit')->whereNumber('seatMap')->name('edit');
+        Route::put('/{seatMap}', 'update')->whereNumber('seatMap')->name('update');
+        Route::post('/{seatMap}/read', 'reread')->whereNumber('seatMap')->middleware('throttle:10,1')->name('read');
+        Route::delete('/{seatMap}', 'destroy')->whereNumber('seatMap')->name('destroy');
+    });
 
 // ── 슈퍼어드민 콘솔: 공연·좌석티켓·입점업체·매장·정산·설정 ──
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(AdminController::class)->group(function () {
