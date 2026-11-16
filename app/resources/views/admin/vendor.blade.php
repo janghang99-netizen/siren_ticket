@@ -26,7 +26,14 @@
                 @endforelse
                 <div class="flex justify-between gap-3"><dt class="text-mist">정산 계좌</dt><dd class="text-right">{{ $vendor->bank_name }} {{ $vendor->bank_account }} {{ $vendor->account_holder }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-mist">수수료</dt><dd class="num">{{ rtrim(rtrim($vendor->commission_rate, '0'), '.') }}% <span class="text-mist">+ 부가세</span></dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-mist">로그인 계정</dt><dd>{{ $vendor->users->pluck('email')->join(', ') }}</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-mist">로그인 계정</dt><dd class="text-right">{{ $vendor->users->pluck('email')->join(', ') }}
+                    @if ($vendor->users->isNotEmpty())
+                        <form method="POST" action="{{ route('admin.vendors.password-link', $vendor->id) }}" class="mt-1" onsubmit="return confirm('로그인 계정 메일로 비밀번호 설정 링크를 보낼까요?')">
+                            @csrf
+                            <button class="text-xs font-semibold text-stick">비밀번호 설정 메일 보내기</button>
+                        </form>
+                    @endif
+                </dd></div>
             </dl>
         </section>
 

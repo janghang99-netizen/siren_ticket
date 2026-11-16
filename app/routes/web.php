@@ -110,6 +110,15 @@ Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController:
 Route::get('/login', [AuthController::class, 'form'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
+// 관리 화면 비밀번호 찾기·설정 (이관한 판매자는 운영사가 보낸 설정 메일로 처음 비밀번호를 정한다)
+Route::controller(\App\Http\Controllers\StaffPasswordController::class)->name('staff.password.')->group(function () {
+    Route::get('/password/forgot', 'forgotForm')->name('forgot');
+    Route::post('/password/forgot', 'send')->middleware('throttle:5,1')->name('send');
+    Route::get('/password/reset/{token}', 'resetForm')->name('reset');
+    Route::post('/password/reset', 'reset')->middleware('throttle:10,1')->name('update');
+});
+Route::post('/admin/vendors/{vendor}/password-link', [\App\Http\Controllers\StaffPasswordController::class, 'vendorLink'])
+    ->whereNumber('vendor')->middleware(['auth', 'can:super-admin', 'throttle:10,1'])->name('admin.vendors.password-link');
 
 // ── 입점 신청 (A1) — 누구나 신청, 운영사 심사 후 승인 ──
 Route::get('/partner/apply', [VendorApplicationController::class, 'form'])->middleware('guest')->name('partner.apply');

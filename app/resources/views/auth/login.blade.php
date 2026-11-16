@@ -14,6 +14,9 @@
         <p class="font-display text-xl font-black">{{ $site['brand_name'] }}</p>
         <h1 class="mt-1 text-lg font-bold">관리 화면 로그인</h1>
         <p class="mt-1 text-sm text-mist">운영사는 공연·티켓·정산을, 입점업체는 우리 매장 주문과 상품을 관리해요.</p>
+        @if (session('status'))
+            <p role="status" class="mt-4 rounded-2xl bg-stick/10 px-4 py-3 text-sm font-semibold text-stick">{{ session('status') }}</p>
+        @endif
         @if ($current)
             <p role="status" class="mt-4 rounded-2xl bg-ink/5 px-4 py-3 text-sm">
                 지금 <b>{{ $current->email }}</b>({{ $current->isSuperAdmin() ? '운영사' : '입점업체' }})로 로그인해 있어요.
@@ -34,6 +37,7 @@
             @error('email')<p role="alert" class="text-sm font-semibold text-signal">{{ $message }}</p>@enderror
         </div>
         <button class="btn-ink mt-6 w-full">로그인</button>
+        <a href="{{ route('staff.password.forgot') }}" class="mt-3 block text-center text-sm font-semibold text-stick">비밀번호를 잊었어요</a>
     </form>
 </body>
 </html>

@@ -13,6 +13,12 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /** 비밀번호 설정/재설정 메일 (한국어, 관리 화면 주소) */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new \App\Notifications\StaffResetPassword($token));
+    }
+
     /**
      * The attributes that are mass assignable.
      *
