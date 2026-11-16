@@ -101,6 +101,7 @@ class DatabaseSeeder extends Seeder
                         'origin' => in_array($code, ['arena1', 'arena3'], true) ? '원두·밀가루 수입산, 우유 국산' : null,
                         'allergens' => in_array($code, ['arena1', 'arena3'], true) ? '우유, 밀' : null,
                     ]);
+                    DemoProductImages::attach($product);   // 데모 상품 사진 (직접 그린 일러스트)
                     foreach ($options as $key => $value) {
                         [$oname, $extra] = is_int($key) ? [$value, 0] : [$key, $value];
                         $product->options()->create(['name' => $oname, 'extra_price' => $extra, 'stock' => 300]);

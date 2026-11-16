@@ -63,6 +63,16 @@ class StoreOperationsTest extends TestCase
         $this->get(route('order.entry'))->assertRedirect(route('home'));
     }
 
+    public function test_demo_product_images_attach_once(): void
+    {
+        Storage::fake('local');
+        $this->assertSame(2, \Database\Seeders\DemoProductImages::fillMissing());   // 아메리카노 · 크루아상
+        $path = $this->coffee->fresh()->image_path;
+        Storage::disk('local')->assertExists($path);
+        $this->get(route('media.product', basename($path)))->assertOk();
+        $this->assertSame(0, \Database\Seeders\DemoProductImages::fillMissing());   // 이미 있으면 다시 안 붙임
+    }
+
     public function test_bundle_payment_only_within_same_store(): void
     {
         $svc = app(OrderService::class);
