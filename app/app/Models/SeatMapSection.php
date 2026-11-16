@@ -12,7 +12,7 @@ class SeatMapSection extends Model
 
     protected $casts = [
         'x' => 'float', 'y' => 'float', 'w' => 'float', 'h' => 'float',
-        'rows' => 'integer', 'seats_per_row' => 'integer', 'sort' => 'integer',
+        'rows' => 'integer', 'seats_per_row' => 'integer', 'sort' => 'integer', 'layout' => 'array',
     ];
 
     public function seatMap(): BelongsTo
@@ -20,8 +20,11 @@ class SeatMapSection extends Model
         return $this->belongsTo(SeatMap::class);
     }
 
+    /** 좌석 수 — 좌석 리스트(layout)가 있으면 실제 좌석 수, 없으면 열 × 열당 좌석 */
     public function capacity(): int
     {
-        return $this->rows * $this->seats_per_row;
+        return $this->layout
+            ? array_sum(array_map(fn ($r) => count($r['seats'] ?? []), $this->layout))
+            : $this->rows * $this->seats_per_row;
     }
 }

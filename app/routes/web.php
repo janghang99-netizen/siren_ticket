@@ -198,6 +198,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 Route::post('/admin/openmarket_export.php', [\App\Http\Controllers\EisController::class, 'orders'])
     ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)->middleware('throttle:60,1');
 
+// ── 슈퍼어드민: 공연별 좌석 막기 (판매 제외·보류) ──
+Route::prefix('admin/events/{event:id}/seats')->name('admin.events.seats')->middleware(['auth', 'can:super-admin'])
+    ->controller(\App\Http\Controllers\EventSeatController::class)->group(function () {
+        Route::get('/', 'show')->name('');
+        Route::post('/', 'update')->name('.update');
+        Route::get('/{section}', 'section')->whereNumber('section')->name('.section');
+    });
+
 // ── 슈퍼어드민: 공연장 목록 ──
 Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:super-admin'])
     ->controller(\App\Http\Controllers\VenueController::class)->group(function () {
@@ -220,6 +228,8 @@ Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 
         Route::get('/{seatMap}', 'edit')->whereNumber('seatMap')->name('edit');
         Route::put('/{seatMap}', 'update')->whereNumber('seatMap')->name('update');
         Route::post('/{seatMap}/image', 'replaceImage')->whereNumber('seatMap')->name('image');
+        Route::post('/{seatMap}/seat-list', 'importSeatList')->whereNumber('seatMap')->name('seat-list');   // 좌석 리스트 CSV
+        Route::get('/seat-list-sample.csv', 'seatListSample')->name('seat-list-sample');
         Route::post('/{seatMap}/read', 'reread')->whereNumber('seatMap')->middleware('throttle:10,1')->name('read');
         Route::delete('/{seatMap}', 'destroy')->whereNumber('seatMap')->name('destroy');
     });

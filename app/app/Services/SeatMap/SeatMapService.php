@@ -276,9 +276,15 @@ class SeatMapService
     {
         DB::transaction(function () use ($map, $tiers, $sections, $crop) {
             $map->update(['tiers' => $tiers] + ($crop ? ['crop_x' => $crop['x'], 'crop_y' => $crop['y'], 'crop_w' => $crop['w'], 'crop_h' => $crop['h']] : []));
+            // 좌석 리스트(layout)는 편집 화면에서 오가지 않으므로 같은 이름 구역에 그대로 남긴다
+            $layouts = $map->sections()->get()->mapWithKeys(fn ($s) => [mb_strtoupper($s->code) => $s->layout])->filter();
             $map->sections()->delete();
             foreach ($sections as $i => $s) {
-                $map->sections()->create($s + ['sort' => $i]);
+                $layout = $s['layout'] ?? $layouts[mb_strtoupper($s['code'])] ?? null;
+                if ($layout) {
+                    $s = ['layout' => $layout, 'rows' => count($layout), 'seats_per_row' => max(1, ...array_map(fn ($r) => count($r['seats']), $layout))] + $s;
+                }
+                $map->sections()->create(['sort' => $i] + array_intersect_key($s, array_flip(['code', 'tier', 'x', 'y', 'w', 'h', 'rows', 'seats_per_row', 'layout'])));
             }
         });
     }
@@ -297,6 +303,7 @@ class SeatMapService
                 'tier' => mb_substr($tier['name'], 0, 10), 'color' => $tier['color'], 'price' => (int) $tier['price'],
                 'capacity' => $s->capacity(), 'ring' => 0, 'start_deg' => 0, 'end_deg' => 0,
                 'x' => $s->x, 'y' => $s->y, 'w' => $s->w, 'h' => $s->h, 'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row,
+                'layout' => $s->layout,
             ]);
         }
         $event->update(['seat_map_id' => $map->id]);

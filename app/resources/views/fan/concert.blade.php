@@ -17,17 +17,23 @@
 @section('content')
 <script>
     // 좌석표 공연: 구역 좌석 격자 HTML (수천 석도 빠르게 — 버튼마다 Alpine 바인딩을 걸지 않고 한 번에 그린다)
+    // 좌석 리스트가 있으면 열마다 실제 좌석 번호(길이가 달라 가운데 맞춤), 없으면 열 × 열당 좌석 격자
+    window.seatRows = (g) => g.layout
+        ? g.layout.map(r => ({ n: r.n, label: String(r.label), seats: r.seats }))
+        : Array.from({ length: g.rows }, (_, i) => ({ n: i + 1, label: String(i + 1), seats: Array.from({ length: g.per }, (_, j) => j + 1) }));
     window.seatGridHtml = (g, chosen) => {
+        const esc = (s) => s.replace(/[&<>"']/g, ch => '&#' + ch.charCodeAt(0) + ';');
         let h = '';
-        for (let r = 1; r <= g.rows; r++) {
-            h += `<div class="seat-row"><span class="seat-row-no">${r}열</span>`;
-            for (let n = 1; n <= g.per; n++) {
-                const k = r + '-' + n, t = g.taken.has(k), c = chosen.includes(k);
-                h += `<button type="button" data-seat="${k}" class="seat${t ? ' is-taken' : ''}${c ? ' is-chosen' : ''}"${t ? ' disabled' : ` aria-pressed="${c}"`} aria-label="${r}열 ${n}번${t ? ' 판매됨' : ''}">${n}</button>`;
+        for (const r of window.seatRows(g)) {
+            const label = esc(r.label);
+            h += `<div class="seat-row${g.layout ? ' is-listed' : ''}"><span class="seat-row-no">${label}열</span><span class="seat-row-seats">`;
+            for (const n of r.seats) {
+                const k = r.n + '-' + n, t = g.taken.has(k), c = chosen.includes(k);
+                h += `<button type="button" data-seat="${k}" class="seat${t ? ' is-taken' : ''}${c ? ' is-chosen' : ''}"${t ? ' disabled' : ` aria-pressed="${c}"`} aria-label="${label}열 ${n}번${t ? ' 판매됨' : ''}">${n}</button>`;
             }
-            h += '</div>';
+            h += '</span></div>';
         }
-        return h;
+        return `<div class="seat-rows${g.layout ? ' is-listed' : ''}">${h}</div>`;
     };
 </script>
 <div x-data="{
@@ -51,7 +57,8 @@
                 const r = await fetch(this.seatsUrl.replace('/sections/0/', '/sections/' + this.selected + '/'), { headers: { Accept: 'application/json' } });
                 if (!r.ok) throw new Error();
                 const d = await r.json();
-                this.grid = { rows: d.rows, per: d.per_row, taken: new Set(d.taken) };
+                this.grid = { rows: d.rows, per: d.per_row, layout: d.layout, taken: new Set(d.taken),
+                    labels: Object.fromEntries((d.layout || []).map(r => [r.n, String(r.label)])) };
                 this.section.left = d.left;
             } catch (e) { this.seatMsg = '좌석을 불러오지 못했어요. 구역을 다시 눌러 주세요.' }
             this.loadingSeats = false;
@@ -66,7 +73,7 @@
             else { this.chosen.push(k); b.classList.add('is-chosen'); b.setAttribute('aria-pressed', 'true') }
             this.seatMsg = ''; this.qty = this.chosen.length;
         },
-        seatLabel(k) { const [r, n] = k.split('-'); return r + '열 ' + n + '번' },
+        seatLabel(k) { const [r, n] = k.split('-'); return ((this.grid && this.grid.labels[r]) || r) + '열 ' + n + '번' },
         coupons: @js($myCoupons->map(fn ($i) => ['id' => $i->id, 'label' => $i->coupon->benefitLabel(), 'kind' => $i->coupon->kind, 'value' => $i->coupon->value, 'max' => $i->coupon->max_discount, 'min' => $i->coupon->min_amount])->values()),
         couponId: @js(old('coupon_issue_id', '')),
         balance: {{ (int) ($customer?->mileage_balance ?? 0) }},
@@ -153,7 +160,10 @@
         </div>
     </section>
     <style>
+        .seat-rows { display: flex; flex-direction: column; width: max-content; min-width: 100% }
+        .seat-rows.is-listed { align-items: center }   /* 열마다 좌석 수가 달라 가운데로 모아 실제 객석 모양처럼 */
         .seat-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; width: max-content }
+        .seat-row-seats { display: flex; gap: 3px }
         .seat-row-no { position: sticky; left: 0; z-index: 1; width: 2.6rem; flex: none; padding-right: 4px; font: 600 10px/1 var(--font-num, inherit); color: #8A84A3; background: inherit; text-align: right }
         .seat-grid .seat-row-no { background: var(--color-paper, #F4F1FA) }
         .seat, .seat-key { width: 26px; height: 26px; flex: none; border-radius: 7px 7px 4px 4px; background: #fff; box-shadow: inset 0 0 0 1px rgba(23,19,43,.18); font: 600 9px/26px inherit; color: #8A84A3; text-align: center; transition: transform .1s }

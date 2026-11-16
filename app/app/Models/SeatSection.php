@@ -17,8 +17,36 @@ class SeatSection extends Model
         'start_deg' => 'integer',
         'end_deg' => 'integer',
         'x' => 'float', 'y' => 'float', 'w' => 'float', 'h' => 'float',
-        'rows' => 'integer', 'seats_per_row' => 'integer',
+        'rows' => 'integer', 'seats_per_row' => 'integer', 'layout' => 'array', 'blocked' => 'integer',
     ];
+
+    /** 이 좌석이 구역에 있는지 — 좌석 리스트가 있으면 그 열의 실제 번호, 없으면 격자 안 */
+    public function hasSeat(int $row, int $seat): bool
+    {
+        if ($this->layout) {
+            foreach ($this->layout as $r) {
+                if ((int) $r['n'] === $row) {
+                    return in_array($seat, $r['seats'], true);
+                }
+            }
+
+            return false;
+        }
+
+        return $row >= 1 && $row <= (int) $this->rows && $seat >= 1 && $seat <= (int) $this->seats_per_row;
+    }
+
+    /** 열 이름 (좌석 리스트의 A·B 같은 이름, 없으면 숫자) */
+    public function rowLabel(int $row): string
+    {
+        foreach ($this->layout ?? [] as $r) {
+            if ((int) $r['n'] === $row) {
+                return (string) $r['label'];
+            }
+        }
+
+        return (string) $row;
+    }
 
     /** 좌석표 공연 구역: 열 × 열당 좌석 격자가 있어 팬이 좌석을 직접 고른다. (보울 구역은 자동 배정) */
     public function hasSeatGrid(): bool
@@ -33,7 +61,7 @@ class SeatSection extends Model
 
     public function remaining(): int
     {
-        return max(0, $this->capacity - $this->sold);
+        return max(0, $this->capacity - $this->sold - (int) $this->blocked);   // 판매 제외·보류 좌석은 팔 수 없다
     }
 
     /**

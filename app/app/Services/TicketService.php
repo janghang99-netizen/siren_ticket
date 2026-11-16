@@ -50,7 +50,7 @@ class TicketService
             }
 
             $claimed = SeatSection::whereKey($section->id)
-                ->whereRaw('sold + ? <= capacity', [$qty])
+                ->whereRaw('sold + blocked + ? <= capacity', [$qty])   // 판매 제외·보류 좌석은 빼고
                 ->increment('sold', $qty);
             if ($claimed === 0) {
                 $left = $section->fresh()->remaining();
@@ -73,6 +73,7 @@ class TicketService
                 'customer_id' => $customer->id,
                 'member_id' => $member?->id,
                 'row_no' => $picked ? $picked[$i][0] : intdiv($first + $i, self::SEATS_PER_ROW) + 1,
+                'row_label' => $picked && $section->layout ? $section->rowLabel($picked[$i][0]) : null,
                 'seat_no' => $picked ? $picked[$i][1] : (($first + $i) % self::SEATS_PER_ROW) + 1,
                 'holder_name' => $name,
                 'holder_phone' => $phone,
@@ -85,6 +86,13 @@ class TicketService
 
             // 고른 좌석 잡기 — (구역, 열, 번) 유일 키라 같은 좌석을 두 사람이 동시에 사도 한 명만 성공한다
             if ($picked) {
+                // 운영사가 막은 좌석(판매 제외·보류)은 팔지 않는다
+                $blocked = DB::table('seat_blocks')->where('seat_section_id', $section->id)
+                    ->where(fn ($q) => collect($picked)->each(fn ($p) => $q->orWhere(fn ($w) => $w->where('row_no', $p[0])->where('seat_no', $p[1]))))
+                    ->exists();
+                if ($blocked) {
+                    throw new OrderException('판매하지 않는 좌석이 있어요. 좌석을 다시 골라 주세요.', 'seat_taken', 409);
+                }
                 try {
                     DB::table('taken_seats')->insert($tickets->map(fn (Ticket $t) => [
                         'event_id' => $event->id, 'seat_section_id' => $section->id, 'row_no' => $t->row_no, 'seat_no' => $t->seat_no,
@@ -124,7 +132,7 @@ class TicketService
                 throw new OrderException('좌석 정보가 올바르지 않아요. 좌석을 다시 골라 주세요.');
             }
             [$row, $no] = [(int) $m[1], (int) $m[2]];
-            if ($row < 1 || $row > $section->rows || $no < 1 || $no > $section->seats_per_row) {
+            if (! $section->hasSeat($row, $no)) {
                 throw new OrderException("{$section->code}구역에 없는 좌석이에요. 좌석을 다시 골라 주세요.");
             }
             $picked["{$row}-{$no}"] = [$row, $no];

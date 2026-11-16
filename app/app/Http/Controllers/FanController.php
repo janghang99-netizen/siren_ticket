@@ -81,10 +81,15 @@ class FanController extends Controller
         $s = SeatSection::where('event_id', $event->id)->findOrFail($section);
         abort_unless($s->hasSeatGrid(), 404);
 
+        // 팔린 좌석 + 운영사가 막은 좌석(판매 제외·보류) — 팬에게는 둘 다 '판매됨'으로 보인다
+        $unavailable = \Illuminate\Support\Facades\DB::table('taken_seats')->where('seat_section_id', $s->id)->select('row_no', 'seat_no')
+            ->union(\Illuminate\Support\Facades\DB::table('seat_blocks')->where('seat_section_id', $s->id)->select('row_no', 'seat_no'))
+            ->get()->map(fn ($t) => $t->row_no.'-'.$t->seat_no)->values();
+
         return response()->json([
             'rows' => $s->rows, 'per_row' => $s->seats_per_row, 'left' => $s->remaining(),
-            'taken' => \Illuminate\Support\Facades\DB::table('taken_seats')->where('seat_section_id', $s->id)
-                ->get(['row_no', 'seat_no'])->map(fn ($t) => $t->row_no.'-'.$t->seat_no)->values(),
+            'layout' => $s->layout,   // 좌석 리스트: 열마다 실제 좌석 번호 [{n,label,seats}] (없으면 격자)
+            'taken' => $unavailable,
         ])->header('Cache-Control', 'no-store');
     }
 

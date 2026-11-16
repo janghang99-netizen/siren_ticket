@@ -14,7 +14,7 @@
                 <p class="eyebrow !text-paper/60">{{ $ticket->event->venue }} · {{ $ticket->section->tier }}석</p>
                 <p class="mt-1 text-xl font-black">{{ $ticket->event->name }}</p>
                 <div class="mt-4 flex gap-6">
-                    @foreach ([['구역', $ticket->section->code], ['열', $ticket->row_no], ['번', $ticket->seat_no]] as [$l, $v])
+                    @foreach ([['구역', $ticket->section->code], ['열', $ticket->rowName()], ['번', $ticket->seat_no]] as [$l, $v])
                         <div><p class="text-xs text-paper/60">{{ $l }}</p><p class="num text-3xl font-black">{{ $v }}</p></div>
                     @endforeach
                 </div>

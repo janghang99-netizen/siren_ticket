@@ -143,6 +143,10 @@
             <div class="rounded-3xl bg-ink p-4">
                 @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e])
             </div>
+            @if ($e->sections->contains(fn ($s) => $s->hasSeatGrid()))
+                <a href="{{ route('admin.events.seats', $e->id) }}" class="btn-ghost w-full">좌석 막기 (판매 제외 · 보류)
+                    @if ($e->sections->sum('blocked'))<span class="num ml-1 text-xs text-mist">{{ number_format($e->sections->sum('blocked')) }}석</span>@endif</a>
+            @endif
         @endif
         @if ($e?->isCancelled())
             <p class="rounded-2xl bg-signal/10 px-4 py-3 text-sm font-semibold text-signal">취소된 공연이에요 ({{ $e->cancelled_at?->format('m.d H:i') }}) · {{ $e->cancel_reason }}</p>

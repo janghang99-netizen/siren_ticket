@@ -20,7 +20,7 @@
                 <h2 class="mt-2 truncate text-2xl font-black">{{ $t->event->artist }}</h2>
                 <p class="num mt-1 text-sm text-paper/80">{{ $t->event->starts_at->format('Y.m.d') }} {{ $days[$t->event->starts_at->dayOfWeek] }} {{ $t->event->starts_at->format('H:i') }}</p>
                 <div class="mt-5 flex items-end gap-4">
-                    @foreach ([['구역', $t->section->code], ['열', $t->row_no], ['번', $t->seat_no]] as [$label, $value])
+                    @foreach ([['구역', $t->section->code], ['열', $t->rowName()], ['번', $t->seat_no]] as [$label, $value])
                         <div>
                             <p class="text-[11px] font-semibold text-paper/60">{{ $label }}</p>
                             <p class="num text-[34px] font-black leading-none">{{ $value }}</p>

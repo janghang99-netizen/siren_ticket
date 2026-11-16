@@ -87,6 +87,12 @@ class Ticket extends Model
 
     public function seatLabel(): string
     {
-        return "{$this->section->code}구역 {$this->row_no}열 {$this->seat_no}번";
+        return "{$this->section->code}구역 {$this->rowName()}열 {$this->seat_no}번";
+    }
+
+    /** 열 이름 — 좌석 리스트의 A·B 같은 이름이 있으면 그것, 없으면 숫자 */
+    public function rowName(): string
+    {
+        return $this->row_label ?? (string) $this->row_no;
     }
 }

@@ -117,7 +117,7 @@ class SeatMapController extends Controller
         if ($inUse) {
             $target = $seatMap->replicate(['image_path', 'image_w', 'image_h'])->fill($fresh + ['name' => mb_substr($seatMap->name.' (새 배치도)', 0, 80)]);
             $target->save();
-            $this->maps->sync($target, $seatMap->tiers, $seatMap->sections->map->only(['code', 'tier', 'x', 'y', 'w', 'h', 'rows', 'seats_per_row'])->all());
+            $this->maps->sync($target, $seatMap->tiers, $seatMap->sections->map->only(['code', 'tier', 'x', 'y', 'w', 'h', 'rows', 'seats_per_row', 'layout'])->all());
         } else {
             Storage::disk('local')->delete($seatMap->image_path);
             $seatMap->update($fresh);
@@ -133,6 +133,37 @@ class SeatMapController extends Controller
         }
 
         return redirect()->route('admin.seat-maps.edit', $target)->with('status', $status);
+    }
+
+    /** 좌석 리스트(CSV) 올리기 — 구역별 실제 좌석(열마다 다른 좌석 수·번호)으로 바꾼다 */
+    public function importSeatList(Request $request, SeatMap $seatMap, \App\Services\SeatMap\SeatListImporter $importer): RedirectResponse
+    {
+        $request->validate(['seat_list' => ['required', 'file', 'max:5120', 'mimes:csv,txt']],
+            ['seat_list.required' => '좌석 리스트 CSV 파일을 골라 주세요.', 'seat_list.mimes' => 'CSV 파일만 올릴 수 있어요. 엑셀에서 ‘CSV로 저장’ 해 주세요.']);
+        $parsed = $importer->parse((string) file_get_contents($request->file('seat_list')->getRealPath()));
+        $r = $importer->apply($seatMap, $parsed);
+        Audit::log('seat_map.seat_list', $seatMap, "좌석 리스트 · {$seatMap->name} · ".number_format($r['seats']).'석');
+
+        $msg = '좌석 리스트를 넣었어요: '.number_format($r['seats'])."석 · 구역 {$r['updated']}개 바꿈 · 새 구역 {$r['added']}개.";
+        if ($r['added']) {
+            $msg .= ' 새 구역은 배치도 왼쪽 위에 작게 놓았으니 끌어서 위치를 맞춰 주세요.';
+        }
+        if ($r['mixed']) {
+            $msg .= ' 한 구역에 등급이 섞인 곳('.implode(', ', array_slice($r['mixed'], 0, 5)).')은 많은 쪽 등급으로 넣었어요.';
+        }
+        if ($gap = $this->maps->seatGapNote($seatMap->fresh())) {
+            $msg .= ' '.$gap;
+        }
+
+        return redirect()->route('admin.seat-maps.edit', $seatMap)->with('status', $msg);
+    }
+
+    public function seatListSample(): \Symfony\Component\HttpFoundation\Response
+    {
+        return response(\App\Services\SeatMap\SeatListImporter::sample(), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="seat-list-sample.csv"',
+        ]);
     }
 
     /** AI 로 다시 읽기 — 지금 구역을 판독 결과로 바꾼다 */

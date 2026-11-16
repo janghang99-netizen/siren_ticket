@@ -46,7 +46,7 @@ class NftController extends Controller
   <text x="48" y="240" font-family="sans-serif" font-size="26" fill="#fff">{$esc($e->name)}</text>
   <text x="48" y="290" font-family="sans-serif" font-size="24" fill="#fff" fill-opacity=".85">{$esc($e->starts_at->format('Y.m.d H:i'))} · {$esc($e->venue)}</text>
   <text x="64" y="640" font-family="sans-serif" font-size="22" fill="#6b6585">SECTION · ROW · SEAT</text>
-  <text x="64" y="730" font-family="sans-serif" font-size="80" font-weight="900" fill="#17132B">{$esc($t->section->code)} · {$esc($t->row_no)} · {$esc($t->seat_no)}</text>
+  <text x="64" y="730" font-family="sans-serif" font-size="80" font-weight="900" fill="#17132B">{$esc($t->section->code)} · {$esc($t->rowName())} · {$esc($t->seat_no)}</text>
   <text x="64" y="782" font-family="sans-serif" font-size="20" fill="#6b6585">#{$esc($t->id)} · NON-TRANSFERABLE</text>
 </svg>
 SVG;

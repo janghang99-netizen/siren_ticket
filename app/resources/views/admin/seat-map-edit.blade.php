@@ -6,7 +6,7 @@
     'tiers' => $map->tiers,
     'sections' => $map->sections->map(fn ($s) => [
         'code' => $s->code, 'tier' => $s->tier, 'x' => $s->x, 'y' => $s->y, 'w' => $s->w, 'h' => $s->h,
-        'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row,
+        'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row, 'listed' => $s->layout ? $s->capacity() : null,
     ])->values(),
     'crop' => ['x' => $map->crop_x, 'y' => $map->crop_y, 'w' => $map->crop_w, 'h' => $map->crop_h],
 ] + ['venueSeats' => (int) ($map->venueRecord?->seats ?? 0)])
@@ -29,7 +29,8 @@
         drag: null,
         dirty: false,
         get current() { return this.sel === null ? null : this.sections[this.sel] },
-        get totalSeats() { return this.sections.reduce((n, s) => n + s.rows * s.seats_per_row, 0) },
+        seatsOf(s) { return s.listed || s.rows * s.seats_per_row },   // 좌석 리스트가 있으면 실제 좌석 수
+        get totalSeats() { return this.sections.reduce((n, s) => n + this.seatsOf(s), 0) },
         venueSeats: initial.venueSeats || 0,   // 공연장(KOPIS) 객석 수
         get seatGap() { return this.venueSeats && this.totalSeats ? Math.round(Math.abs(this.totalSeats - this.venueSeats) / this.venueSeats * 100) : 0 },
         get filtered() {
@@ -37,7 +38,7 @@
             return this.sections.map((s, i) => ({ s, i })).filter(({ s }) => !q || s.code.toUpperCase().includes(q));
         },
         tierOf(key) { return this.tiers.find(t => t.key === key) || { name: '?', color: '#999999', price: 0, seats: 0 } },
-        tierSeats(key) { return this.sections.filter(s => s.tier === key).reduce((n, s) => n + s.rows * s.seats_per_row, 0) },
+        tierSeats(key) { return this.sections.filter(s => s.tier === key).reduce((n, s) => n + this.seatsOf(s), 0) },
         tierCount(key) { return this.sections.filter(s => s.tier === key).length },
         touch() { this.dirty = true },
         addTier() {
@@ -60,7 +61,7 @@
                 const list = this.sections.filter(s => s.tier === t.key);
                 if (!t.seats || !list.length) continue;
                 const per = Math.ceil(t.seats / list.length);
-                for (const s of list) { s.seats_per_row = Math.min(20, Math.max(1, per)); s.rows = Math.min(300, Math.ceil(per / s.seats_per_row)) }
+                for (const s of list.filter(s => !s.listed)) { s.seats_per_row = Math.min(20, Math.max(1, per)); s.rows = Math.min(300, Math.ceil(per / s.seats_per_row)) }
             }
             this.touch();
         },
@@ -251,10 +252,11 @@
                                 <template x-for="t in tiers" :key="t.key"><option :value="t.key" x-text="t.name" :selected="t.key === current.tier"></option></template>
                             </select>
                         </label>
-                        <label class="text-[11px] text-mist">열 수<input type="number" min="1" max="300" x-model.number="current.rows" @input="touch()" class="field num mt-0.5 !py-2 text-sm"></label>
-                        <label class="text-[11px] text-mist">열당 좌석<input type="number" min="1" max="200" x-model.number="current.seats_per_row" @input="touch()" class="field num mt-0.5 !py-2 text-sm"></label>
+                        <label x-show="!current.listed" class="text-[11px] text-mist">열 수<input type="number" min="1" max="300" x-model.number="current.rows" @input="touch()" class="field num mt-0.5 !py-2 text-sm"></label>
+                        <label x-show="!current.listed" class="text-[11px] text-mist">열당 좌석<input type="number" min="1" max="200" x-model.number="current.seats_per_row" @input="touch()" class="field num mt-0.5 !py-2 text-sm"></label>
                     </div>
-                    <p class="mt-2 text-sm">좌석 <b class="num" x-text="won(current.rows * current.seats_per_row)"></b>석 · <span class="num" x-text="won(tierOf(current.tier).price)"></span>원</p>
+                    <p class="mt-2 text-sm">좌석 <b class="num" x-text="won(seatsOf(current))"></b>석 · <span class="num" x-text="won(tierOf(current.tier).price)"></span>원</p>
+                    <p x-show="current.listed" class="mt-1 text-xs text-mist">좌석 리스트(CSV)로 넣은 실제 좌석이에요 (열 <span class="num" x-text="current.rows"></span>개). 바꾸려면 좌석 리스트를 다시 올리세요. 구역 이름을 바꾸면 좌석 리스트가 빠져요.</p>
                 </div>
             </template>
         </section>
@@ -273,7 +275,7 @@
                             <span class="size-3 shrink-0 rounded-full" :style="`background:${tierOf(s.tier).color}`"></span>
                             <span class="num w-16 font-bold" x-text="s.code"></span>
                             <span class="min-w-0 flex-1 truncate text-xs text-mist" x-text="tierOf(s.tier).name"></span>
-                            <span class="num text-xs" x-text="s.rows + '열 × ' + s.seats_per_row + ' = ' + won(s.rows * s.seats_per_row)"></span>
+                            <span class="num text-xs" x-text="s.listed ? '좌석 리스트 ' + won(s.listed) : s.rows + '열 × ' + s.seats_per_row + ' = ' + won(seatsOf(s))"></span>
                         </button>
                     </li>
                 </template>
@@ -284,6 +286,21 @@
         <p x-show="dirty" class="text-center text-xs font-semibold text-signal">저장하지 않은 변경이 있어요</p>
     </form>
 </div>
+
+{{-- 좌석 리스트(CSV): 기획사·공연장 좌석 목록으로 구역마다 실제 좌석(열마다 다른 좌석 수·번호) --}}
+<form method="POST" action="{{ route('admin.seat-maps.seat-list', $map) }}" enctype="multipart/form-data" x-data="{ busy: false }" @submit="busy = true"
+      class="mt-8 max-w-3xl rounded-3xl bg-white p-5 ring-1 ring-stick/30">
+    @csrf
+    <h2 class="font-bold">좌석 리스트 올리기 <span class="text-sm font-normal text-mist">실제 좌석 그대로</span></h2>
+    <p class="mt-1 text-sm text-mist">기획사·공연장의 좌석 목록 엑셀을 <b>CSV 로 저장</b>해서 올리세요. 열: <b>구역, 열, 번호, 등급, 가격</b> (등급·가격은 없어도 돼요, 번호는 1-18 처럼 범위로 적어도 돼요).
+        같은 이름 구역은 실제 좌석으로 바뀌고, 없는 구역은 새로 만들어져요. 이미 만든 공연은 바뀌지 않아요.
+        <a href="{{ route('admin.seat-maps.seat-list-sample') }}" class="row-link text-ink">샘플 CSV 받기</a></p>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+        <input type="file" name="seat_list" accept=".csv,text/csv" required class="text-sm">
+        <button class="btn-ink !py-2 text-sm" :disabled="busy" x-text="busy ? '읽는 중…' : '좌석 리스트 넣기'">좌석 리스트 넣기</button>
+    </div>
+    @error('seat_list')<p class="mt-2 text-sm text-signal">{{ $message }}</p>@enderror
+</form>
 
 {{-- 새 배치도 이미지 올리기 — AI 를 쓸 수 있으면 객석 목록·보여줄 영역을 새로 만든다 --}}
 <form method="POST" action="{{ route('admin.seat-maps.image', $map) }}" enctype="multipart/form-data" x-data="{ busy: false }" @submit="busy = true"
