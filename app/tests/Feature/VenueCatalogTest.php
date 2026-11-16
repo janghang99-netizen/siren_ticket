@@ -45,7 +45,7 @@ class VenueCatalogTest extends TestCase
         $park = VenueCatalog::where('kopis_id', 'FC000025')->firstOrFail();
         $this->assertSame(['올림픽공원', '서울', '송파구'], [$park->name, $park->sido, $park->gugun]);
         $this->assertTrue($park->needsDetail());
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'service=test-key') && str_contains($r->url(), 'rows=500'));
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'service=test-key') && str_contains($r->url(), 'rows=100'));
 
         // 다시 받아도 중복되지 않는다
         $this->artisan('venues:import-kopis')->assertSuccessful();

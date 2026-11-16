@@ -18,7 +18,7 @@ class KopisVenueImporter
 {
     public const BASE = 'https://kopis.or.kr/openApi/restful/';
 
-    public const ROWS = 500;
+    public const ROWS = 100;   // KOPIS 한 번에 최대 100건
 
     public function __construct(private readonly ?string $key) {}
 
@@ -35,7 +35,7 @@ class KopisVenueImporter
     public function importList(?callable $progress = null): array
     {
         $added = $updated = 0;
-        for ($page = 1; $page <= 100; $page++) {
+        for ($page = 1; $page <= 300; $page++) {
             $rows = $this->get('prfplc', ['cpage' => $page, 'rows' => self::ROWS]);
             foreach ($rows as $db) {
                 $id = trim((string) $db->mt10id);
