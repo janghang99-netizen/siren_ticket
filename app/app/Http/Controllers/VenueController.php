@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\SeatMap;
 use App\Models\Venue;
+use App\Models\VenueCatalog;
 use App\Services\Audit;
+use App\Services\KopisVenueImporter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,13 +20,45 @@ use Illuminate\View\View;
  */
 class VenueController extends Controller
 {
-    public function index(): View
+    public function index(KopisVenueImporter $kopis): View
     {
         return view('admin.venues', [
             'venues' => Venue::with(['seatMaps.sections'])->withCount('events')
                 ->withMin(['events as next_event_at' => fn ($q) => $q->where('starts_at', '>', now())], 'starts_at')
                 ->orderBy('name')->get(),
+            'catalogCount' => VenueCatalog::count(),
+            'kopisCount' => VenueCatalog::where('source', 'kopis')->count(),
+            'kopisReady' => $kopis->ready(),
         ]);
+    }
+
+    /** 전국 공연장 DB 검색 (이름·지역·주소) — 공연장 추가할 때 불러오기 */
+    public function catalog(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q'));
+        if (mb_strlen($q) < 1) {
+            return response()->json([]);
+        }
+        $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%';
+        $rows = VenueCatalog::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('address', 'like', $like)
+            ->orWhere('sido', 'like', $like)->orWhere('gugun', 'like', $like))
+            ->orderByRaw('CASE WHEN name LIKE ? THEN 0 ELSE 1 END', [$q.'%'])->orderBy('name')->limit(20)->get();
+
+        return response()->json($rows->map->toPick()->values());
+    }
+
+    /** 고른 공연장 상세 — KOPIS 시설이면 주소·객석·홀 목록을 이때 받아 온다 */
+    public function catalogShow(VenueCatalog $catalog, KopisVenueImporter $kopis): JsonResponse
+    {
+        if ($catalog->needsDetail() && $kopis->ready()) {
+            try {
+                $kopis->fillDetail($catalog);
+            } catch (\RuntimeException) {
+                // 상세를 못 받아도 이름·지역으로 추가할 수 있다
+            }
+        }
+
+        return response()->json($catalog->fresh()->toPick());
     }
 
     public function store(Request $request): RedirectResponse
@@ -73,6 +108,8 @@ class VenueController extends Controller
             'name' => ['required', 'string', 'max:60', Rule::unique('venues', 'name')->ignore($venue?->id)],
             'address' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:255'],
+            'seats' => ['nullable', 'integer', 'min:0', 'max:200000'],
+            'catalog_id' => ['nullable', 'integer', 'exists:venue_catalog,id'],
         ], ['name.required' => '공연장 이름을 적어 주세요.', 'name.unique' => '이미 있는 공연장이에요.']);
     }
 }

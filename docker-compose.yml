@@ -20,6 +20,7 @@ x-app-env: &app-env
   SIREN_NFT_CHAIN: kaia
   # 상품명 번역(Claude API) 키 — 호스트 환경 변수에서 넘겨받는다. 비어 있으면 상품명도 구글 번역이 맡는다
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  KOPIS_API_KEY: ${KOPIS_API_KEY:-}
 
 services:
   db:

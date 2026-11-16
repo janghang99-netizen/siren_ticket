@@ -19,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
         // 상품명 번역 (원본 다담다: Claude API) — 키는 ANTHROPIC_API_KEY 환경 변수
         $this->app->bind(\App\Services\Translation\ProductNameTranslator::class,
             fn () => new \App\Services\Translation\ClaudeProductNameTranslator(config('services.anthropic.key')));
+        // 전국 공연장 DB (KOPIS 공연시설) — 키는 KOPIS_API_KEY
+        $this->app->bind(\App\Services\KopisVenueImporter::class, fn () => new \App\Services\KopisVenueImporter(config('services.kopis.key')));
         // 좌석 배치도 이미지 판독 (Claude 비전) — 같은 키
         $this->app->bind(\App\Services\SeatMap\SeatMapReader::class,
             fn () => new \App\Services\SeatMap\ClaudeSeatMapReader(config('services.anthropic.key')));

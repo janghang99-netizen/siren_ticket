@@ -203,6 +203,8 @@ Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:s
     ->controller(\App\Http\Controllers\VenueController::class)->group(function () {
         Route::get('/', 'index')->name('index');
         Route::post('/', 'store')->name('store');
+        Route::get('/catalog', 'catalog')->middleware('throttle:120,1')->name('catalog');                 // 전국 공연장 DB 검색
+        Route::get('/catalog/{catalog}', 'catalogShow')->whereNumber('catalog')->middleware('throttle:60,1')->name('catalog.show');
         Route::get('/{venue}', 'show')->whereNumber('venue')->name('show');
         Route::put('/{venue}', 'update')->whereNumber('venue')->name('update');
         Route::delete('/{venue}', 'destroy')->whereNumber('venue')->name('destroy');

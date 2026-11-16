@@ -15,6 +15,12 @@ class Venue extends Model
         return $this->hasMany(SeatMap::class)->latest('id');
     }
 
+    /** 전국 공연장 DB 에서 불러온 공연장이면 그 원본 */
+    public function catalog(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(VenueCatalog::class, 'catalog_id');
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(Event::class)->orderByDesc('starts_at');

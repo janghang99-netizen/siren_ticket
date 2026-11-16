@@ -29,6 +29,38 @@ Artisan::command('benefits:grant-attendance', function (\App\Services\Benefits\B
 
 \Illuminate\Support\Facades\Schedule::command('benefits:grant-attendance')->hourly();
 
+// 전국 공연장 DB: KOPIS 공연시설 목록 받기 (--details 면 시설마다 주소·객석·홀까지, 수천 건이라 오래 걸림)
+Artisan::command('venues:import-kopis {--details : 시설마다 상세(주소·객석·홀)까지 받기}', function (\App\Services\KopisVenueImporter $kopis) {
+    if (! $kopis->ready()) {
+        $this->warn('KOPIS_API_KEY 가 없어요. kopis.or.kr 에서 서비스 키를 발급받아 서버 환경 변수에 넣어 주세요.');
+
+        return 0;
+    }
+    try {
+        $r = $kopis->importList(fn ($page, $n) => $this->line("  {$page}쪽 · {$n}곳"));
+        $this->info("공연시설 새로 {$r['added']}곳 · 갱신 {$r['updated']}곳");
+        if ($this->option('details')) {
+            $todo = \App\Models\VenueCatalog::where('source', 'kopis')->whereNull('address')->get();
+            $bar = $this->output->createProgressBar($todo->count());
+            foreach ($todo as $row) {
+                $kopis->fillDetail($row);
+                $bar->advance();
+                usleep(150_000);   // KOPIS 서버 부담 줄이기
+            }
+            $bar->finish();
+            $this->newLine();
+        }
+    } catch (\RuntimeException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    }
+
+    return 0;
+})->purpose('KOPIS 공연시설 목록으로 전국 공연장 DB 를 채운다');
+
+\Illuminate\Support\Facades\Schedule::command('venues:import-kopis')->monthlyOn(1, '04:00');
+
 // 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
 Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
     $check = $ledger->verify();

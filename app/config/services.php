@@ -33,6 +33,11 @@ return [
         'key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    // 공연예술통합전산망(KOPIS) 오픈API — 전국 공연장(공연시설) 목록. 키는 kopis.or.kr 에서 무료 발급
+    'kopis' => [
+        'key' => env('KOPIS_API_KEY'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             ['asteria-2026-seoul-d2', 'ASTERIA WORLD TOUR 〈ORBIT〉 IN SEOUL · DAY 2', '아스테리아', 4, 17, '#6C4BFF', 4],
             ['nova9-fanmeeting', 'NOVA9 FANMEETING 〈SIGNAL〉', 'NOVA9', 10, 17, '#FF4F8B', 2],
         ];
+        $this->call(VenueCatalogSeeder::class);   // 전국 공연장 DB 기본 목록 (KOPIS 받기 전)
         $arena = \App\Models\Venue::create(['name' => '서울아레나', 'address' => '서울 도봉구 창동 (데모)', 'note' => '기본 아레나 보울 좌석도']);
         foreach ($schedule as $i => [$slug, $name, $artist, $days, $hour, $color, $max]) {
             $event = Event::create([
