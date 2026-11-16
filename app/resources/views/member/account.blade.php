@@ -12,7 +12,11 @@
     </div>
 
     <div class="mt-5 grid grid-cols-2 gap-2 text-sm">
-        <a href="{{ route('tickets') }}" class="rounded-3xl bg-white px-5 py-4 font-bold ring-1 ring-ink/5">{{ __('내 티켓') }} →</a>
+        @if ($ticketing)
+            <a href="{{ route('tickets') }}" class="rounded-3xl bg-white px-5 py-4 font-bold ring-1 ring-ink/5">{{ __('내 티켓') }} →</a>
+        @else
+            <a href="{{ route('orders.index') }}" class="rounded-3xl bg-white px-5 py-4 font-bold ring-1 ring-ink/5">{{ __('주문내역') }} →</a>
+        @endif
         <a href="{{ route('benefits') }}" class="rounded-3xl bg-white px-5 py-4 font-bold ring-1 ring-ink/5">{{ __('마일리지·쿠폰') }} →</a>
     </div>
 

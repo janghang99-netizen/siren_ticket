@@ -6,6 +6,21 @@
 @php($days = [1 => '월', 2 => '화', 3 => '수', 4 => '목', 5 => '금', 6 => '토', 7 => '일'])
 
 @section('content')
+{{-- 공연 티켓 판매 기능 켜기/끄기 (다담다 이관: 기본 끔 — 사이렌오더만) --}}
+<section class="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-6 ring-1 {{ $ticketing ? 'ring-stick/40' : 'ring-ink/5' }}">
+    <div class="min-w-0">
+        <h2 class="font-bold">공연 티켓 판매 <span @class(['chip ml-1', 'bg-stick text-white' => $ticketing, 'bg-paper text-mist' => ! $ticketing])>{{ $ticketing ? '켜짐' : '꺼짐' }}</span></h2>
+        <p class="mt-1 max-w-2xl text-sm text-mist">켜면 팬 화면에 좌석 예매·내 티켓, 운영사 화면에 티켓 판매·입장 검표·공연장 좌석표가 보여요.
+            끄면 이것들이 숨고 <b>공연 일정과 매장 주문(사이렌오더)은 그대로</b> 써요. 끄고 켜도 데이터는 지워지지 않아요.</p>
+    </div>
+    <form method="POST" action="{{ route('admin.settings.ticketing') }}"
+          onsubmit="return confirm('{{ $ticketing ? '공연 티켓 판매 기능을 끌까요? 팬 화면에서 예매가 숨겨져요.' : '공연 티켓 판매 기능을 켤까요? 팬 화면에 좌석 예매가 보여요.' }}')">
+        @csrf
+        <input type="hidden" name="enabled" value="{{ $ticketing ? 0 : 1 }}">
+        <button class="{{ $ticketing ? 'btn-ghost' : 'btn-ink' }} !py-2.5 text-sm">{{ $ticketing ? '끄기' : '켜기' }}</button>
+    </form>
+</section>
+
 <form method="POST" action="{{ route('admin.settings.save') }}" class="space-y-6"
       x-data="{ cycles: @js($vendors->mapWithKeys(fn ($v) => [$v->id => $v->settlement_cycle])), dflt: @js($settings['default_settlement_cycle']) }">
     @csrf @method('PUT')

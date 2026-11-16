@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
             ? route('member.account')
             : \App\Http\Controllers\AuthController::home($request->user()));
         $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class]);
+        // 공연 티켓 판매 기능 켜기/끄기 (슈퍼관리자 설정)
+        $middleware->alias(['ticketing' => \App\Http\Middleware\EnsureTicketingEnabled::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // 화면을 오래 열어 둬서 보안 토큰(CSRF)이 만료된 경우: 오류 페이지(419) 대신 그 화면으로 돌려보내 다시 시도하게

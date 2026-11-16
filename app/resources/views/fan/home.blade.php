@@ -15,7 +15,9 @@
             <div class="relative px-5 pt-5">
                 <div class="flex items-center justify-between">
                     <span class="eyebrow !text-ink/50">{{ $e->venue }}</span>
-                    @if ($e->salesOpen())
+                    @if (! $ticketing)
+                        <span class="chip bg-ink text-white">매장 주문</span>
+                    @elseif ($e->salesOpen())
                         <span class="chip bg-ink text-white">예매 중</span>
                     @else
                         <span class="chip bg-white/70 text-ink">예매 오픈 {{ $e->sales_open_at?->format('n.j H:i') }}</span>
@@ -28,16 +30,20 @@
                 </p>
             </div>
 
-            <div class="relative -mb-2 px-10 pt-1">
-                @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e, 'class' => 'w-full'])
-            </div>
+            @if ($ticketing)
+                <div class="relative -mb-2 px-10 pt-1">
+                    @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e, 'class' => 'w-full'])
+                </div>
+            @endif
 
-            <div class="relative grid grid-cols-2 gap-2 p-3">
-                <a href="{{ route('concerts.show', $e) }}" class="group rounded-[20px] bg-ink px-4 py-3.5 text-white transition active:scale-[.98]">
-                    <span class="block text-[11px] font-bold tracking-wide text-white/55">좌석 티켓</span>
-                    <span class="mt-0.5 flex items-center justify-between text-base font-bold">좌석 고르기 <span aria-hidden="true" class="transition group-hover:translate-x-0.5">→</span></span>
-                    <span class="num mt-1 block text-xs font-medium text-white/60">{{ number_format($e->seatsLeft()) }}<span class="font-sans">석 남음</span></span>
-                </a>
+            <div @class(['relative grid gap-2 p-3', 'grid-cols-2' => $ticketing, 'mt-3' => ! $ticketing])>
+                @if ($ticketing)
+                    <a href="{{ route('concerts.show', $e) }}" class="group rounded-[20px] bg-ink px-4 py-3.5 text-white transition active:scale-[.98]">
+                        <span class="block text-[11px] font-bold tracking-wide text-white/55">좌석 티켓</span>
+                        <span class="mt-0.5 flex items-center justify-between text-base font-bold">좌석 고르기 <span aria-hidden="true" class="transition group-hover:translate-x-0.5">→</span></span>
+                        <span class="num mt-1 block text-xs font-medium text-white/60">{{ number_format($e->seatsLeft()) }}<span class="font-sans">석 남음</span></span>
+                    </a>
+                @endif
                 <a href="{{ route('stores.index', $e) }}" class="group rounded-[20px] bg-white/85 px-4 py-3.5 ring-1 ring-ink/10 backdrop-blur transition active:scale-[.98]">
                     <span class="block text-[11px] font-bold tracking-wide text-mist">공연장 매장</span>
                     <span class="mt-0.5 flex items-center justify-between text-base font-bold">미리 주문 <span aria-hidden="true" class="transition group-hover:translate-x-0.5">→</span></span>
@@ -163,7 +169,7 @@
             <ul class="space-y-3">
                 @foreach ($events->skip(1) as $e)
                     <li>
-                        <a href="{{ route('concerts.show', $e) }}" class="flex items-stretch overflow-hidden rounded-2xl bg-white ring-1 ring-ink/5 transition hover:ring-stick/40">
+                        <a href="{{ $ticketing ? route('concerts.show', $e) : route('stores.index', $e) }}" class="flex items-stretch overflow-hidden rounded-2xl bg-white ring-1 ring-ink/5 transition hover:ring-stick/40">
                             <span class="fandom-gradient w-2 shrink-0" style="--theme: {{ $e->theme_color }}"></span>
                             <span class="flex flex-1 items-center justify-between gap-3 px-4 py-4">
                                 <span class="min-w-0">
@@ -172,7 +178,7 @@
                                 </span>
                                 <span class="shrink-0 text-right">
                                     <span class="num block text-base font-bold">{{ $e->starts_at->format('m.d') }}</span>
-                                    <span class="block text-xs text-mist">{{ $e->seatsLeft() ? number_format($e->lowestPrice()).'원~' : '매진' }}</span>
+                                    <span class="block text-xs text-mist">{{ ! $ticketing ? '매장 주문' : ($e->seatsLeft() ? number_format($e->lowestPrice()).'원~' : '매진') }}</span>
                                 </span>
                             </span>
                         </a>

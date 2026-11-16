@@ -28,6 +28,14 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // 모든 화면에서 $ticketing (공연 티켓 판매 기능을 쓰는지) — 메뉴·버튼을 숨기는 데 쓴다. 요청마다 한 번만 읽는다.
+        \Illuminate\Support\Facades\View::composer('*', function ($view) {
+            $attrs = request()->attributes;
+            if (! $attrs->has('ticketing')) {
+                $attrs->set('ticketing', \Illuminate\Support\Facades\Schema::hasTable('settings') && \App\Models\Setting::ticketingEnabled());
+            }
+            $view->with('ticketing', $attrs->get('ticketing'));
+        });
         // 슈퍼어드민(플랫폼 회사): 공연·좌석티켓·입점업체·매장·정산
         Gate::define('super-admin', fn (User $u) => $u->isSuperAdmin());
 

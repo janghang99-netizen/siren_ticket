@@ -37,9 +37,11 @@
         @empty
             <li class="rounded-3xl bg-white px-5 py-8 text-center">
                 <p class="font-bold">{{ ['active' => '진행 중인 주문이 없어요', 'done' => '아직 받은 주문이 없어요', 'cancelled' => '취소된 주문이 없어요'][$tab] }}</p>
-                @if ($tab === 'active')
+                @if ($tab === 'active' && $ticketing)
                     <p class="mt-1 text-sm text-mist">내 티켓에서 매장 주문을 시작할 수 있어요.</p>
                     <a href="{{ route('tickets') }}" class="btn-ink mt-5">내 티켓 열기</a>
+                @elseif ($tab === 'active')
+                    <a href="{{ route('order.entry') }}" class="btn-ink mt-5">매장 주문하기</a>
                 @endif
             </li>
         @endforelse

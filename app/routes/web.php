@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\Route;
 // ── 팬 (모바일) ──
 Route::controller(FanController::class)->group(function () {
     Route::get('/', 'home')->name('home');
-    Route::get('/concerts/{event}', 'concert')->name('concerts.show');
+    Route::get('/concerts/{event}', 'concert')->middleware('ticketing')->name('concerts.show');
     // 티켓 예매는 회원만 (매장 음식 주문은 비회원 그대로)
-    Route::post('/concerts/{event}/tickets', 'purchase')->middleware(['auth:member', 'throttle:20,1'])->name('concerts.purchase');
-    Route::get('/concerts/{event}/sections/{section}/seats', 'seats')->whereNumber('section')->middleware('throttle:120,1')->name('concerts.seats');   // 좌석표 공연: 구역 좌석 현황
-    Route::get('/tickets', 'tickets')->name('tickets');
-    Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->name('tickets.cancel');
+    Route::post('/concerts/{event}/tickets', 'purchase')->middleware(['ticketing', 'auth:member', 'throttle:20,1'])->name('concerts.purchase');
+    Route::get('/concerts/{event}/sections/{section}/seats', 'seats')->whereNumber('section')->middleware(['ticketing', 'throttle:120,1'])->name('concerts.seats');   // 좌석표 공연: 구역 좌석 현황
+    Route::get('/tickets', 'tickets')->middleware('ticketing')->name('tickets');
+    Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->middleware('ticketing')->name('tickets.cancel');
 
     Route::get('/order', 'orderEntry')->name('order.entry');                      // 하단 '매장주문' 탭
     Route::get('/concerts/{event}/stores', 'stores')->name('stores.index');
@@ -87,7 +87,7 @@ Route::get('/translate/dict/{lang}', [\App\Http\Controllers\TranslationControlle
 Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->name('nft.metadata');
 Route::get('/nft/tickets/{ticket}/image.svg', [\App\Http\Controllers\NftController::class, 'image'])->whereNumber('ticket')->name('nft.image');
 Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController::class, 'entryCode'])
-    ->middleware(['auth:member', 'throttle:20,1'])->name('tickets.entry-code');
+    ->middleware(['ticketing', 'auth:member', 'throttle:20,1'])->name('tickets.entry-code');
 
 // ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
 // 이미 로그인해 있어도 로그인 화면을 연다 — 운영사 ↔ 입점업체 계정 바꾸기
@@ -178,8 +178,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::get('/customers/{customer}', 'customer')->name('customers.show');
     Route::post('/customers/{customer}/mileage', 'customerAdjust')->name('customers.adjust');
 
-    Route::get('/check-in', [\App\Http\Controllers\NftController::class, 'checkInForm'])->name('check-in');
-    Route::post('/check-in', [\App\Http\Controllers\NftController::class, 'checkIn'])->middleware('throttle:120,1')->name('check-in.scan');
+    Route::get('/check-in', [\App\Http\Controllers\NftController::class, 'checkInForm'])->middleware('ticketing')->name('check-in');
+    Route::post('/check-in', [\App\Http\Controllers\NftController::class, 'checkIn'])->middleware(['ticketing', 'throttle:120,1'])->name('check-in.scan');
 
     // 번역 (원본 다담다 admin/translate_products.php) — 상품명 Claude 번역 · 구글 오역 교정 사전
     Route::controller(\App\Http\Controllers\TranslationController::class)->group(function () {
@@ -199,7 +199,7 @@ Route::post('/admin/openmarket_export.php', [\App\Http\Controllers\EisController
     ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)->middleware('throttle:60,1');
 
 // ── 슈퍼어드민: 공연별 좌석 막기 (판매 제외·보류) ──
-Route::prefix('admin/events/{event:id}/seats')->name('admin.events.seats')->middleware(['auth', 'can:super-admin'])
+Route::prefix('admin/events/{event:id}/seats')->name('admin.events.seats')->middleware(['auth', 'can:super-admin', 'ticketing'])
     ->controller(\App\Http\Controllers\EventSeatController::class)->group(function () {
         Route::get('/', 'show')->name('');
         Route::post('/', 'update')->name('.update');
@@ -207,7 +207,7 @@ Route::prefix('admin/events/{event:id}/seats')->name('admin.events.seats')->midd
     });
 
 // ── 슈퍼어드민: 공연장 목록 ──
-Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:super-admin'])
+Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:super-admin', 'ticketing'])
     ->controller(\App\Http\Controllers\VenueController::class)->group(function () {
         Route::get('/', 'index')->name('index');
         Route::post('/', 'store')->name('store');
@@ -220,7 +220,7 @@ Route::prefix('admin/venues')->name('admin.venues.')->middleware(['auth', 'can:s
     });
 
 // ── 슈퍼어드민: 공연장 좌석표 (배치도 이미지 → 등급·구역·좌석) ──
-Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 'can:super-admin'])
+Route::prefix('admin/seat-maps')->name('admin.seat-maps.')->middleware(['auth', 'can:super-admin', 'ticketing'])
     ->controller(\App\Http\Controllers\SeatMapController::class)->group(function () {
         Route::get('/', 'index')->name('index');
         Route::get('/new', 'create')->name('create');
@@ -244,9 +244,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::put('/events/{event:id}', 'eventUpdate')->name('events.update');
     Route::post('/events/{event:id}/cancel', 'eventCancel')->name('events.cancel');
 
-    Route::get('/tickets', 'tickets')->name('tickets.index');
-    Route::get('/tickets/{ticket}', 'ticket')->name('tickets.show');
-    Route::patch('/tickets/{ticket}/cancel', 'ticketCancel')->name('tickets.cancel');
+    Route::get('/tickets', 'tickets')->middleware('ticketing')->name('tickets.index');
+    Route::get('/tickets/{ticket}', 'ticket')->middleware('ticketing')->name('tickets.show');
+    Route::patch('/tickets/{ticket}/cancel', 'ticketCancel')->middleware('ticketing')->name('tickets.cancel');
 
     Route::get('/vendors', 'vendors')->name('vendors.index');
     Route::get('/vendors/new', 'vendorCreate')->name('vendors.create');
@@ -287,4 +287,5 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     // 수수료·정산주기 설정 (C2·C3)
     Route::get('/settings', 'settings')->name('settings');
     Route::put('/settings', 'settingsSave')->name('settings.save');
+    Route::post('/settings/ticketing', 'ticketingToggle')->name('settings.ticketing');   // 공연 티켓 판매 기능 켜기/끄기
 });

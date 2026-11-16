@@ -75,7 +75,8 @@
         @endif
 
         <nav class="flex gap-1 overflow-x-auto border-t border-paper/10 px-3 py-3 lg:flex-col" aria-label="관리 메뉴">
-            @foreach ($nav as [$route, $label, $pattern])
+            @php($ticketOnly = ['admin.tickets.index', 'admin.check-in', 'admin.venues.index'])
+            @foreach (array_filter($nav, fn ($n) => $ticketing || ! in_array($n[0], $ticketOnly, true)) as [$route, $label, $pattern])
                 <a href="{{ route($route) }}"
                    @class(['whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-semibold transition',
                            'bg-paper text-ink' => request()->routeIs(...explode('|', $pattern)),

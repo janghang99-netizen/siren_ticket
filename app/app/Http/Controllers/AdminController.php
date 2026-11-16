@@ -53,11 +53,13 @@ class AdminController extends Controller
     public function eventStore(Request $request, VenueSetup $venue, \App\Services\SeatMap\SeatMapService $maps): RedirectResponse
     {
         // 좌석표를 고르면 그 배치도의 구역·좌석으로, 아니면 기본 아레나 보울(등급별 가격·구역당 좌석)
+        // 티켓 판매를 끈 경우(다담다 이관 기본): 좌석 없이 공연 일정만 — 매장 주문 시간대만 만든다
+        $ticketing = \App\Models\Setting::ticketingEnabled();
         $data = $this->validateEvent($request) + $request->validate([
             'seat_map_id' => ['nullable', 'integer', 'exists:seat_maps,id'],
-            'tiers' => ['required_without:seat_map_id', 'array'],
-            'tiers.*.price' => ['required_without:seat_map_id', 'integer', 'min:0'],
-            'tiers.*.capacity' => ['required_without:seat_map_id', 'integer', 'min:1', 'max:5000'],
+            'tiers' => [$ticketing ? 'required_without:seat_map_id' : 'nullable', 'array'],
+            'tiers.*.price' => ['required_with:tiers', 'integer', 'min:0'],
+            'tiers.*.capacity' => ['required_with:tiers', 'integer', 'min:1', 'max:5000'],
         ]);
         $seatMap = filled($data['seat_map_id'] ?? null) ? \App\Models\SeatMap::find($data['seat_map_id']) : null;
         if ($seatMap?->venue_id) {
@@ -68,7 +70,11 @@ class AdminController extends Controller
             $event = Event::create($this->eventFields($data) + [
                 'slug' => Carbon::parse($data['starts_at'])->format('Ymd-Hi').'-'.Str::lower(Str::random(5)),
             ]);
-            $seatMap ? $maps->applyToEvent($event, $seatMap) : $venue->createSections($event, $data['tiers']);
+            if ($seatMap) {
+                $maps->applyToEvent($event, $seatMap);
+            } elseif (! empty($data['tiers'])) {
+                $venue->createSections($event, $data['tiers']);
+            }
             $venue->ensureSlots($event);
 
             return $event;
@@ -76,7 +82,9 @@ class AdminController extends Controller
         $sections = $event->sections()->count();
         $seats = (int) $event->sections()->sum('capacity');
 
-        return redirect()->route('admin.events.index')->with('status', "‘{$event->name}’ 공연을 등록했어요. 좌석 구역 {$sections}개(".number_format($seats).'석)와 매장별 주문 시간대가 함께 만들어졌어요.');
+        return redirect()->route('admin.events.index')->with('status', $sections
+            ? "‘{$event->name}’ 공연을 등록했어요. 좌석 구역 {$sections}개(".number_format($seats).'석)와 매장별 주문 시간대가 함께 만들어졌어요.'
+            : "‘{$event->name}’ 공연을 등록했어요. 매장별 주문 시간대가 만들어졌어요.");
     }
 
     public function eventUpdate(Request $request, Event $event, VenueSetup $venue): RedirectResponse
@@ -580,6 +588,18 @@ class AdminController extends Controller
             'settings' => \App\Models\Setting::values(),
             'vendors' => Vendor::with(['stores' => fn ($q) => $q->orderBy('id')])->orderBy('id')->get(),
         ]);
+    }
+
+    /** 공연 티켓 판매 기능 켜기/끄기 — 끄면 예매·내 티켓·공연장 좌석표가 숨고, 공연 일정·매장 주문은 그대로 */
+    public function ticketingToggle(Request $request): RedirectResponse
+    {
+        $on = $request->validate(['enabled' => ['required', 'boolean']])['enabled'];
+        \App\Models\Setting::put(['ticketing_enabled' => $on ? '1' : '0']);
+        \App\Services\Audit::log('settings.ticketing', null, '공연 티켓 판매 기능 '.($on ? '켬' : '끔'));
+
+        return back()->with('status', $on
+            ? '공연 티켓 판매 기능을 켰어요. 팬 화면에 좌석 예매·내 티켓이 다시 보여요.'
+            : '공연 티켓 판매 기능을 껐어요. 팬 화면에서 예매·내 티켓이 숨고, 매장 주문은 그대로예요. (데이터는 지우지 않아요)');
     }
 
     public function settingsSave(Request $request): RedirectResponse

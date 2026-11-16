@@ -66,6 +66,7 @@
             </div>
         </section>
 
+        @if ($ticketing)
         <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
             @if (! $e)
                 {{-- 좌석 배치: 공연장 좌석표(배치도 이미지) 또는 기본 아레나 보울 --}}
@@ -136,10 +137,11 @@
                 </div>
             @endif
         </section>
+        @endif
     </div>
 
     <div class="space-y-4">
-        @if ($e)
+        @if ($e && $ticketing)
             <div class="rounded-3xl bg-ink p-4">
                 @include($e->seat_map_id ? 'partials.seatmap' : 'partials.bowl', ['event' => $e])
             </div>

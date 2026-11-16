@@ -15,7 +15,7 @@
             <span class="num rounded-lg bg-white px-2 py-1 text-sm font-black text-ink">{{ $ticket->section->code }}</span>
             <p class="text-sm"><b>{{ $ticket->seatLabel() }}</b> 티켓으로 주문해요</p>
         </div>
-    @else
+    @elseif ($ticketing)
         <a href="{{ route('tickets') }}" class="mt-5 block rounded-2xl bg-white px-4 py-3 text-sm ring-1 ring-ink/5">
             티켓을 연결하면 매장에서 내 좌석을 알 수 있어요. <span class="font-semibold text-stick">내 티켓 열기</span>
         </a>

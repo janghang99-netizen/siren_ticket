@@ -18,7 +18,14 @@ class Setting extends Model
         'mileage_use_max_rate' => '100',          // 결제액 중 마일리지로 낼 수 있는 최대 %
         'mileage_product_max_rate' => '10',       // 업체가 상품에 거는 적립금 상한 (판매가의 %)
         'ticket_mileage_rate' => '1',             // 공연 관람 적립 (티켓 결제액의 %, 운영사 부담)
+        'ticketing_enabled' => '0',               // 공연 티켓 판매 기능 (끄면 예매·내 티켓·공연장 좌석표 메뉴가 숨는다 — 다담다 이관 기본값: 끔)
     ];
+
+    /** 공연 티켓 판매 기능을 쓰는지 (슈퍼관리자 설정에서 켜고 끈다) */
+    public static function ticketingEnabled(): bool
+    {
+        return static::get('ticketing_enabled') === '1';
+    }
 
     protected $primaryKey = 'key';
 

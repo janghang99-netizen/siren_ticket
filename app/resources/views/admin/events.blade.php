@@ -53,8 +53,12 @@
                         </div>
                         <div class="mt-3 flex flex-wrap gap-2">
                             <a href="{{ route('admin.events.edit', $e->id) }}" class="btn-ghost !px-3 !py-2 text-xs">수정</a>
-                            <a href="{{ route('admin.tickets.index', ['event' => $e->id]) }}" class="btn-ghost !px-3 !py-2 text-xs">티켓 내역</a>
-                            <a href="{{ route('concerts.show', $e) }}" target="_blank" class="btn-ghost !px-3 !py-2 text-xs">예매 페이지</a>
+                            @if ($ticketing)
+                                <a href="{{ route('admin.tickets.index', ['event' => $e->id]) }}" class="btn-ghost !px-3 !py-2 text-xs">티켓 내역</a>
+                                <a href="{{ route('concerts.show', $e) }}" target="_blank" class="btn-ghost !px-3 !py-2 text-xs">예매 페이지</a>
+                            @else
+                                <a href="{{ route('stores.index', $e) }}" target="_blank" class="btn-ghost !px-3 !py-2 text-xs">매장 주문 페이지</a>
+                            @endif
                         </div>
                     </div>
                 </li>
