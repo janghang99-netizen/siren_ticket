@@ -31,7 +31,34 @@ class FanController extends Controller
     {
         $events = Event::with('sections')->where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
 
-        return view('fan.home', ['events' => $events, 'headliner' => $events->first()]);
+        $headliner = $events->first();
+        $stores = $headliner ? $this->eventStores($headliner) : collect();
+
+        // 메인에 보일 메뉴 — 사진 있는 것 먼저, 매장마다 고르게
+        $picks = $stores->flatMap(fn ($s) => $s->products->filter(fn ($p) => ! $p->isSoldOut())
+                ->sortByDesc(fn ($p) => $p->image_path ? 1 : 0)->take(3))
+            ->sortByDesc(fn ($p) => $p->image_path ? 1 : 0)->take(6)->values();
+
+        return view('fan.home', ['events' => $events, 'headliner' => $headliner, 'stores' => $stores, 'picks' => $picks]);
+    }
+
+    /** 하단 '매장주문' 탭 — 가장 가까운 공연의 매장 목록으로 */
+    public function orderEntry(): RedirectResponse
+    {
+        $event = Event::where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->first();
+
+        return $event
+            ? redirect()->route('stores.index', $event)
+            : redirect()->route('home')->with('status', '지금 주문 받는 공연이 없어요. 공연이 열리면 매장 주문도 열려요.');
+    }
+
+    /** 그 공연에서 주문 받는 매장 (승인된 업체만) */
+    private function eventStores(Event $event)
+    {
+        return Store::whereHas('capacitySlots', fn ($q) => $q->where('event_id', $event->id))
+            ->whereHas('vendor', fn ($q) => $q->where('state', 'approved'))
+            ->with(['capacitySlots' => fn ($q) => $q->where('event_id', $event->id), 'products' => fn ($q) => $q->sellable()->orderBy('sort')])
+            ->orderBy('id')->get();
     }
 
     public function concert(Request $request, Event $event, BenefitService $benefits): View
@@ -98,10 +125,7 @@ class FanController extends Controller
 
     public function stores(Request $request, Event $event): View
     {
-        $stores = Store::whereHas('capacitySlots', fn ($q) => $q->where('event_id', $event->id))
-            ->whereHas('vendor', fn ($q) => $q->where('state', 'approved'))
-            ->with(['capacitySlots' => fn ($q) => $q->where('event_id', $event->id), 'products' => fn ($q) => $q->sellable()->orderBy('sort')])
-            ->orderBy('id')->get();
+        $stores = $this->eventStores($event);
 
         return view('fan.stores', ['event' => $event, 'stores' => $stores, 'ticket' => $this->ticketFor($request, $event)]);
     }

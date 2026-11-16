@@ -63,10 +63,10 @@
 
         @php($tab = trim($__env->yieldContent('tab')))
         <nav class="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(12px,env(safe-area-inset-bottom))]" aria-label="주요 메뉴">
-            <div class="grid grid-cols-4 rounded-full bg-ink p-1.5 text-sm font-semibold text-paper/60 shadow-xl shadow-ink/20">
-                @foreach ([['home', '공연', 'home'], ['tickets', '내 티켓', 'tickets'], ['orders', '주문내역', 'orders.index'], ['benefits', '혜택', 'benefits']] as [$key, $label, $route])
+            <div class="grid grid-cols-5 rounded-full bg-ink p-1.5 text-[13px] font-semibold text-paper/60 shadow-xl shadow-ink/20">
+                @foreach ([['home', '홈', 'home'], ['order', '매장주문', 'order.entry'], ['tickets', '내 티켓', 'tickets'], ['orders', '주문내역', 'orders.index'], ['benefits', '혜택', 'benefits']] as [$key, $label, $route])
                     <a href="{{ route($route) }}"
-                       @class(['rounded-full py-2.5 text-center transition', 'bg-paper text-ink' => $tab === $key, 'hover:text-paper' => $tab !== $key])
+                       @class(['whitespace-nowrap rounded-full py-2.5 text-center transition', 'bg-paper text-ink' => $tab === $key, 'hover:text-paper' => $tab !== $key])
                        @if($tab === $key) aria-current="page" @endif>{{ $label }}</a>
                 @endforeach
             </div>

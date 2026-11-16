@@ -1,6 +1,6 @@
 @extends('layouts.fan')
 @section('title', '공연장 매장')
-@section('tab', 'home')
+@section('tab', 'order')
 @section('theme', $event->theme_color)
 
 @php($slotNames = ['pre' => '공연 전', 'intermission' => '인터미션', 'post' => '공연 후'])

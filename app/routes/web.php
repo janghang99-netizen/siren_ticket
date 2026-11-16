@@ -16,6 +16,7 @@ Route::controller(FanController::class)->group(function () {
     Route::get('/tickets', 'tickets')->name('tickets');
     Route::post('/tickets/{ticket}/cancel', 'cancelTicket')->name('tickets.cancel');
 
+    Route::get('/order', 'orderEntry')->name('order.entry');                      // 하단 '매장주문' 탭
     Route::get('/concerts/{event}/stores', 'stores')->name('stores.index');
     Route::get('/concerts/{event}/stores/{store}', 'menu')->name('stores.menu');
     Route::post('/concerts/{event}/stores/{store}/orders', 'placeOrder')->middleware('throttle:30,1')->name('stores.order');

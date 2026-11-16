@@ -46,6 +46,23 @@ class StoreOperationsTest extends TestCase
         $this->staff = User::factory()->create(['role' => 'vendor', 'vendor_id' => $this->vendor->id]);
     }
 
+    public function test_home_shows_stores_and_menu_and_order_tab_goes_to_stores(): void
+    {
+        $event = Event::first();
+        $this->get(route('home'))->assertOk()
+            ->assertSee('줄 서지 말고, 미리 주문')
+            ->assertSee('아레나 커피')                                   // 주문 받는 매장 (슬롯 있음)
+            ->assertDontSee('오븐 베이커리')                             // 이 공연 슬롯이 없는 매장은 안 보임
+            ->assertSee('아메리카노')
+            ->assertSee(route('stores.menu', [$event, $this->store]), false)
+            ->assertSee(route('order.entry'), false);                   // 하단 '매장주문' 탭
+
+        $this->get(route('order.entry'))->assertRedirect(route('stores.index', $event));
+
+        $event->update(['status' => 'cancelled']);
+        $this->get(route('order.entry'))->assertRedirect(route('home'));
+    }
+
     public function test_bundle_payment_only_within_same_store(): void
     {
         $svc = app(OrderService::class);
