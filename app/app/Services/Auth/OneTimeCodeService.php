@@ -41,9 +41,9 @@ class OneTimeCodeService
         ]);
 
         // 받는 사람이 고른 화면 언어로 보낸다
-        $text = __('[SIREN] 인증번호 :code (10분 안에 입력). 누구에게도 알려 주지 마세요.', ['code' => $code]);
+        $text = __('[:brand] 인증번호 :code (10분 안에 입력). 누구에게도 알려 주지 마세요.', ['code' => $code, 'brand' => \App\Models\Setting::brand()]);
         if ($channel === 'email') {
-            Mail::raw($text, fn ($m) => $m->to($destination)->subject(__('[SIREN] 인증번호 :code', ['code' => $code])));
+            Mail::raw($text, fn ($m) => $m->to($destination)->subject(__('[:brand] 인증번호 :code', ['code' => $code, 'brand' => \App\Models\Setting::brand()])));
 
             return in_array(config('mail.default'), ['log', 'array'], true) ? $code : null;
         }

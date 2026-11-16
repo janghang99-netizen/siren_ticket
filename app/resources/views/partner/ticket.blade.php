@@ -84,7 +84,7 @@
         <span class="small">이 번호표를 보여 주세요 · {{ $order->created_at->format('Y.m.d H:i') }}</span><br>
         <span class="small">주문번호 {{ $order->order_no }}</span>
     </div>
-    <div class="small c" style="margin-top:2mm">SIREN · 공연장 매장 주문</div>
+    <div class="small c" style="margin-top:2mm">{{ $site['brand_name'] }} · 매장 주문</div>
 @endif
 @if ($auto)
     <script>window.addEventListener('load', () => { window.print(); setTimeout(() => window.close(), 500) })</script>

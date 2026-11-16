@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>입점 신청 · SIREN</title>
+    <title>입점 신청 · {{ $site['brand_name'] }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -12,7 +12,7 @@
 @php($cycle = \App\Models\Vendor::CYCLES[$settings['default_settlement_cycle']] ?? '2주마다')
 <body class="min-h-dvh">
 <div class="mx-auto max-w-3xl px-5 py-10">
-    <a href="{{ route('home') }}" class="font-display text-lg font-black">SIREN</a>
+    <a href="{{ route('home') }}" class="font-display text-lg font-black">{{ $site['brand_name'] }}</a>
     <h1 class="mt-4 text-3xl font-black">공연장 매장 입점 신청</h1>
     <p class="mt-2 text-mist">서울아레나 공연장 안에서 모바일 선주문·픽업으로 판매해요. 서류를 확인한 뒤 승인되면 매장을 열 수 있어요.</p>
 

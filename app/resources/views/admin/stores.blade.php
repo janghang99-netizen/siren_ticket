@@ -1,6 +1,6 @@
 @extends('layouts.backoffice')
 @section('title', '매장')
-@section('eyebrow', '사이렌오더')
+@section('eyebrow', '매장 주문')
 
 @section('actions')
     <a href="{{ route('admin.stores.create') }}" class="btn-ink !py-2.5 text-sm">매장 열기</a>

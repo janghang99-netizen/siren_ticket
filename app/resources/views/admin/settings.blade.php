@@ -11,7 +11,7 @@
     <div class="min-w-0">
         <h2 class="font-bold">공연 티켓 판매 <span @class(['chip ml-1', 'bg-stick text-white' => $ticketing, 'bg-paper text-mist' => ! $ticketing])>{{ $ticketing ? '켜짐' : '꺼짐' }}</span></h2>
         <p class="mt-1 max-w-2xl text-sm text-mist">켜면 팬 화면에 좌석 예매·내 티켓, 운영사 화면에 티켓 판매·입장 검표·공연장 좌석표가 보여요.
-            끄면 이것들이 숨고 <b>공연 일정과 매장 주문(사이렌오더)은 그대로</b> 써요. 끄고 켜도 데이터는 지워지지 않아요.</p>
+            끄면 이것들이 숨고 <b>공연 일정과 매장 주문은 그대로</b> 써요. 끄고 켜도 데이터는 지워지지 않아요.</p>
     </div>
     <form method="POST" action="{{ route('admin.settings.ticketing') }}"
           onsubmit="return confirm('{{ $ticketing ? '공연 티켓 판매 기능을 끌까요? 팬 화면에서 예매가 숨겨져요.' : '공연 티켓 판매 기능을 켤까요? 팬 화면에 좌석 예매가 보여요.' }}')">
@@ -20,6 +20,55 @@
         <button class="{{ $ticketing ? 'btn-ghost' : 'btn-ink' }} !py-2.5 text-sm">{{ $ticketing ? '끄기' : '켜기' }}</button>
     </form>
 </section>
+
+{{-- 화면 이름 · 운영사 사업자 정보 (팬 화면 하단 — 통신판매중개자 고지) --}}
+<form method="POST" action="{{ route('admin.settings.site') }}" class="mb-6 rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+    @csrf @method('PUT')
+    <h2 class="font-bold">화면 이름 · 사업자 정보 <span class="text-xs font-normal text-mist">팬 화면 맨 아래에 보여요</span></h2>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+                <label class="label" for="site-brand_name">화면 이름</label>
+                <input id="site-brand_name" name="brand_name" class="field" value="{{ old('brand_name', $site['brand_name']) }}" placeholder="다담다" required>
+                @error('brand_name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_name">상호</label>
+                <input id="site-company_name" name="company_name" class="field" value="{{ old('company_name', $site['company_name']) }}" placeholder="주식회사 태라글로벌" required>
+                @error('company_name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_ceo">대표</label>
+                <input id="site-company_ceo" name="company_ceo" class="field" value="{{ old('company_ceo', $site['company_ceo']) }}" placeholder="">
+                @error('company_ceo')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_reg_no">사업자등록번호</label>
+                <input id="site-company_reg_no" name="company_reg_no" class="field" value="{{ old('company_reg_no', $site['company_reg_no']) }}" placeholder="000-00-00000">
+                @error('company_reg_no')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_mail_order_no">통신판매업신고</label>
+                <input id="site-company_mail_order_no" name="company_mail_order_no" class="field" value="{{ old('company_mail_order_no', $site['company_mail_order_no']) }}" placeholder="">
+                @error('company_mail_order_no')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_address">주소</label>
+                <input id="site-company_address" name="company_address" class="field" value="{{ old('company_address', $site['company_address']) }}" placeholder="">
+                @error('company_address')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_phone">고객센터</label>
+                <input id="site-company_phone" name="company_phone" class="field" value="{{ old('company_phone', $site['company_phone']) }}" placeholder="">
+                @error('company_phone')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="label" for="site-company_email">이메일</label>
+                <input id="site-company_email" name="company_email" class="field" value="{{ old('company_email', $site['company_email']) }}" placeholder="" type="email">
+                @error('company_email')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
+            </div>
+    </div>
+    <button class="btn-ink mt-4 !py-2.5 text-sm">사업자 정보 저장</button>
+</form>
 
 <form method="POST" action="{{ route('admin.settings.save') }}" class="space-y-6"
       x-data="{ cycles: @js($vendors->mapWithKeys(fn ($v) => [$v->id => $v->settlement_cycle])), dflt: @js($settings['default_settlement_cycle']) }">

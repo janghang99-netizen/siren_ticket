@@ -277,7 +277,7 @@ class OrderService
             if ($phone) {
                 $store = $order->store()->value('name');
                 app(\App\Services\Benefits\SmsSender::class)->send($phone,
-                    "[SIREN] 주문 {$order->pickup_code} 준비됐어요. {$store}에서 번호를 보여 주고 받아 가세요.");
+                    '['.Setting::brand()."] 주문 {$order->pickup_code} 준비됐어요. {$store}에서 번호를 보여 주고 받아 가세요.");
             }
         } catch (\Throwable $e) {
             report($e);

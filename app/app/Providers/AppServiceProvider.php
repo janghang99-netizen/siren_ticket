@@ -35,6 +35,13 @@ class AppServiceProvider extends ServiceProvider
                 $attrs->set('ticketing', \Illuminate\Support\Facades\Schema::hasTable('settings') && \App\Models\Setting::ticketingEnabled());
             }
             $view->with('ticketing', $attrs->get('ticketing'));
+            // $site: 화면 이름(brand_name)·운영사 사업자 정보 — 하단 고지·제목에 쓴다
+            if (! $attrs->has('site')) {
+                $attrs->set('site', \Illuminate\Support\Facades\Schema::hasTable('settings')
+                    ? \App\Models\Setting::site()
+                    : array_intersect_key(\App\Models\Setting::DEFAULTS, array_flip(\App\Models\Setting::SITE_KEYS)));
+            }
+            $view->with('site', $attrs->get('site'));
         });
         // 슈퍼어드민(플랫폼 회사): 공연·좌석티켓·입점업체·매장·정산
         Gate::define('super-admin', fn (User $u) => $u->isSuperAdmin());

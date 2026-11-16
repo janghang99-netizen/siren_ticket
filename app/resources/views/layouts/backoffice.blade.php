@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title') · SIREN {{ auth()->user()->isSuperAdmin() ? '운영' : '파트너' }}</title>
+    <title>@yield('title') · {{ $site['brand_name'] }} {{ auth()->user()->isSuperAdmin() ? '운영' : '파트너' }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -47,7 +47,7 @@
     <aside class="bg-ink text-paper lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         <div class="flex items-center justify-between px-5 py-4 lg:block lg:py-6">
             <div>
-                <p class="font-display text-lg font-black">SIREN</p>
+                <p class="font-display text-lg font-black">{{ $site['brand_name'] }}</p>
                 <p class="text-xs font-semibold text-paper/50">{{ $user->isSuperAdmin() ? '운영 콘솔' : ($user->vendor->name ?? '파트너') }}</p>
             </div>
             <form method="POST" action="{{ route('logout') }}" class="lg:hidden">@csrf<button class="text-sm text-paper/60">로그아웃</button></form>

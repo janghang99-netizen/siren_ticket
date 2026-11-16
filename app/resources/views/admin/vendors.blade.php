@@ -1,6 +1,6 @@
 @extends('layouts.backoffice')
 @section('title', '입점업체')
-@section('eyebrow', '사이렌오더')
+@section('eyebrow', '매장 주문')
 
 @section('actions')
     <a href="{{ route('partner.apply') }}" target="_blank" class="btn-ghost !py-2.5 text-sm">입점 신청 페이지</a>

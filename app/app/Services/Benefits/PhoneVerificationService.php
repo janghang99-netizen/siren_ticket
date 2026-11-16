@@ -44,7 +44,7 @@ class PhoneVerificationService
         }
 
         // 실발송: 문자 발송사가 정해지면 SmsSender 구현을 바인딩한다
-        app(SmsSender::class)->send($phone, "[SIREN] 인증번호 {$code} (5분 안에 입력)");
+        app(SmsSender::class)->send($phone, '['.\App\Models\Setting::brand()."] 인증번호 {$code} (5분 안에 입력)");
 
         return null;
     }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="theme-color" content="#F1EEF8">
-    <title>@yield('title', 'SIREN') · SIREN</title>
+    <title>@yield('title', $site['brand_name']) · {{ $site['brand_name'] }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&display=swap" rel="stylesheet">
@@ -15,8 +15,8 @@
 <body class="min-h-dvh" @hasSection('theme') style="--theme: @yield('theme')" @endif>
     <div class="mx-auto flex min-h-dvh max-w-md flex-col">
         <header class="sticky top-0 z-30 flex items-center justify-between gap-2 bg-white/40 px-4 py-3 backdrop-blur-xl">
-            <a href="{{ route('home') }}" class="flex items-baseline gap-2" aria-label="SIREN 홈">
-                <span class="font-display text-lg font-black tracking-tight">SIREN</span>
+            <a href="{{ route('home') }}" class="flex items-baseline gap-2" aria-label="{{ $site['brand_name'] }} 홈">
+                <span class="font-display text-lg font-black tracking-tight">{{ $site['brand_name'] }}</span>
                 <span class="hidden text-xs font-semibold text-mist min-[380px]:inline">티켓 · 매장주문</span>
             </a>
             <div class="flex items-center gap-3">
@@ -57,7 +57,20 @@
                 <a href="{{ route('policy', 'refund') }}">취소·환불 규정</a>
                 <a href="{{ route('partner.apply') }}">매장 입점 신청</a>
             </nav>
-            <p>@if ($ticketing)SIREN은 공연 좌석 티켓을 직접 판매하며, @else SIREN은 @endif공연장 매장 상품에 대해서는 통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+            {{-- 운영사 사업자 정보 (원본 다담다 하단과 같은 항목 — 운영사 설정에서 고친다) --}}
+            <details class="mb-2">
+                <summary class="cursor-pointer font-semibold text-ink/70">{{ $site['company_name'] }} 사업자 정보</summary>
+                <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                    <dt>상호</dt><dd>{{ $site['company_name'] }}</dd>
+                    @if ($site['company_ceo'])<dt>대표</dt><dd>{{ $site['company_ceo'] }}</dd>@endif
+                    @if ($site['company_reg_no'])<dt>사업자등록번호</dt><dd class="num">{{ $site['company_reg_no'] }}</dd>@endif
+                    @if ($site['company_mail_order_no'])<dt>통신판매업신고</dt><dd class="num">{{ $site['company_mail_order_no'] }}</dd>@endif
+                    @if ($site['company_address'])<dt>주소</dt><dd>{{ $site['company_address'] }}</dd>@endif
+                    @if ($site['company_phone'])<dt>고객센터</dt><dd class="num">{{ $site['company_phone'] }}</dd>@endif
+                    @if ($site['company_email'])<dt>이메일</dt><dd>{{ $site['company_email'] }}</dd>@endif
+                </dl>
+            </details>
+            <p>@if ($ticketing){{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 @else{{ $site['company_name'] }}은(는) @endif통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
             <p id="translate-notice" class="mt-2" hidden>번역은 이해를 돕기 위한 것이며, 약관·환불 규정은 한국어 원문이 우선합니다.</p>
         </footer>
 

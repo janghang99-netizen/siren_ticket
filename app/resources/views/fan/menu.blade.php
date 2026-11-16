@@ -303,7 +303,7 @@
                     <dt>{{ $k }}</dt><dd class="text-ink/70">{{ $v }}</dd>
                 @endforeach
             </dl>
-            <p class="mt-2">이 매장의 상품은 위 판매자가 판매하며, SIREN은 통신판매중개자로서 거래 당사자가 아닙니다.</p>
+            <p class="mt-2">이 매장의 상품은 위 판매자가 판매하며, {{ $site['brand_name'] }}은(는) 통신판매중개자로서 거래 당사자가 아닙니다.</p>
         </section>
     @endif
 </div>

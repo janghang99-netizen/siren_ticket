@@ -602,6 +602,25 @@ class AdminController extends Controller
             : '공연 티켓 판매 기능을 껐어요. 팬 화면에서 예매·내 티켓이 숨고, 매장 주문은 그대로예요. (데이터는 지우지 않아요)');
     }
 
+    /** 화면 이름 · 운영사 사업자 정보 (팬 화면 하단 고지) */
+    public function siteSave(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'brand_name' => ['required', 'string', 'max:20'],
+            'company_name' => ['required', 'string', 'max:60'],
+            'company_ceo' => ['nullable', 'string', 'max:40'],
+            'company_reg_no' => ['nullable', 'string', 'max:20'],
+            'company_mail_order_no' => ['nullable', 'string', 'max:40'],
+            'company_address' => ['nullable', 'string', 'max:160'],
+            'company_phone' => ['nullable', 'string', 'max:30'],
+            'company_email' => ['nullable', 'email', 'max:120'],
+        ], ['brand_name.required' => '화면 이름을 적어 주세요.', 'company_name.required' => '상호를 적어 주세요.']);
+        \App\Models\Setting::put(array_map(fn ($v) => (string) $v, $data));
+        \App\Services\Audit::log('settings.site', null, '화면 이름·사업자 정보 저장');
+
+        return back()->with('status', '화면 이름·사업자 정보를 저장했어요. 팬 화면 하단에 바로 보여요.');
+    }
+
     public function settingsSave(Request $request): RedirectResponse
     {
         $data = $request->validate([

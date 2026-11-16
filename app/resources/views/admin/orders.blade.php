@@ -1,6 +1,6 @@
 @extends('layouts.backoffice')
 @section('title', '전체 주문')
-@section('eyebrow', '사이렌오더')
+@section('eyebrow', '매장 주문')
 
 @section('content')
     <form method="GET" class="mb-5 flex flex-wrap items-end gap-3 rounded-3xl bg-white p-4 ring-1 ring-ink/5">

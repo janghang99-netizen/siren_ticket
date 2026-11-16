@@ -19,7 +19,31 @@ class Setting extends Model
         'mileage_product_max_rate' => '10',       // 업체가 상품에 거는 적립금 상한 (판매가의 %)
         'ticket_mileage_rate' => '1',             // 공연 관람 적립 (티켓 결제액의 %, 운영사 부담)
         'ticketing_enabled' => '0',               // 공연 티켓 판매 기능 (끄면 예매·내 티켓·공연장 좌석표 메뉴가 숨는다 — 다담다 이관 기본값: 끔)
+        // 화면 이름 · 운영사 사업자 정보 (화면 하단 표시 — 전자상거래법 통신판매중개자 고지). 기본값은 원본 다담다 하단 공개 정보.
+        'brand_name' => '다담다',
+        'company_name' => '주식회사 태라글로벌',
+        'company_ceo' => '한명아',
+        'company_reg_no' => '231-88-02240',
+        'company_mail_order_no' => '2021-서울서초-3972',
+        'company_address' => '서울특별시 서초구 효령로51길 18 남승빌딩 2층',
+        'company_phone' => '02-310-9840',
+        'company_email' => '',
     ];
+
+    /** 화면 이름·사업자 정보 키 (운영사 설정 '사업자 정보' 카드) */
+    public const SITE_KEYS = ['brand_name', 'company_name', 'company_ceo', 'company_reg_no', 'company_mail_order_no', 'company_address', 'company_phone', 'company_email'];
+
+    /** @return array<string, string> 화면 이름·사업자 정보 (요청마다 한 번) */
+    public static function site(): array
+    {
+        return array_intersect_key(static::values(), array_flip(self::SITE_KEYS));
+    }
+
+    /** 화면 이름 (문자·메일 머리말 등) */
+    public static function brand(): string
+    {
+        return static::get('brand_name') ?: '다담다';
+    }
 
     /** 공연 티켓 판매 기능을 쓰는지 (슈퍼관리자 설정에서 켜고 끈다) */
     public static function ticketingEnabled(): bool

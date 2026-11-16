@@ -291,5 +291,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     // 수수료·정산주기 설정 (C2·C3)
     Route::get('/settings', 'settings')->name('settings');
     Route::put('/settings', 'settingsSave')->name('settings.save');
-    Route::post('/settings/ticketing', 'ticketingToggle')->name('settings.ticketing');   // 공연 티켓 판매 기능 켜기/끄기
+    Route::post('/settings/ticketing', 'ticketingToggle')->name('settings.ticketing');
+    Route::put('/settings/site', 'siteSave')->name('settings.site');   // 화면 이름 · 사업자 정보   // 공연 티켓 판매 기능 켜기/끄기
 });

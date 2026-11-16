@@ -59,6 +59,25 @@ class AlwaysOpenShopTest extends TestCase
         $this->assertSame(0, Order::count());
     }
 
+    public function test_brand_business_info_and_pickup_board_qr(): void
+    {
+        // 화면 이름 '다담다' + 하단 사업자 정보 (통신판매중개자 고지)
+        $home = $this->get(route('home'))->assertOk();
+        $home->assertSee('<title>홈 · 다담다</title>', false)->assertDontSee('SIREN')
+            ->assertSee('231-88-02240')->assertSee('2021-서울서초-3972')->assertSee('통신판매중개자');
+
+        // 전광판: 이 매장 상시 주문 QR
+        $this->get(route('display', $this->store))->assertOk()
+            ->assertSee('id="order-qr"', false)->assertSee(route('shop.menu', $this->store))->assertSee('찍고 주문');
+
+        // 운영사가 사업자 정보를 고치면 바로 반영
+        $admin = \App\Models\User::factory()->create(['role' => 'super_admin']);
+        $this->actingAs($admin)->put(route('admin.settings.site'), [
+            'brand_name' => '다담다', 'company_name' => '주식회사 태라글로벌', 'company_phone' => '02-000-0000', 'company_email' => 'help@example.com',
+        ])->assertSessionHasNoErrors();
+        $this->get(route('home'))->assertSee('02-000-0000')->assertSee('help@example.com');
+    }
+
     public function test_unapproved_vendor_store_is_hidden(): void
     {
         $other = Store::create(['vendor_id' => Vendor::create(['name' => '심사중', 'state' => 'pending'])->id, 'code' => 'wait1', 'name' => '심사중 매장']);
