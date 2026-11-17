@@ -60,7 +60,8 @@ class DadamdaSettlementImporter
                 ->where('imported_from', DadamdaOrderImporter::SOURCE)
                 ->where('status', OrderStatus::Settled->value)
                 ->whereNull('settlement_id')
-                ->where('paid_at', '<', $at)
+                // 원본 정산일시가 있으면 그 회차의 주문만, 없으면(예전 데이터) 정산 시각 전에 산 주문
+                ->where(fn ($q) => $q->where('settled_at', $at)->orWhere(fn ($q) => $q->whereNull('settled_at')->where('paid_at', '<', $at)))
                 ->get(['id', 'total_amount', 'mileage_used', 'paid_at']);
 
             $gross = (int) $orders->sum('total_amount');

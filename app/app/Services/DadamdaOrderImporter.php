@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\DB;
  * - 입금대기(결제 안 됨)는 판매가 아니라서 가져오지 않는다
  * - 옮긴 주문은 imported_from='dadamda' 표시 → 새 자동 정산에 들어가지 않는다 (원본 정산 기록을 따른다)
  * - 재고를 다시 빼지 않고 문자·알림도 보내지 않는다 (지난 기록일 뿐)
- * - 같은 주문번호가 이미 있으면 건너뛴다 (다시 돌려도 안전)
+ * - 같은 주문번호가 이미 있으면 건너뛴다 (다시 돌려도 안전). 단, 아직 정산서에 묶이지 않은 이관 주문은
+ *   원본의 바뀐 상태(예: 수령완료 → 정산완료)로 맞춘다 — 원본에서 정산한 뒤 다시 가져오는 흐름
  */
 class DadamdaOrderImporter
 {
@@ -42,11 +43,11 @@ class DadamdaOrderImporter
 
     /**
      * @param  array<int, array<string, mixed>>  $orders
-     * @return array{created:int, skipped_existing:int, skipped_unpaid:int, placeholders:array<int,string>, cancel_requests:array<int,string>, errors:array<int,string>, total:int}
+     * @return array{created:int, status_updated:int, skipped_existing:int, skipped_unpaid:int, placeholders:array<int,string>, cancel_requests:array<int,string>, errors:array<int,string>, total:int}
      */
     public function import(array $orders, Store $store): array
     {
-        $report = ['created' => 0, 'skipped_existing' => 0, 'skipped_unpaid' => 0, 'placeholders' => [], 'cancel_requests' => [], 'errors' => [], 'total' => 0];
+        $report = ['created' => 0, 'status_updated' => 0, 'skipped_existing' => 0, 'skipped_unpaid' => 0, 'placeholders' => [], 'cancel_requests' => [], 'errors' => [], 'total' => 0];
 
         foreach ($orders as $o) {
             $no = (string) ($o['no'] ?? '');
@@ -67,7 +68,24 @@ class DadamdaOrderImporter
 
                 continue;
             }
-            if (Order::where('order_no', $no)->exists()) {
+            $existing = Order::where('order_no', $no)->first();
+            if ($existing) {
+                // 다시 가져올 때: 원본에서 상태가 바뀐 이관 주문(예: 수령완료 → 정산완료)은 상태를 맞춘다.
+                // 이미 정산서에 묶인 주문과 새 시스템에서 생긴 주문은 건드리지 않는다.
+                if ($existing->imported_from === self::SOURCE && $existing->settlement_id === null && $existing->status !== $status) {
+                    $at = Carbon::parse($o['at'], 'Asia/Seoul');
+                    $existing->update([
+                        'status' => $status,
+                        'settled_at' => $this->settledAt($o, $status) ?? $existing->settled_at,
+                        'picked_up_at' => in_array($status, [OrderStatus::PickedUp, OrderStatus::Settled], true) ? ($existing->picked_up_at ?? $at) : $existing->picked_up_at,
+                        'cancelled_at' => $status === OrderStatus::Cancelled ? ($existing->cancelled_at ?? now()) : $existing->cancelled_at,
+                        'refunded_at' => $status === OrderStatus::Refunded ? ($existing->refunded_at ?? now()) : $existing->refunded_at,
+                        'cancel_reason' => $status === OrderStatus::Cancelled ? mb_substr("원본 {$statusText}", 0, 50) : $existing->cancel_reason,
+                    ]);
+                    $report['status_updated']++;
+
+                    continue;
+                }
                 $report['skipped_existing']++;
 
                 continue;
@@ -112,6 +130,7 @@ class DadamdaOrderImporter
                     'picked_up_at' => in_array($status, [OrderStatus::PickedUp, OrderStatus::Settled], true) ? $at : null,
                     'cancelled_at' => $status === OrderStatus::Cancelled ? $at : null,
                     'refunded_at' => $status === OrderStatus::Refunded ? $at : null,
+                    'settled_at' => $this->settledAt($o, $status),
                     'cancel_reason' => $status === OrderStatus::Cancelled ? mb_substr("원본 {$statusText}", 0, 50) : null,
                 ]);
                 $order->created_at = $at;
@@ -133,6 +152,12 @@ class DadamdaOrderImporter
         }
 
         return $report;
+    }
+
+    /** 원본 정산일시 (주문내역의 정산완료 시각) — 정산 이관이 이 값으로 주문을 정확한 정산 회차에 묶는다 */
+    private function settledAt(array $o, OrderStatus $status): ?Carbon
+    {
+        return $status === OrderStatus::Settled && ! empty($o['settled']) ? Carbon::parse((string) $o['settled'], 'Asia/Seoul') : null;
     }
 
     /** "[포장] 아메리카노 (HOT/ICE) / ICE" → "아메리카노 (HOT/ICE)" */

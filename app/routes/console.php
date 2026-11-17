@@ -127,6 +127,9 @@ Artisan::command('dadamda:import-orders
     $r = $importer->import($orders, $store);
     $this->info("{$store->name}: 주문 {$r['created']}건 · ".number_format($r['total']).'원 가져옴'
         ." · 이미 있음 {$r['skipped_existing']}건 · 입금대기(미결제) 제외 {$r['skipped_unpaid']}건");
+    if ($r['status_updated']) {
+        $this->line("  원본에서 상태가 바뀐 주문 {$r['status_updated']}건 갱신 (예: 수령완료 → 정산완료)");
+    }
     foreach ($r['placeholders'] as $p) {
         $this->line("  원본에서 지워진 상품 → 숨김 상품으로 만듦: {$p}");
     }
