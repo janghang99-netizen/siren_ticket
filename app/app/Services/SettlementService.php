@@ -38,6 +38,7 @@ class SettlementService
             $orders = Order::with('store:id,vendor_id')
                 ->where('status', OrderStatus::PickedUp->value)
                 ->whereNull('settlement_id')
+                ->whereNull('imported_from')   // 원본에서 옮겨 온 주문은 원본 정산 기록을 따른다
                 ->whereBetween('picked_up_at', [$start, $end])
                 ->when($vendorId, fn ($q) => $q->whereHas('store', fn ($s) => $s->where('vendor_id', $vendorId)))
                 ->lockForUpdate()
@@ -64,6 +65,7 @@ class SettlementService
 
                 $refunds = Order::whereHas('store', fn ($q) => $q->where('vendor_id', $vid))
                     ->where('status', OrderStatus::Refunded->value)
+                    ->whereNull('imported_from')
                     ->whereBetween('refunded_at', [$start, $end]);
 
                 $settlement = Settlement::create([

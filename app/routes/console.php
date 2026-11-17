@@ -105,6 +105,41 @@ Artisan::command('dadamda:import-products
     return 0;
 })->purpose('원본 다담다 상품을 판매자 하나씩 새 매장으로 가져온다');
 
+// 다담다 이관: 판매(주문) 기록 — 상품 이관 다음에. 구매자 정보 없이, 새 자동 정산에는 넣지 않는다
+Artisan::command('dadamda:import-orders
+    {file=database/import/dadamda/arena1_orders.json : 원본 주문 JSON}
+    {--store=arena1 : 넣을 매장 코드 (상품을 넣은 매장)}', function (\App\Services\DadamdaOrderImporter $importer) {
+    $path = $this->argument('file');
+    $path = is_file($path) ? $path : base_path($path);
+    $orders = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (! is_array($orders)) {
+        $this->error("JSON 파일을 읽지 못했어요: {$this->argument('file')}");
+
+        return 1;
+    }
+    $store = \App\Models\Store::where('code', (string) $this->option('store'))->first();
+    if (! $store) {
+        $this->error("매장 {$this->option('store')} 이(가) 없어요. 먼저 dadamda:import-products 로 상품을 넣어 주세요.");
+
+        return 1;
+    }
+
+    $r = $importer->import($orders, $store);
+    $this->info("{$store->name}: 주문 {$r['created']}건 · ".number_format($r['total']).'원 가져옴'
+        ." · 이미 있음 {$r['skipped_existing']}건 · 입금대기(미결제) 제외 {$r['skipped_unpaid']}건");
+    foreach ($r['placeholders'] as $p) {
+        $this->line("  원본에서 지워진 상품 → 숨김 상품으로 만듦: {$p}");
+    }
+    if ($r['cancel_requests']) {
+        $this->warn('  원본 구매취소요청 → 판매취소로 넣음 (원본에서 확인 필요): '.implode(', ', $r['cancel_requests']));
+    }
+    foreach ($r['errors'] as $e) {
+        $this->warn('  '.$e);
+    }
+
+    return 0;
+})->purpose('원본 다담다 판매 기록을 새 매장 주문으로 가져온다');
+
 // 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
 Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
     $check = $ledger->verify();
