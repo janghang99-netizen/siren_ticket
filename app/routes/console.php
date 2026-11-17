@@ -178,6 +178,34 @@ Artisan::command('dadamda:import-settlements
     return $r['errors'] ? 1 : 0;
 })->purpose('원본 다담다 정산 기록을 새 정산서로 가져온다');
 
+// 다담다 이관: 생산(입고) 기록 — 상품 이관 다음에. 이력만 넣고 재고·EIS 는 건드리지 않는다
+Artisan::command('dadamda:import-production
+    {file=database/import/dadamda/arena1_production.json : 원본 생산 기록 JSON}
+    {--store=arena1 : 상품을 넣은 매장 코드}', function (\App\Services\DadamdaProductionImporter $importer) {
+    $path = $this->argument('file');
+    $path = is_file($path) ? $path : base_path($path);
+    $rows = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (! is_array($rows)) {
+        $this->error("JSON 파일을 읽지 못했어요: {$this->argument('file')}");
+
+        return 1;
+    }
+    $store = \App\Models\Store::where('code', (string) $this->option('store'))->first();
+    if (! $store) {
+        $this->error("매장 {$this->option('store')} 이(가) 없어요. 먼저 dadamda:import-products 로 상품을 넣어 주세요.");
+
+        return 1;
+    }
+
+    $r = $importer->import($rows, $store);
+    $this->info("{$store->name}: 생산 기록 {$r['created']}건 · 합계 {$r['qty']}개 · 이미 있음 {$r['skipped_existing']}건 (재고는 바꾸지 않음)");
+    foreach ($r['errors'] as $e) {
+        $this->warn('  '.$e);
+    }
+
+    return $r['errors'] ? 1 : 0;
+})->purpose('원본 다담다 생산 기록을 이력으로 가져온다');
+
 // 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
 Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
     $check = $ledger->verify();
