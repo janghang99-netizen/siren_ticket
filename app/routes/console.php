@@ -61,6 +61,50 @@ Artisan::command('venues:import-kopis {--details : 시설마다 상세(주소·�
 
 \Illuminate\Support\Facades\Schedule::command('venues:import-kopis')->monthlyOn(1, '04:00');
 
+// 다담다 이관: 원본 관리자 화면에서 읽은 상품 JSON → 한 판매자 상품만 새 매장으로 (다시 돌려도 같은 상품을 고친다)
+Artisan::command('dadamda:import-products
+    {file=database/import/dadamda/arena1_products.json : 원본 상품 JSON}
+    {--seller=arena1 : 이 원본 판매자 아이디의 상품만}
+    {--store= : 넣을 매장 코드 (없으면 원본 브랜드 이름으로 새 업체·매장을 만든다, 기본 = 판매자 아이디)}
+    {--images : 원본 사진도 받아 저장}', function (\App\Services\DadamdaProductImporter $importer) {
+    $path = $this->argument('file');
+    $path = is_file($path) ? $path : base_path($path);
+    $items = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (! is_array($items)) {
+        $this->error("JSON 파일을 읽지 못했어요: {$this->argument('file')}");
+
+        return 1;
+    }
+    $seller = (string) $this->option('seller');
+    $items = array_values(array_filter($items, fn ($p) => ($p['seller'] ?? null) === $seller));
+    if (! $items) {
+        $this->warn("판매자 {$seller} 의 상품이 파일에 없어요.");
+
+        return 1;
+    }
+
+    $code = (string) ($this->option('store') ?: $seller);
+    $store = \App\Models\Store::where('code', $code)->first();
+    if (! $store) {
+        // 가장 많이 쓴 브랜드 이름으로 업체·매장을 만든다 (주문은 운영사가 매장을 열어야 받는다)
+        $brand = collect($items)->countBy('brand')->sortDesc()->keys()->first() ?: $seller;
+        $store = \Illuminate\Support\Facades\DB::transaction(function () use ($brand, $code) {
+            $vendor = \App\Models\Vendor::create(['name' => $brand, 'state' => 'approved']);
+
+            return \App\Models\Store::create(['vendor_id' => $vendor->id, 'code' => $code, 'name' => $brand, 'is_open' => false]);
+        });
+        $this->info("새 매장을 만들었어요: {$store->name} ({$code}) — 운영사 화면에서 매장 정보를 채우고 열어 주세요.");
+    }
+
+    $r = $importer->import($items, $store, (bool) $this->option('images'));
+    $this->info("{$store->name}: 새로 {$r['created']}개 · 갱신 {$r['updated']}개 · 사진 {$r['images']}장");
+    foreach ($r['errors'] as $e) {
+        $this->warn('  '.$e);
+    }
+
+    return 0;
+})->purpose('원본 다담다 상품을 판매자 하나씩 새 매장으로 가져온다');
+
 // 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
 Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
     $check = $ledger->verify();
