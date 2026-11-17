@@ -177,8 +177,8 @@
             </section>
         @endif
 
-        {{-- ④ 다른 공연 (티켓 판매를 안 쓰면: 공연 일정 — 공연 시간대에 맞춰 매장 미리 주문) --}}
-        @php($others = $headliner ? $events->skip(1) : $events)
+        {{-- ④ 다른 공연 — 공연 기능을 켰을 때만. 끄면(다담다 상시 매장 주문) 공연 목록을 보이지 않는다 --}}
+        @php($others = $headliner ? $events->skip(1) : collect())
         @if ($others->isNotEmpty())
             <h2 class="mt-10 mb-3 text-lg font-bold">{{ $headliner ? '다른 공연' : '공연 일정' }}</h2>
             <ul class="space-y-3">

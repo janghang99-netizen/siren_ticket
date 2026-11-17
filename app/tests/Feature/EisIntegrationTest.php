@@ -102,4 +102,14 @@ class EisIntegrationTest extends TestCase
         $this->assertSame(77, $this->bread->fresh()->stock);
         $this->get(route('partner.production'))->assertOk()->assertSee('소금빵');
     }
+
+    /** 생산량 입력 목록은 판매 중인 상품만 (판매중지 상품은 빠진다) */
+    public function test_production_entry_lists_only_visible_products(): void
+    {
+        Product::create(['store_id' => $this->bakery->id, 'name' => '판매중지 바게트', 'price' => 3000, 'stock' => 0, 'is_visible' => false]);
+        $user = User::factory()->create(['role' => 'vendor', 'vendor_id' => $this->vendor->id]);
+        $this->actingAs($user)->post(route('partner.stores.switch', $this->bakery->id));
+
+        $this->get(route('partner.production'))->assertOk()->assertSee('소금빵')->assertDontSee('판매중지 바게트');
+    }
 }

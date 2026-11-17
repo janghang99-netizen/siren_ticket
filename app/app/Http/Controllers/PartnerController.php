@@ -471,7 +471,8 @@ class PartnerController extends Controller
         $date = $request->date('date') ?? now();
 
         return view('partner.production', $this->shared($request) + [
-            'products' => Product::with('options')->where('store_id', $store->id)->orderBy('sort')->orderBy('id')->get(),
+            // 생산량 입력은 판매 중인 상품만 (판매중지 상품의 지난 생산 기록은 아래 기록 목록에 그대로 보인다)
+            'products' => Product::with('options')->where('store_id', $store->id)->where('is_visible', true)->orderBy('sort')->orderBy('id')->get(),
             'date' => $date->toDateString(),
             'records' => DB::table('product_productions as pp')->join('products as p', 'p.id', '=', 'pp.product_id')
                 ->leftJoin('product_options as o', 'o.id', '=', 'pp.product_option_id')

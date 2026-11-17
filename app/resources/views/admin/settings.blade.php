@@ -11,7 +11,7 @@
     <div class="min-w-0">
         <h2 class="font-bold">공연 티켓 판매 <span @class(['chip ml-1', 'bg-stick text-white' => $ticketing, 'bg-paper text-mist' => ! $ticketing])>{{ $ticketing ? '켜짐' : '꺼짐' }}</span></h2>
         <p class="mt-1 max-w-2xl text-sm text-mist">켜면 팬 화면에 좌석 예매·내 티켓, 운영사 화면에 티켓 판매·입장 검표·공연장 좌석표가 보여요.
-            끄면 이것들이 숨고 <b>공연 일정과 매장 주문은 그대로</b> 써요. 끄고 켜도 데이터는 지워지지 않아요.</p>
+            끄면 이것들과 팬 홈의 공연 목록이 숨고 <b>매장 주문만</b> 보여요. 끄고 켜도 데이터는 지워지지 않아요.</p>
     </div>
     <form method="POST" action="{{ route('admin.settings.ticketing') }}"
           onsubmit="return confirm('{{ $ticketing ? '공연 티켓 판매 기능을 끌까요? 팬 화면에서 예매가 숨겨져요.' : '공연 티켓 판매 기능을 켤까요? 팬 화면에 좌석 예매가 보여요.' }}')">

@@ -35,10 +35,17 @@ class FanController extends Controller
         $headliner = \App\Models\Setting::ticketingEnabled() ? $events->first() : null;
         $stores = $headliner ? $this->eventStores($headliner) : $this->openStores();
 
-        // 메인에 보일 메뉴 — 사진 있는 것 먼저, 매장마다 고르게
-        $picks = $stores->flatMap(fn ($s) => $s->products->filter(fn ($p) => ! $p->isSoldOut())
-                ->sortByDesc(fn ($p) => $p->image_path ? 1 : 0)->take(3))
-            ->sortByDesc(fn ($p) => $p->image_path ? 1 : 0)->take(6)->values();
+        // 메인에 보일 메뉴 — 지금 주문할 수 있는(영업 중 매장 · 판매 중 · 품절 아님) 상품 중
+        // 최근 30일 실제로 많이 팔린 순 (미결제·취소·환불 제외), 같으면 사진 있는 것 먼저
+        $orderable = $headliner ? $stores : $stores->where('is_open', true);
+        $candidates = $orderable->flatMap(fn ($s) => $s->products->filter(fn ($p) => ! $p->isSoldOut()));
+        $sold = $candidates->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table('order_items as oi')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->whereIn('oi.product_id', $candidates->pluck('id'))
+            ->where('o.created_at', '>=', now()->subDays(30))
+            ->whereNotIn('o.status', [\App\Enums\OrderStatus::Pending->value, \App\Enums\OrderStatus::Cancelled->value, \App\Enums\OrderStatus::Refunded->value])
+            ->groupBy('oi.product_id')->selectRaw('oi.product_id, sum(oi.qty) as qty')->pluck('qty', 'product_id');
+        $picks = $candidates->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->image_path ? 1 : 0])->take(6)->values();
 
         return view('fan.home', ['events' => $events, 'headliner' => $headliner, 'stores' => $stores, 'picks' => $picks]);
     }
