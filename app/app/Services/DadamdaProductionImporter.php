@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\DB;
  * 원본 다담다 생산(입고) 기록 → product_productions. 상품 이관 다음에 한다.
  *
  * - 지난 기록(이력)으로만 넣는다: 재고를 바꾸지 않고(상품 이관 때 원본 현재 재고를 이미 넣음), EIS 로 다시 보내지 않는다.
- * - 원본 생산 화면은 상품 이름만 보여 준다 → 이 매장의 이관 상품에서 이름으로 찾는다.
- *   같은 이름이 여럿이면 판매 중인 상품, 그다음 원본 번호가 큰(최근) 상품.
+ * - 원본 DB 내보내기(product_production 표)에는 상품 번호(product_no)가 있다 → 이관 상품의 legacy_ref 로 정확히 찾는다.
+ *   원본은 상품 이름을 여러 번 바꿨으므로(예: 초록대파 → 진도대파 소금빵) 번호가 있으면 이름은 보지 않는다.
+ * - 번호가 없는 기록(생산 화면에서 긁은 것)만 이름으로 찾는다: 같은 이름이 여럿이면 판매 중인 상품, 그다음 원본 번호가 큰(최근) 상품.
  * - 원본 기록 번호를 legacy_ref 에 남겨 다시 가져와도 같은 기록을 두 번 넣지 않는다.
  */
 class DadamdaProductionImporter
@@ -38,7 +39,9 @@ class DadamdaProductionImporter
 
                 continue;
             }
-            $product = $this->findProduct($products, (string) ($r['name'] ?? ''));
+            $product = ! empty($r['product_no'])
+                ? $products->firstWhere('legacy_ref', 'dadamda:'.(int) $r['product_no'])
+                : $this->findProduct($products, (string) ($r['name'] ?? ''));
             if (! $product) {
                 $report['errors'][] = "생산 {$no}: 상품 '{$r['name']}' 을(를) 이 매장에서 찾지 못해 건너뜀";
 
@@ -54,7 +57,7 @@ class DadamdaProductionImporter
                 }
             }
 
-            $at = $r['date'].' 00:00:00';
+            $at = ! empty($r['at']) ? (string) $r['at'] : $r['date'].' 00:00:00';
             DB::table('product_productions')->insert([
                 'store_id' => $store->id,
                 'legacy_ref' => $ref,
