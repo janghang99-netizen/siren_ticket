@@ -44,6 +44,7 @@
     body {
         @apply text-ink font-sans antialiased;
         word-break: keep-all;
+        overflow-x: clip;   /* 화면 전체 폭 띠(100vw)가 스크롤바 폭만큼 넘치지 않게 — sticky 는 그대로 동작 */
         --theme: #C9B8FF;
         background-color: #F7F5FB;
         background-image:

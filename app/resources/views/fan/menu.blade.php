@@ -115,11 +115,13 @@
         },
      }">
 
-    <p class="eyebrow mt-2">{{ $event?->venue ?? $store->area ?? '매장' }}</p>
     <h1 class="mt-2 text-2xl font-black">{{ $store->name }}</h1>
+    @if ($event?->venue ?? $store->area)
+        <p class="mt-1 text-sm text-mist">{{ $event?->venue ?? $store->area }}</p>
+    @endif
     @unless ($event)
         @if (! $store->is_open)
-            <p class="mt-2 inline-block rounded-full bg-ink/10 px-3 py-1 text-xs font-semibold">준비중 — 지금은 주문을 받지 않아요</p>
+            <p class="mt-3 inline-block rounded-full bg-ink/10 px-3 py-1 text-xs font-semibold">준비중 — 지금은 주문을 받지 않아요</p>
         @endif
         @if ($store->address || $store->hours || $store->holidays)
             <dl class="mt-3 space-y-1 text-sm text-ink/70">
@@ -134,7 +136,7 @@
     @endif
 
     {{-- 혜택: 스탬프 · 받을 수 있는 쿠폰 · 마일리지 --}}
-    <section class="mt-5 rounded-3xl bg-white p-4 text-sm ring-1 ring-ink/5" aria-label="혜택">
+    <section class="mt-6 rounded-3xl bg-white p-4 text-sm ring-1 ring-ink/5" aria-label="혜택">
         @if ($customer)
             <div class="flex items-center justify-between gap-3">
                 <p>마일리지 <b class="num">{{ number_format($customer->mileage_balance) }}</b>원 · 쿠폰 <b class="num">{{ $myCoupons->count() }}</b>장</p>
@@ -188,14 +190,18 @@
     </div>
 
     {{-- 카테고리 바로가기 --}}
-    <nav x-show="groups.length > 1" class="sticky top-[60px] z-20 -mx-4 mt-8 flex gap-2 overflow-x-auto bg-white/40 px-4 py-2 backdrop-blur-xl" aria-label="메뉴 카테고리">
-        <template x-for="g in groups" :key="g.name">
-            <a :href="'#cat-' + encodeURIComponent(g.name)" class="shrink-0 rounded-full bg-white px-3 py-1.5 text-sm font-semibold ring-1 ring-ink/10" x-text="g.name"></a>
-        </template>
+    {{-- 상단 바(h-14) 바로 아래에 붙는 고정 줄: 배경 띠는 화면 전체 폭, 칩은 본문 열에 맞춘다 --}}
+    <nav x-show="groups.length > 1" class="sticky top-14 z-20 mx-[calc(50%-50vw)] mt-8 border-b border-ink/5 bg-white/55 backdrop-blur-xl" aria-label="메뉴 카테고리">
+        <div class="mx-auto flex max-w-md gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none]">
+            <template x-for="g in groups" :key="g.name">
+                <a :href="'#cat-' + encodeURIComponent(g.name)" class="shrink-0 rounded-full bg-white px-3.5 py-1.5 text-sm font-semibold ring-1 ring-ink/10 transition hover:ring-ink/25" x-text="g.name"></a>
+            </template>
+        </div>
     </nav>
 
     <template x-for="g in groups" :key="g.name">
-        <section class="mt-6 scroll-mt-28" :id="'cat-' + encodeURIComponent(g.name)">
+        {{-- 바로가기로 오면 제목이 고정 줄(56 + 53px) 밑에 가리지 않게 --}}
+        <section class="mt-6 scroll-mt-32" :id="'cat-' + encodeURIComponent(g.name)">
             <h2 x-show="groups.length > 1" class="mb-2 px-1 text-sm font-bold text-mist" x-text="g.name"></h2>
             <ul class="divide-y divide-ink/5 overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5">
                 <template x-for="p in g.items" :key="p.id">

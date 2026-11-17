@@ -13,8 +13,10 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-dvh" @hasSection('theme') style="--theme: @yield('theme')" @endif>
-    <div class="mx-auto flex min-h-dvh max-w-md flex-col">
-        <header class="sticky top-0 z-30 flex items-center justify-between gap-2 bg-white/40 px-4 py-3 backdrop-blur-xl">
+    <div class="flex min-h-dvh flex-col">
+        {{-- 상단 바: 배경 띠는 화면 전체 폭, 내용은 본문과 같은 열(max-w-md · 좌우 16px)에 맞춘다. 높이 56px(h-14) — 아래 고정 줄은 top-14 에 붙인다 --}}
+        <header class="sticky top-0 z-30 border-b border-ink/5 bg-white/55 backdrop-blur-xl">
+            <div class="mx-auto flex h-14 max-w-md items-center justify-between gap-2 px-4">
             <a href="{{ route('home') }}" class="flex items-baseline gap-2" aria-label="{{ $site['brand_name'] }} 홈">
                 <span class="font-display text-lg font-black tracking-tight">{{ $site['brand_name'] }}</span>
                 <span class="hidden text-xs font-semibold text-mist min-[380px]:inline">티켓 · 매장주문</span>
@@ -37,9 +39,11 @@
                     @endauth
                 @endif
             </div>
+            </div>
         </header>
 
-        <main class="flex-1 px-4">
+        {{-- 본문은 상단 바에서 24px(pt-4 + 각 화면 첫 요소 mt-2) 띄워 시작 --}}
+        <main class="mx-auto w-full max-w-md flex-1 px-4 pt-4">
             @if (session('status'))
                 <p role="status" class="mb-3 mt-2 rounded-2xl bg-white/80 px-4 py-3 text-sm font-bold ring-1 ring-ink/10 backdrop-blur">{{ session('status') }}</p>
             @endif
@@ -50,7 +54,7 @@
         </main>
 
         {{-- A3 통신판매중개자 고지 · E1 약관 --}}
-        <footer class="px-4 pb-28 pt-12 text-[11px] leading-relaxed text-mist">
+        <footer class="mx-auto w-full max-w-md px-4 pb-28 pt-12 text-[11px] leading-relaxed text-mist">
             <nav class="mb-2 flex flex-wrap gap-x-3 gap-y-1 font-semibold text-ink/70" aria-label="약관">
                 <a href="{{ route('policy', 'terms') }}">이용약관</a>
                 <a href="{{ route('policy', 'privacy') }}">개인정보 처리방침</a>
