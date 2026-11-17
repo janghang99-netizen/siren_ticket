@@ -140,6 +140,41 @@ Artisan::command('dadamda:import-orders
     return 0;
 })->purpose('원본 다담다 판매 기록을 새 매장 주문으로 가져온다');
 
+// 다담다 이관: 정산 기록 — 판매 이관 다음에. 원본 금액과 1원이라도 다르면 넣지 않는다
+Artisan::command('dadamda:import-settlements
+    {file=database/import/dadamda/arena1_settlements.json : 원본 정산 JSON}
+    {--store=arena1 : 상품·판매를 넣은 매장 코드}', function (\App\Services\DadamdaSettlementImporter $importer) {
+    $path = $this->argument('file');
+    $path = is_file($path) ? $path : base_path($path);
+    $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (! is_array($data)) {
+        $this->error("JSON 파일을 읽지 못했어요: {$this->argument('file')}");
+
+        return 1;
+    }
+    $store = \App\Models\Store::where('code', (string) $this->option('store'))->first();
+    if (! $store) {
+        $this->error("매장 {$this->option('store')} 이(가) 없어요. 상품·판매를 먼저 가져와 주세요.");
+
+        return 1;
+    }
+
+    $r = $importer->import($data, $store);
+    $this->info("{$store->name}: 정산서 {$r['created']}장 · 묶은 주문 {$r['linked_orders']}건 · 이미 있음 {$r['skipped_existing']}장");
+    if ($r['vendor_filled']) {
+        $this->line('  업체 사업자 정보 채움: '.implode(', ', $r['vendor_filled']).' (계좌는 운영사 화면에서 입력)');
+    }
+    if ($p = $r['pending']) {
+        $same = $p['expected'] === $p['actual'] ? '일치' : '불일치';
+        $this->line('  원본 정산 대기 '.number_format($p['expected']).'원 ↔ 옮긴 수령완료 '.number_format($p['actual'])."원 ({$p['orders']}건) — {$same}. 이 주문들은 새 자동 정산에 들어가지 않아요.");
+    }
+    foreach ($r['errors'] as $e) {
+        $this->warn('  '.$e);
+    }
+
+    return $r['errors'] ? 1 : 0;
+})->purpose('원본 다담다 정산 기록을 새 정산서로 가져온다');
+
 // 혜택 원장: 해시 체인 검증 + 머클 루트 앵커 (체인이 정해지면 그 체인에 기록)
 Artisan::command('ledger:anchor', function (\App\Services\Benefits\BenefitLedgerService $ledger) {
     $check = $ledger->verify();

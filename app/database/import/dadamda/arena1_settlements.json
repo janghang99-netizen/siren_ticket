@@ -1,0 +1,29 @@
+{
+  "source": "dadamda.store 관리자 > 마켓결제통계관리 > 원샷 정산 완료목록 / 원샷 판매자 정산 대기목록 (판매자 arena1, 2026-11-17 읽음)",
+  "seller": "arena1",
+  "vendor": {
+    "name": "도봉빵",
+    "business_no": "117-87-03645",
+    "representative": "박범"
+  },
+  "settlements": [
+    {
+      "at": "2026-11-12 00:30:15",
+      "items": 751,
+      "gross": 4068780,
+      "shipping": 0,
+      "mileage_earn": 0,
+      "fee": 348777,
+      "prepaid_deduction": 0,
+      "mileage_used": 786500,
+      "net": 3720003
+    }
+  ],
+  "pending": {
+    "items": 28,
+    "gross": 123300,
+    "fee": 11535,
+    "net": 111765,
+    "fee_rate": "9.35% (부가세 포함)"
+  }
+}
