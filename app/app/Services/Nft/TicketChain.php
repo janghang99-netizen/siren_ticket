@@ -4,7 +4,7 @@ namespace App\Services\Nft;
 
 /**
  * 티켓 NFT를 체인에 기록하는 자리. 구현: LocalTicketChain(기록만), KaiaTicketChain(카이아).
- * config/siren.php 의 nft.chain 으로 고르고, 중국 거주 회원은 항상 로컬(체인에 올리지 않음).
+ * config/siren.php 의 nft.chain 으로 고른다. nft.offchain_residence 에 넣은 거주 국가만 로컬(기본은 비어 있음).
  */
 interface TicketChain
 {

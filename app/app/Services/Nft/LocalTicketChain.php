@@ -2,7 +2,7 @@
 
 namespace App\Services\Nft;
 
-/** 체인에 올리지 않음 — DB 에만 발행 기록을 남긴다 (체인 미정·중국 거주 회원). 트랜잭션 해시는 자리표시 값. */
+/** 체인에 올리지 않음 — DB 에만 발행 기록을 남긴다 (체인을 켜지 않았거나, 설정에서 뺀 거주 국가). 트랜잭션 해시는 자리표시 값. */
 class LocalTicketChain implements TicketChain
 {
     public function network(): string

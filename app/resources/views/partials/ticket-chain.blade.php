@@ -73,7 +73,7 @@
                 @endif
             </p>
         @else
-            <p class="mt-2 text-[11px] text-white/45">이 티켓은 다담다 서버에 기록돼요 (블록체인 기록을 쓰지 않는 환경이거나 거주 국가 법령 예외). 위조 방지·1회 입장은 똑같이 적용돼요.</p>
+            <p class="mt-2 text-[11px] text-white/45">이 티켓은 다담다 서버에 기록돼요 (블록체인 기록을 쓰지 않는 환경). 위조 방지·1회 입장은 똑같이 적용돼요.</p>
         @endif
         <a href="{{ route('about.blockchain') }}" class="mt-2 inline-block text-[11px] font-semibold text-white/60 underline underline-offset-2 hover:text-white">블록체인 티켓이란?</a>
     </div>

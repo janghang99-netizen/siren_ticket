@@ -13,7 +13,7 @@ use Throwable;
 
 /**
  * NFT 티켓: 회원 예매 → 발행, 취소 → 소각, 입장 → 사용 처리.
- *  - 체인 선택: 거주 국가가 체인 제외 국가(기본 중국)면 로컬 기록만, 아니면 설정된 체인(카이아 등).
+ *  - 체인 선택: 거주 국가가 체인 제외 국가(설정, 기본은 없음 — 중국 포함 모두 발행)면 로컬 기록만, 아니면 설정된 체인(카이아 등).
  *  - 체인 전송이 실패해도 예매·취소·입장은 막지 않는다 → 토큰을 pending/오류로 남기고 nft:retry 가 다시 보낸다.
  *  - 입장 코드는 30초마다 바뀌는 서명 값이라 캡처로는 못 들어가고, 한 번 검표하면 다시 못 쓴다.
  *  - 메타데이터에는 공연·좌석만 넣는다 (체인은 지울 수 없다).
@@ -29,7 +29,7 @@ class NftTicketService
     {
         $residence = $ticket->member?->residence_country;
 
-        return in_array($residence, (array) config('siren.nft.offchain_residence', ['CN']), true) ? $this->local : $this->chain;
+        return in_array($residence, (array) config('siren.nft.offchain_residence', []), true) ? $this->local : $this->chain;
     }
 
     public function chainByNetwork(string $network): TicketChain

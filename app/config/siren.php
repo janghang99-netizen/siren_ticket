@@ -39,8 +39,9 @@ return [
         // local(체인에 안 올림) / kaia
         'chain' => env('SIREN_NFT_CHAIN', 'local') === 'kaia' ? \App\Services\Nft\KaiaTicketChain::class : \App\Services\Nft\LocalTicketChain::class,
         'local_contract' => '0x5152454e00000000000000000000000000000001',
-        // 거주 국가가 여기 있으면 체인에 올리지 않는다 (중국: 퍼블릭 체인 NFT·가상자산 금지)
-        'offchain_residence' => ['CN'],
+        // 거주 국가가 여기 있으면 체인에 올리지 않고 서버에만 기록한다. 지금은 비워 둔다 = 모든 나라(중국 포함) 체인 발행.
+        // 특정 나라를 다시 빼려면 국가 코드를 넣는다 (예: ['CN']).
+        'offchain_residence' => [],
         'kaia' => [
             'network' => env('SIREN_KAIA_NETWORK', 'kaia-kairos'),
             'rpc' => env('SIREN_KAIA_RPC', 'https://public-en-kairos.node.kaia.io'),

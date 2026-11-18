@@ -62,7 +62,7 @@
                     <option value="{{ $code }}">{{ __($label) }}</option>
                 @endforeach
             </select>
-            <p class="mt-1 text-xs text-mist">{{ __('국적이 아니라 지금 사는 나라예요. 한국에 사는 외국인은 대한민국을 골라 주세요. 디지털 티켓(NFT)·혜택 기록 방식이 나라마다 달라요.') }}</p>
+            <p class="mt-1 text-xs text-mist">{{ __('국적이 아니라 지금 사는 나라예요. 한국에 사는 외국인은 대한민국을 골라 주세요.') }}</p>
         </div>
 
         <div>

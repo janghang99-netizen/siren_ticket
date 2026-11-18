@@ -142,16 +142,16 @@ class KaiaChainTest extends TestCase
 
         $kr = $this->makeMember('01012340001');                                                                     // 한국 거주 → 카이아
         $cnInKorea = $this->makeMember('8613800138001', attrs: ['country' => 'CN', 'residence_country' => 'KR']);   // 한국 사는 중국인 → 카이아
-        $cnResident = $this->makeMember('8613800138002', attrs: ['country' => 'CN', 'residence_country' => 'CN']); // 중국 거주 → 로컬
+        $cnResident = $this->makeMember('8613800138002', attrs: ['country' => 'CN', 'residence_country' => 'CN']); // 중국 거주 → 똑같이 카이아 (거주 국가로 막지 않는다)
 
         $svc = app(TicketService::class);
         $t1 = $svc->purchase($event, $section, 1, $kr->name, $kr->phone, now(), member: $kr)->first();
         $t2 = $svc->purchase($event, $section, 1, $cnInKorea->name, $cnInKorea->phone, now(), member: $cnInKorea)->first();
         $t3 = $svc->purchase($event, $section, 1, $cnResident->name, $cnResident->phone, now(), member: $cnResident)->first();
 
-        $this->assertSame(['kaia-kairos', 'kaia-kairos', 'local'], [$t1->token->network, $t2->token->network, $t3->token->network]);
-        // 체인이 죽어 있어도 예매는 됐고, 카이아 토큰은 대기 + 오류 기록, 로컬은 바로 발행
-        $this->assertSame(['pending', 'pending', 'minted'], [$t1->token->status, $t2->token->status, $t3->token->status]);
+        $this->assertSame(['kaia-kairos', 'kaia-kairos', 'kaia-kairos'], [$t1->token->network, $t2->token->network, $t3->token->network]);
+        // 체인이 죽어 있어도 예매는 됐고, 카이아 토큰은 대기 + 오류 기록
+        $this->assertSame(['pending', 'pending', 'pending'], [$t1->token->status, $t2->token->status, $t3->token->status]);
         $this->assertSame('RPC down', $t1->token->last_error);
         // 지갑 개인키는 DB 에 평문으로 저장되지 않는다
         $this->assertNotSame('secret-'.$t1->customer_id, DB::table('customer_wallets')->where('customer_id', $t1->customer_id)->value('secret'));
@@ -160,9 +160,13 @@ class KaiaChainTest extends TestCase
         $nft = app(NftTicketService::class);
         $nft->checkIn($nft->entryCode($t1));
         $failing->down = false;
-        $this->assertSame(['mint' => 2, 'burn' => 0, 'used' => 1], $nft->retryPending());
+        $this->assertSame(['mint' => 3, 'burn' => 0, 'used' => 1], $nft->retryPending());
         $this->assertNotNull($t1->token->fresh()->used_tx);
-        $this->assertSame('minted', $t2->token->fresh()->status);
+        $this->assertSame(['minted', 'minted'], [$t2->token->fresh()->status, $t3->token->fresh()->status]);
         $this->assertNull(TicketToken::whereNotNull('last_error')->first());
+
+        // 설정에 나라를 넣으면 그 거주 국가만 서버 기록으로 돌릴 수 있다 (기본은 비어 있음)
+        config(['siren.nft.offchain_residence' => ['CN']]);
+        $this->assertSame(['kaia-kairos', 'local'], [$nft->chainFor($t1)->network(), $nft->chainFor($t3)->network()]);
     }
 }

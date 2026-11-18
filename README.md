@@ -92,9 +92,9 @@ docker compose exec -u www-data app php artisan nft:deploy
 3. `nft:status`로 잔액 확인 → `nft:deploy`로 컨트랙트 배포(주소는 설정에 저장).
 4. `docker-compose.yml`의 app·scheduler 환경에 `SIREN_NFT_CHAIN: kaia`를 넣고 다시 띄우면, 이후 예매부터 카이아에 발행된다.
 
-- **배포됨 (Kairos 테스트넷)**: 컨트랙트 `0xccef08c31beec889d9951d3647a3eef95bcbcf3e`, 운영사 `0xa103ca4fd3a4f92c92dcf1426d0c350c8d79e13a`. 지금 `docker-compose.yml`은 `SIREN_NFT_CHAIN: kaia`라서 한국·해외(중국 제외) 거주 회원의 예매가 이 컨트랙트에 발행된다. 체인에서 확인한 것: 발행(소유자·잠김), 양도 시도 거부(`Soulbound()`), 입장 표시(`used`), 취소 소각.
+- **배포됨 (Kairos 테스트넷)**: 컨트랙트 `0xccef08c31beec889d9951d3647a3eef95bcbcf3e`, 운영사 `0xa103ca4fd3a4f92c92dcf1426d0c350c8d79e13a`. 지금 `docker-compose.yml`은 `SIREN_NFT_CHAIN: kaia`라서 거주 국가와 상관없이(중국 포함) 회원의 예매가 이 컨트랙트에 발행된다. 체인에서 확인한 것: 발행(소유자·잠김), 양도 시도 거부(`Soulbound()`), 입장 표시(`used`), 취소 소각.
 - 메타데이터 주소(baseURI)는 지금 `http://localhost:8090/nft/tickets/`라 외부 지갑에서는 그림이 안 보인다. 실제 도메인이 생기면 `setBaseURI`로 바꾼다.
-- 거주 국가가 중국인 회원은 체인에 올리지 않고 로컬에만 기록한다(`config/siren.php`의 `nft.offchain_residence`).
+- 거주 국가로 발행을 막지 않는다(중국 거주 회원도 체인에 발행). 접속 위치는 VPN으로 바뀌므로 거주 국가 신고만으로 나누는 것은 실효가 없다고 보고 뺐다. 특정 나라를 다시 서버 기록으로 돌리려면 `config/siren.php`의 `nft.offchain_residence`에 국가 코드를 넣는다(기본은 비어 있음).
 - 체인 전송이 실패해도 예매·취소·입장은 막지 않는다. 토큰을 "대기"로 두고 `nft:retry`(5분마다)가 다시 보낸다.
 - 수수료는 운영사 지갑이 낸다. 운영 단계에서는 운영사 키를 KMS·HSM 서명으로 바꾸고, 발행은 큐로 보낸다.
 
