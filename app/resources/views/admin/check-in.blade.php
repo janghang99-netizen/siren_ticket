@@ -40,7 +40,7 @@
                             <td class="num px-5 py-3">{{ $t->checked_in_at?->format('H:i:s') }}</td>
                             <td class="px-3 py-3">{{ $t->event->artist }}</td>
                             <td class="px-3 py-3">{{ $t->seatLabel() }}</td>
-                            <td class="num px-5 py-3 text-xs">{{ $t->token ? '#'.$t->token->token_id : '—' }}</td>
+                            <td class="num px-5 py-3 text-xs">{{ $t->token ? $t->token->displayId() : '—' }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="4" class="px-5 py-8 text-center text-mist">아직 입장한 사람이 없어요.</td></tr>

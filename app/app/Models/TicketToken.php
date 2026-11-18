@@ -57,6 +57,14 @@ class TicketToken extends Model
         };
     }
 
+    /** 화면용 토큰 번호 — 번호가 겹쳐 바뀐 긴 번호(최대 19자리)는 앞뒤 4자리만 보여 준다 */
+    public function displayId(): string
+    {
+        $id = (string) $this->token_id;
+
+        return '#'.(strlen($id) > 10 ? substr($id, 0, 4).'…'.substr($id, -4) : $id);
+    }
+
     public static function short(string $hex): string
     {
         return strlen($hex) > 12 ? substr($hex, 0, 6).'…'.substr($hex, -4) : $hex;

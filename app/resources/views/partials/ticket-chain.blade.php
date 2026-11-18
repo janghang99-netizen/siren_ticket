@@ -19,11 +19,11 @@
     </div>
 
     <div class="mt-3 flex items-end justify-between gap-3 px-4">
-        <div>
+        <div class="min-w-0">
             <p class="text-[11px] font-bold tracking-wider text-white/45">NFT 티켓</p>
-            <p class="num text-2xl font-black">#{{ $tk->token_id }}</p>
+            <p class="num truncate text-2xl font-black" title="#{{ $tk->token_id }}">{{ $tk->displayId() }}</p>
         </div>
-        <p class="flex flex-wrap justify-end gap-1 text-[11px] font-bold">
+        <p class="flex shrink-0 flex-wrap justify-end gap-1 text-[11px] font-bold">
             <span class="rounded-md bg-pick px-1.5 py-0.5 text-ink">{{ $tk->statusLabel() }}</span>
             <span class="inline-flex items-center gap-1 rounded-md bg-white/10 px-1.5 py-0.5">
                 <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>양도 불가
