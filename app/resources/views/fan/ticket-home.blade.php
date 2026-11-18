@@ -38,7 +38,7 @@
     <section class="tix-wrap mt-4 lg:mt-6" aria-roledescription="carousel" aria-label="추천 공연"
              x-data="{ i: 0, n: {{ $hero->count() }}, play: ! window.matchMedia('(prefers-reduced-motion: reduce)').matches, go(k) { this.i = (k + this.n) % this.n } }"
              x-init="setInterval(() => { if (play && n > 1) go(i + 1) }, 6000)">
-        <div class="relative h-[460px] overflow-hidden rounded-[28px] bg-ink text-white sm:h-[420px] lg:h-[460px]">
+        <div class="theme-keep relative h-[460px] overflow-hidden rounded-[28px] bg-ink text-white sm:h-[420px] lg:h-[460px]">
             @foreach ($hero as $k => $p)
                 @php($ev = $p->nextEvent())
                 <article class="absolute inset-0 transition-opacity duration-700" x-bind:class="i === {{ $k }} ? 'opacity-100' : 'pointer-events-none opacity-0'"
@@ -50,7 +50,7 @@
                     @elseif ($p->posterUrl())
                         <img src="{{ $p->posterUrl() }}" alt="" class="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-2xl" @if ($k > 0) loading="lazy" @endif>
                     @else
-                        <div class="poster-gen absolute inset-0" style="--theme: {{ $p->theme_color }}"></div>
+                        <div class="poster-gen theme-keep absolute inset-0" style="--theme: {{ $p->theme_color }}"></div>
                     @endif
                     <div class="absolute inset-0 bg-[linear-gradient(90deg,rgba(23,19,43,.92)_0%,rgba(23,19,43,.7)_42%,rgba(23,19,43,.05)_75%)] max-sm:bg-[linear-gradient(0deg,rgba(23,19,43,.95)_0%,rgba(23,19,43,.6)_55%,rgba(23,19,43,.1)_100%)]"></div>
 
@@ -183,7 +183,7 @@
 
     {{-- ⑤ 다담다만의 것: 공연장 매장 미리 주문 --}}
     <section class="tix-wrap mt-16" aria-labelledby="pre-title">
-        <div class="relative overflow-hidden rounded-[28px] bg-ink px-6 py-10 text-white sm:px-10 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:px-14 lg:py-12">
+        <div class="theme-keep relative overflow-hidden rounded-[28px] bg-ink px-6 py-10 text-white sm:px-10 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:px-14 lg:py-12">
             <div class="pointer-events-none absolute -right-10 -top-24 h-72 w-72 rounded-full bg-pick/25 blur-3xl" aria-hidden="true"></div>
             <div class="relative">
                 <p class="font-display text-xs font-bold tracking-[.2em] text-pick">PRE-ORDER</p>

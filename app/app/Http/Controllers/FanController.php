@@ -182,11 +182,15 @@ class FanController extends Controller
 
     public function concert(Request $request, Event $event, BenefitService $benefits): View
     {
-        $event->load(['sections', 'seatMap']);
+        $event->load(['sections', 'seatMap', 'production']);
         $customer = $this->verifiedCustomer($request);
 
         return view('fan.concert', [
             'event' => $event,
+            // 같은 작품의 다른 회차 (회차 바꾸기)
+            'rounds' => $event->production_id
+                ? Event::where('production_id', $event->production_id)->where('status', 'scheduled')->where('starts_at', '>', now())->orderBy('starts_at')->get()
+                : collect([$event]),
             'member' => $request->user('member'),
             'customer' => $customer,
             'myCoupons' => $customer ? $benefits->usableCoupons($customer, 'ticket', null, $event) : collect(),

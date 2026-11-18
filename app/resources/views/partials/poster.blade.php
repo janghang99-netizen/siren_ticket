@@ -4,7 +4,7 @@
         <img src="{{ $p->posterUrl() }}" alt="{{ $p->title }} 포스터" @unless ($eager ?? false) loading="lazy" @endunless decoding="async">
     @else
         {{-- 글자는 위쪽에만 — 아래 왼쪽은 랭킹 숫자 자리 --}}
-        <div class="poster-gen flex h-full flex-col p-4 text-white" role="img" aria-label="{{ $p->title }}">
+        <div class="poster-gen theme-keep flex h-full flex-col p-4 text-white" role="img" aria-label="{{ $p->title }}">
             <span class="font-display text-[10px] font-bold uppercase tracking-[.2em] text-white/60 {{ $p->badge ? 'mt-7' : '' }}">{{ $p->genreName() }}</span>
             <span class="mt-2 block font-display text-[clamp(18px,4.2vw,28px)] font-black leading-[1.02] tracking-tight [word-break:keep-all]">{{ $p->artist ?: $p->title }}</span>
             <span class="mt-2 block text-[11px] font-semibold text-white/70">{{ $p->period('m.d') }} · {{ $p->venue }}</span>

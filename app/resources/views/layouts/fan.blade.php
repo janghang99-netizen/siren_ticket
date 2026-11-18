@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     @if (config('siren.noindex'))<meta name="robots" content="noindex, nofollow, noarchive">@endif
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="#F1EEF8">
+    <meta name="theme-color" content="#0E0C15">
+    @include('partials.theme-init')
     <title>@yield('title', $site['brand_name']) · {{ $site['brand_name'] }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,11 +19,12 @@
         {{-- 상단 바: 배경 띠는 화면 전체 폭, 내용은 본문과 같은 열(max-w-md · 좌우 16px)에 맞춘다. 높이 56px(h-14) — 아래 고정 줄은 top-14 에 붙인다 --}}
         <header class="sticky top-0 z-30 border-b border-ink/5 bg-white/55 backdrop-blur-xl">
             <div class="mx-auto flex h-14 max-w-md items-center justify-between gap-2 px-4">
-            <a href="{{ route('home') }}" class="flex items-baseline gap-2" aria-label="{{ $site['brand_name'] }} 홈">
-                <span class="font-display text-lg font-black tracking-tight">{{ $site['brand_name'] }}</span>
-                <span class="hidden text-xs font-semibold text-mist min-[380px]:inline">티켓 · 매장주문</span>
+            <a href="{{ route('home') }}" class="flex items-center gap-2" aria-label="{{ $site['brand_name'] }} 홈">
+                @include('partials.brand-logo', ['h' => 40])
+                <span class="hidden text-xs font-semibold text-mist min-[400px]:inline">티켓 · 매장주문</span>
             </a>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                @include('partials.theme-toggle')
                 {{-- 언어 고르기 — 구글 번역 위젯 (partials/translate) --}}
                 <nav class="translation-links notranslate flex items-center rounded-full bg-white/60 p-0.5 text-[11px] font-bold ring-1 ring-ink/10" translate="no" aria-label="언어 Language">
                     @foreach (['ko' => 'KO', 'en' => 'EN', 'ja' => '日本語', 'zh-CN' => '中文'] as $code => $label)

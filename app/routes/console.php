@@ -384,7 +384,7 @@ Artisan::command('tickets:samples
                     'sales_open_at' => isset($it['sales_open']) ? \Illuminate\Support\Carbon::parse($it['sales_open']) : now()->subDay(),
                     'theme_color' => $p->theme_color, 'max_per_buyer' => 4, 'status' => 'scheduled',
                 ]);
-                $venueSetup->createSections($event, $tiers);
+                $venueSetup->createSections($event, $tiers, 20);   // 좌석 격자 (열 × 20석) — 좌석을 직접 고른다
                 $venueSetup->ensureSlots($event);
             }
         });

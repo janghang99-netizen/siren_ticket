@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     @if (config('siren.noindex'))<meta name="robots" content="noindex, nofollow, noarchive">@endif
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="#FFFFFF">
+    <meta name="theme-color" content="#0E0C15">
+    @include('partials.theme-init')
     <title>@yield('title', $site['brand_name']) · {{ $site['brand_name'] }} 티켓</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,9 +19,9 @@
     @php($genre = trim($__env->yieldContent('genre')))
     <header class="sticky top-0 z-40 border-b border-ink/[.06] bg-white/90 backdrop-blur-xl">
         <div class="tix-wrap flex h-16 items-center gap-4 lg:h-[72px] lg:gap-8">
-            <a href="{{ route('home') }}" class="flex shrink-0 items-baseline gap-1.5" aria-label="{{ $site['brand_name'] }} 티켓 홈">
-                <span class="font-display text-xl font-black tracking-tight lg:text-[26px]">{{ $site['brand_name'] }}</span>
-                <span class="rounded-md bg-ink px-1.5 py-0.5 font-display text-[10px] font-bold tracking-wider text-pick lg:text-[11px]">TICKET</span>
+            <a href="{{ route('home') }}" class="flex shrink-0 items-center gap-2" aria-label="{{ $site['brand_name'] }} 티켓 홈">
+                @include('partials.brand-logo', ['h' => 46])
+                <span class="theme-keep rounded-md bg-ink px-1.5 py-0.5 font-display text-[10px] font-bold tracking-wider text-pick ring-1 ring-white/10 lg:text-[11px]">TICKET</span>
             </a>
 
             <form action="{{ route('shows.search') }}" method="get" role="search" class="relative hidden max-w-[440px] flex-1 md:block">
@@ -33,6 +34,7 @@
             </form>
 
             <nav class="ml-auto flex items-center gap-1 text-sm font-semibold sm:gap-2" aria-label="내 메뉴">
+                @include('partials.theme-toggle')
                 <a href="{{ route('shows.search') }}" class="grid h-10 w-10 place-items-center rounded-full hover:bg-paper md:hidden" aria-label="검색">
                     <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                 </a>
@@ -75,7 +77,7 @@
     <footer class="mt-20 border-t border-ink/[.06] bg-paper/60">
         <div class="tix-wrap grid gap-6 py-10 text-xs leading-relaxed text-mist lg:grid-cols-[1fr_auto]">
             <div>
-                <p class="font-display text-base font-black text-ink">{{ $site['brand_name'] }} <span class="text-[11px] font-bold tracking-wider text-mist">TICKET</span></p>
+                <div class="opacity-80">@include('partials.brand-logo', ['h' => 56])</div>
                 <nav class="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-semibold text-ink/70" aria-label="약관">
                     <a href="{{ route('policy', 'terms') }}">이용약관</a>
                     <a href="{{ route('policy', 'privacy') }}" class="text-ink">개인정보 처리방침</a>

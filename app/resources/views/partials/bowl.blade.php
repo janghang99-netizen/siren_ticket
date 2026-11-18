@@ -22,10 +22,11 @@
         @php($ratio = $s->capacity ? $s->remaining() / $s->capacity : 0)
         @php($soldOut = $s->remaining() === 0)
         @php($opacity = number_format(.3 + .7 * $ratio, 2))
+        @php($fill = ($tierColors ?? [])[$s->tier] ?? $event->theme_color)   {{-- 좌석 선택 화면은 등급 색 --}}
         <path d="{{ $s->arcPath() }}"
               class="seat-arc"
               stroke="#F1EEF8" stroke-width="3"
-              fill="{{ $soldOut ? '#17132B' : $event->theme_color }}"
+              fill="{{ $soldOut ? '#17132B' : $fill }}"
               fill-opacity="{{ $soldOut ? '.10' : $opacity }}"
               @if ($interactive)
                   role="button" tabindex="{{ $soldOut ? -1 : 0 }}"
@@ -33,7 +34,7 @@
                   aria-label="{{ $s->code }}구역 {{ $s->tier }}석 {{ number_format($s->price) }}원, {{ $soldOut ? '매진' : '잔여 '.number_format($s->remaining()).'석' }}"
                   @unless ($soldOut)
                       @click="pick({{ $s->id }})" @keydown.enter.prevent="pick({{ $s->id }})" @keydown.space.prevent="pick({{ $s->id }})"
-                      :fill="selected === {{ $s->id }} ? '#17132B' : '{{ $event->theme_color }}'"
+                      :fill="selected === {{ $s->id }} ? '#17132B' : '{{ $fill }}'"
                       :fill-opacity="selected === {{ $s->id }} ? 1 : {{ $opacity }}"
                   @endunless
               @endif

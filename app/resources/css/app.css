@@ -38,6 +38,32 @@
     }
 }
 
+/*
+ * 다크 모드 (팬 화면 기본값 — html[data-theme=dark], partials/theme-init).
+ * 색 토큰을 뒤집는다: 글자(ink) ↔ 바탕(white). ink 바탕 버튼은 밝은 버튼 + 어두운 글자로 자연스럽게 바뀐다.
+ * 사진 위 배너·노란 버튼처럼 원래 색이 정해진 곳은 .theme-keep / .bg-pick 안에서 원래 토큰으로 되돌린다.
+ */
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --color-ink: #F1EEF8;
+    --color-white: #17151F;
+    --color-paper: #211E2C;
+    --color-paper-deep: #2D2A3A;
+    --color-mist: #9D97B6;
+    --color-stick: #D6D0EA;
+}
+.theme-keep, html[data-theme="dark"] .bg-pick {
+    --color-ink: #17132B;
+    --color-white: #FFFFFF;
+    --color-paper: #F6F4FA;
+    --color-paper-deep: #E9E6F0;
+    --color-mist: #8A84A3;
+    --color-stick: #3B3650;
+}
+/* 로고·전환 아이콘: 지금 모드에 맞는 것만 */
+html[data-theme="dark"] .logo-on-light, html:not([data-theme="dark"]) .logo-on-dark { display: none !important; }
+html[data-theme="dark"] .theme-icon-moon, html:not([data-theme="dark"]) .theme-icon-sun { display: none; }
+
 @layer base {
     html { -webkit-tap-highlight-color: transparent; }
     /* 연한 다색 그라데이션 바탕. --theme(공연 팬덤 색)이 있으면 위쪽에 은은하게 섞인다 */
@@ -63,6 +89,15 @@
     [x-cloak] { display: none !important; }
     /* 공연 예매 포털은 흰 바탕 (포스터·배너가 주인공) */
     body.tix { background: #fff; background-image: none; }
+    /* 다크 모드 바탕: 깊은 밤색 + 은은한 무대 조명 */
+    html[data-theme="dark"] body {
+        background-color: #0E0C15;
+        background-image:
+            radial-gradient(70% 45% at 50% -10%, color-mix(in oklab, var(--theme) 22%, transparent) 0%, transparent 70%),
+            radial-gradient(50% 40% at 0% 0%, rgba(108,75,255,.10) 0%, transparent 70%),
+            radial-gradient(50% 40% at 100% 20%, rgba(255,210,63,.05) 0%, transparent 70%);
+    }
+    html[data-theme="dark"] body.tix { background: #0E0C15; background-image: none; }
 }
 
 @layer components {

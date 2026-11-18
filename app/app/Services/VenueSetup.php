@@ -29,16 +29,22 @@ class VenueSetup
 
     /**
      * @param  array<string, array{price:int, capacity:int}>  $tiers  등급별 가격·구역당 좌석 수 (VIP/R/S)
+     * @param  int  $perRow  0 이면 자동 배정 구역(매수만 고름). 0보다 크면 열 × 열당 좌석 격자 — 팬이 좌석을 직접 고른다
      */
-    public function createSections(Event $event, array $tiers): void
+    public function createSections(Event $event, array $tiers, int $perRow = 0): void
     {
         foreach (self::LAYOUT as $ring => ['tier' => $tier, 'count' => $count, 'prefix' => $prefix]) {
             $span = 300 / $count;
+            $capacity = (int) $tiers[$tier]['capacity'];
+            $grid = $perRow > 0 ? ['rows' => (int) ceil($capacity / $perRow), 'seats_per_row' => min($perRow, $capacity)] : [];
+            if ($grid) {
+                $capacity = $grid['rows'] * $grid['seats_per_row'];   // 격자와 좌석 수를 맞춘다
+            }
             for ($k = 0; $k < $count; $k++) {
                 $code = $ring === 0 ? 'F'.($k + 1) : $prefix.str_pad((string) ($k + 1), 2, '0', STR_PAD_LEFT);
-                SeatSection::create([
+                SeatSection::create($grid + [
                     'event_id' => $event->id, 'code' => $code, 'name' => $code.'구역', 'tier' => $tier,
-                    'price' => (int) $tiers[$tier]['price'], 'capacity' => (int) $tiers[$tier]['capacity'],
+                    'price' => (int) $tiers[$tier]['price'], 'capacity' => $capacity,
                     'ring' => $ring,
                     'start_deg' => (int) round(-150 + $k * $span) + 1,
                     'end_deg' => (int) round(-150 + ($k + 1) * $span) - 1,
