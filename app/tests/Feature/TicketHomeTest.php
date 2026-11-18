@@ -48,7 +48,7 @@ class TicketHomeTest extends TestCase
         $html = $this->get('/')->assertOk()
             ->assertSee('티켓 오픈 예정')->assertSee('오픈 예정 뮤지컬')
             ->assertSee('77,000')                                          // 최저가
-            ->assertSee(route('concerts.show', $e), false)
+            ->assertSee(route('shows.show', $hot), false)
             ->getContent();
         $rank = substr($html, strpos($html, 'rank-title'));
         $this->assertLessThan(strpos($rank, '조용한 연극'), strpos($rank, '인기 콘서트'));   // 많이 팔린 작품이 앞
@@ -64,6 +64,33 @@ class TicketHomeTest extends TestCase
         $this->get(route('shows.genre', 'sports'))->assertOk()->assertSee('아직 예매할 수 있는 스포츠 공연이 없어요');
         $this->get(route('shows.search', ['q' => '충무']))->assertOk()->assertSee('뮤지컬 레베카')->assertDontSee('록 페스티벌');
         $this->get('/genre/unknown')->assertNotFound();
+    }
+
+    /** 작품 상세: 기본 정보 · 등급별 가격 · 회차(달력 데이터) · 좌석 선택으로 가는 예매 링크 */
+    public function test_production_detail_lists_rounds_and_prices(): void
+    {
+        $p = $this->show('겨울 콘서트', 'concert', now()->addDays(8)->setTime(19, 0));
+        $p->update(['runtime_minutes' => 120, 'age_rating' => '8세 이상 관람가']);
+        $second = Event::create(['production_id' => $p->id, 'slug' => $p->slug.'-2', 'name' => '겨울 콘서트', 'artist' => '겨울 콘서트', 'venue' => '서울아레나',
+            'starts_at' => now()->addDays(9)->setTime(18, 0), 'sales_open_at' => now()->subDay(), 'status' => 'scheduled']);
+        app(VenueSetup::class)->createSections($second, ['VIP' => ['price' => 150000, 'capacity' => 10], 'R' => ['price' => 99000, 'capacity' => 10], 'S' => ['price' => 77000, 'capacity' => 10]]);
+
+        $this->get(route('shows.show', $p))->assertOk()
+            ->assertSee('겨울 콘서트')->assertSee('120분')->assertSee('8세 이상 관람가')
+            ->assertSee('VIP석')->assertSee('150,000')->assertSee('77,000')
+            ->assertSee('지금 예매할 수 있어요')
+            ->assertSee($second->slug, false)   // 둘째 회차도 달력 데이터(좌석 선택 주소)에
+            ->assertSee('관람일 10일 전까지');
+
+        // 끝난 작품(다가오는 회차 없음)은 없음
+        $past = $this->show('지난 공연', 'concert', now()->subDay());
+        $this->get(route('shows.show', $past))->assertNotFound();
+    }
+
+    public function test_production_detail_shows_open_time_before_sales(): void
+    {
+        $p = $this->show('오픈 전 뮤지컬', 'musical', now()->addDays(30), now()->addDays(3)->setTime(14, 0));
+        $this->get(route('shows.show', $p))->assertOk()->assertSee('14:00 오픈')->assertDontSee('지금 예매할 수 있어요');
     }
 
     public function test_portal_pages_are_off_when_ticketing_is_off(): void

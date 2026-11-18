@@ -14,6 +14,7 @@ Route::controller(FanController::class)->group(function () {
     // 공연 장르별 목록 · 검색 (공연 기능을 켰을 때)
     Route::get('/genre/{genre}', 'genre')->whereIn('genre', array_keys(\App\Models\Production::GENRES))->middleware('ticketing')->name('shows.genre');
     Route::get('/search', 'search')->middleware('ticketing')->name('shows.search');
+    Route::get('/shows/{production}', 'production')->middleware('ticketing')->name('shows.show');   // 작품 상세: 달력 → 회차 → 예매
     // 티켓 예매는 회원만 (매장 음식 주문은 비회원 그대로)
     Route::post('/concerts/{event}/tickets', 'purchase')->middleware(['ticketing', 'auth:member', 'throttle:20,1'])->name('concerts.purchase');
     Route::get('/concerts/{event}/sections/{section}/seats', 'seats')->whereNumber('section')->middleware(['ticketing', 'throttle:120,1'])->name('concerts.seats');   // 좌석표 공연: 구역 좌석 현황

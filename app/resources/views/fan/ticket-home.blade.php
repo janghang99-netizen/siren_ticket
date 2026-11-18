@@ -70,7 +70,7 @@
                                 @if ($p->opensLater())
                                     <span class="inline-flex h-12 items-center rounded-full bg-white px-6 text-[15px] font-bold text-ink">{{ $openLabel($p->salesOpenAt()) }} 예매 오픈</span>
                                 @elseif ($ev)
-                                    <a href="{{ route('concerts.show', $ev) }}" class="inline-flex h-12 items-center gap-2 rounded-full bg-pick px-6 text-[15px] font-bold text-ink transition hover:brightness-95">
+                                    <a href="{{ route('shows.show', $p) }}" class="inline-flex h-12 items-center gap-2 rounded-full bg-pick px-6 text-[15px] font-bold text-ink transition hover:brightness-95">
                                         예매하기 <span aria-hidden="true">→</span>
                                     </a>
                                 @endif
@@ -79,7 +79,7 @@
                                 @endif
                             </div>
                         </div>
-                        <a href="{{ $ev ? route('concerts.show', $ev) : '#' }}" class="hidden w-[230px] shrink-0 rotate-[1.5deg] shadow-[0_30px_60px_-20px_rgba(0,0,0,.6)] transition hover:rotate-0 md:block lg:w-[260px]" tabindex="-1" aria-hidden="true">
+                        <a href="{{ route('shows.show', $p) }}" class="hidden w-[230px] shrink-0 rotate-[1.5deg] shadow-[0_30px_60px_-20px_rgba(0,0,0,.6)] transition hover:rotate-0 md:block lg:w-[260px]" tabindex="-1" aria-hidden="true">
                             @include('partials.poster', ['p' => $p, 'eager' => $k === 0])
                         </a>
                     </div>
@@ -131,7 +131,7 @@
             <ul class="-mx-4 mt-5 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] lg:mx-0 lg:grid lg:grid-cols-5 lg:gap-5 lg:overflow-visible lg:px-0">
                 @foreach ($openSoon->take(10) as $p)
                     <li class="w-[150px] shrink-0 snap-start lg:w-auto">
-                        <a href="{{ $p->nextEvent() ? route('concerts.show', $p->nextEvent()) : '#' }}" class="group block">
+                        <a href="{{ route('shows.show', $p) }}" class="group block">
                             @include('partials.poster', ['p' => $p])
                             <p class="mt-3 inline-flex items-center gap-1.5 rounded-md bg-ink px-2 py-1 text-xs font-bold text-pick">
                                 <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -161,7 +161,7 @@
                 @foreach ($list->take(10) as $n => $p)
                     @php($ev = $p->nextEvent())
                     <li>
-                        <a href="{{ $ev ? route('concerts.show', $ev) : '#' }}" class="group block">
+                        <a href="{{ route('shows.show', $p) }}" class="group block">
                             <div class="relative">
                                 @include('partials.poster', ['p' => $p])
                                 <span @class(['rank-no pointer-events-none absolute bottom-2 left-3 text-[56px] lg:text-[64px]', 'is-top' => $n < 3])>{{ $n + 1 }}</span>

@@ -49,7 +49,7 @@
                 @foreach ($productions as $p)
                     @php($ev = $p->nextEvent())
                     <li>
-                        <a href="{{ $ev ? route('concerts.show', $ev) : '#' }}" class="group block">
+                        <a href="{{ route('shows.show', $p) }}" class="group block">
                             @include('partials.poster', ['p' => $p, 'eager' => $loop->index < 5])
                             <p class="mt-3 line-clamp-2 text-[15px] font-bold leading-snug [word-break:keep-all]">{{ $p->title }}</p>
                             <p class="mt-1 truncate text-[13px] text-mist">{{ $p->venue }}</p>

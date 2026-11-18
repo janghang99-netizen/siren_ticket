@@ -91,6 +91,43 @@ class FanController extends Controller
         return $this->showList($request, $q === '' ? '공연 검색' : "‘{$q}’ 검색 결과", $hits, null, $q);
     }
 
+    /** 작품 상세 — 기본 정보·가격·이용안내·환불 규정·장소 + 달력에서 날짜 → 회차 → 등급별 남은 좌석 → 예매 */
+    public function production(Production $production): View
+    {
+        $events = $production->events()->where('status', 'scheduled')->where('starts_at', '>', now())->with('sections')->get();
+        abort_if($events->isEmpty(), 404);
+        $production->setRelation('events', $events);
+
+        $days = ['일', '월', '화', '수', '목', '금', '토'];
+        $tierOrder = fn ($tiers) => $tiers->sortByDesc('price')->values();
+        $rounds = $events->map(function (Event $e) use ($days, $tierOrder) {
+            $tiers = $tierOrder($e->sections->groupBy('tier')->map(fn ($s, $tier) => [
+                'name' => $tier, 'price' => (int) $s->min('price'), 'left' => (int) $s->sum(fn (SeatSection $x) => $x->remaining()),
+            ]));
+
+            return [
+                'id' => $e->id, 'date' => $e->starts_at->toDateString(), 'time' => $e->starts_at->format('H:i'),
+                'label' => $e->starts_at->format('Y.m.d').' ('.$days[$e->starts_at->dayOfWeek].') '.$e->starts_at->format('H:i'),
+                'url' => route('concerts.show', $e), 'open' => $e->salesOpen(),
+                'opens' => $e->sales_open_at ? $e->sales_open_at->format('n.j').'('.$days[$e->sales_open_at->dayOfWeek].') '.$e->sales_open_at->format('H:i') : null,
+                'left' => (int) $tiers->sum('left'), 'tiers' => $tiers->all(),
+            ];
+        })->values();
+
+        // 가격: 등급별 (회차마다 다르면 범위)
+        $prices = $tierOrder($events->flatMap->sections->groupBy('tier')->map(fn ($s, $tier) => [
+            'name' => $tier, 'price' => (int) $s->min('price'), 'max' => (int) $s->max('price'),
+        ]));
+
+        return view('fan.show', [
+            'p' => $production, 'rounds' => $rounds, 'prices' => $prices,
+            'venue' => $production->venue_id ? \App\Models\Venue::find($production->venue_id) : null,
+            'maxPerBuyer' => (int) ($events->min('max_per_buyer') ?: 4),
+            'storesUrl' => route('stores.index', $events->first()),
+            'doorsBefore' => $events->first()->doors_at ? $events->first()->doors_at->diffInMinutes($events->first()->starts_at) : null,
+        ]);
+    }
+
     private function showList(Request $request, string $title, $items, ?string $genre, string $q = ''): View
     {
         $sort = $request->query('sort') === 'rank' ? 'rank' : 'date';

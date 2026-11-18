@@ -51,7 +51,7 @@ class StoreOperationsTest extends TestCase
         $event = Event::first();
         // 메인(공연 예매 포털): 공연으로 가는 예매 링크 + 공연장 매장 미리 주문 안내 + 하단 '매장주문' 탭
         $this->get(route('home'))->assertOk()
-            ->assertSee(route('concerts.show', $event), false)
+            ->assertSee(route('shows.show', $event->production), false)
             ->assertSee('줄 서지 말고 미리 주문')
             ->assertSee(route('order.entry'), false);
 
