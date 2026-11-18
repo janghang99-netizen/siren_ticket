@@ -216,6 +216,21 @@ class FanController extends Controller
         ])->header('Cache-Control', 'no-store');
     }
 
+    /** 전체 좌석도: 회차의 모든 좌석 구역에서 팔린·막힌 좌석을 한 번에 ({구역 id: ["열-번", …]}) — 요청 한 번, 짧은 JSON */
+    public function taken(Event $event): JsonResponse
+    {
+        $ids = $event->sections()->whereNotNull('rows')->pluck('id');
+        $rows = \Illuminate\Support\Facades\DB::table('taken_seats')->whereIn('seat_section_id', $ids)->select('seat_section_id', 'row_no', 'seat_no')
+            ->union(\Illuminate\Support\Facades\DB::table('seat_blocks')->whereIn('seat_section_id', $ids)->select('seat_section_id', 'row_no', 'seat_no'))
+            ->get();
+        $taken = $rows->groupBy('seat_section_id')->map(fn ($g) => $g->map(fn ($t) => $t->row_no.'-'.$t->seat_no)->values());
+
+        return response()->json([
+            'taken' => $taken,
+            'left' => $event->sections()->whereIn('id', $ids)->get()->mapWithKeys(fn (SeatSection $s) => [$s->id => $s->remaining()]),
+        ])->header('Cache-Control', 'no-store');
+    }
+
     public function purchase(Request $request, Event $event, TicketService $tickets): RedirectResponse
     {
         $member = $request->user('member');   // 라우트에서 auth:member — 회원만 예매

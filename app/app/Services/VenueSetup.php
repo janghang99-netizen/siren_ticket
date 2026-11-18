@@ -13,6 +13,9 @@ use App\Models\Store;
  */
 class VenueSetup
 {
+    /** 링별 안쪽·바깥 반지름 (좌석도 SVG 400x400, 중심 200,200) — SeatSection::arcPath 와 같다 */
+    public const RING_RADII = [[70, 110], [118, 152], [160, 192]];
+
     /** 플로어 3 + 1층 6 + 2층 8 구역. 무대 쪽(위) 60°는 비워 둔다. */
     public const LAYOUT = [
         0 => ['tier' => 'VIP', 'count' => 3, 'prefix' => 'F'],
@@ -29,14 +32,22 @@ class VenueSetup
 
     /**
      * @param  array<string, array{price:int, capacity:int}>  $tiers  등급별 가격·구역당 좌석 수 (VIP/R/S)
-     * @param  int  $perRow  0 이면 자동 배정 구역(매수만 고름). 0보다 크면 열 × 열당 좌석 격자 — 팬이 좌석을 직접 고른다
+     * @param  int  $perRow  0 이면 자동 배정 구역(매수만 고름). 0보다 크면 열 × 열당 좌석 격자 — 팬이 좌석을 직접 고른다.
+     *                       -1 이면 구역(호) 모양에 맞춰 열 수·열당 좌석 수를 정한다 — 좌석도 위에 실제 위치로 그린다
      */
     public function createSections(Event $event, array $tiers, int $perRow = 0): void
     {
         foreach (self::LAYOUT as $ring => ['tier' => $tier, 'count' => $count, 'prefix' => $prefix]) {
             $span = 300 / $count;
             $capacity = (int) $tiers[$tier]['capacity'];
-            $grid = $perRow > 0 ? ['rows' => (int) ceil($capacity / $perRow), 'seats_per_row' => min($perRow, $capacity)] : [];
+            $per = $perRow;
+            if ($perRow === -1) {
+                // 호의 길이 : 깊이 비율대로 (한 줄이 호를 따라 길게)
+                [$inner, $outer] = self::RING_RADII[$ring];
+                $arc = ($inner + $outer) / 2 * deg2rad($span - 2);
+                $per = max(1, (int) round(sqrt($capacity * $arc / ($outer - $inner))));
+            }
+            $grid = $per > 0 ? ['rows' => (int) ceil($capacity / $per), 'seats_per_row' => min($per, $capacity)] : [];
             if ($grid) {
                 $capacity = $grid['rows'] * $grid['seats_per_row'];   // 격자와 좌석 수를 맞춘다
             }

@@ -11,7 +11,12 @@
         'id' => $s->id, 'code' => $s->code, 'tier' => $s->tier, 'name' => $s->name,
         'price' => $s->price, 'left' => $s->remaining(), 'grid' => $s->hasSeatGrid(),
         'color' => $s->color ?: ($tierColors[$s->tier] ?? '#8B5CF6'),
+        // 전체 좌석도에 좌석을 실제 위치로 그릴 때 (원형 아레나 구역)
+        'ring' => $s->ring, 'start' => $s->start_deg, 'end' => $s->end_deg, 'rows' => $s->rows, 'per' => $s->seats_per_row,
     ])->values();
+    // 원형 아레나 + 모든 구역이 좌석 격자: 전체 좌석도 위에 좌석을 그리고 확대해서 고른다
+    $arena = ! $event->seat_map_id && $event->sections->isNotEmpty()
+        && $event->sections->every(fn ($s) => $s->hasSeatGrid() && $s->ring !== null && ! $s->layout);
     $tiers = $event->sections->groupBy('tier')->map(fn ($g, $t) => [
         'name' => $t, 'price' => (int) $g->min('price'), 'left' => (int) $g->sum(fn ($s) => $s->remaining()), 'color' => $tierColors[$t] ?? '#8B5CF6',
     ])->sortByDesc('price')->values();
@@ -42,12 +47,44 @@
         return `<div class="seat-rows${g.layout ? ' is-listed' : ''}">${h}</div>`;
     };
 
+    // 전체 좌석도 좌석 (원형 아레나): 구역 호를 따라 열(안쪽 = 1열, 무대·가운데 쪽) × 좌석을 실제 위치에 점으로.
+    // 좌석 수천 개도 문자열 한 번으로 그린다 (좌석마다 Alpine 바인딩 없음, 클릭은 한 곳에서 받는다)
+    window.ARENA_R = [[70, 110], [118, 152], [160, 192]];   // VenueSetup::RING_RADII 와 같다
+    window.arenaSeats = (sections, taken, chosen, sel) => {
+        let h = '';
+        for (const s of sections) {
+            if (s.ring === null || !s.rows) continue;
+            const [ri, ro] = window.ARENA_R[s.ring] || window.ARENA_R[2];
+            const set = new Set(taken[s.id] || []), depth = (ro - ri) / s.rows, span = s.end - s.start;
+            const dot = Math.max(.25, Math.min(depth, (ri + ro) / 2 * span * Math.PI / 180 / s.per) * .36).toFixed(2);
+            h += `<g data-s="${s.id}" fill="${s.color}">`;
+            for (let r = 1; r <= s.rows; r++) {
+                const rad = ri + (r - .5) * depth;
+                for (let n = 1; n <= s.per; n++) {
+                    const a = (s.start + (n - .5) * span / s.per + 90) * Math.PI / 180, k = r + '-' + n;
+                    const cls = set.has(k) ? 'is-taken' : (sel === s.id && chosen.includes(k) ? 'is-chosen' : '');
+                    h += `<circle cx="${(200 + rad * Math.cos(a)).toFixed(2)}" cy="${(200 + rad * Math.sin(a)).toFixed(2)}" r="${dot}" data-k="${k}"${cls ? ` class="${cls}"` : ''}/>`;
+                }
+            }
+            h += '</g>';
+        }
+        return h;
+    };
+    // 구역 가운데 (좌석도 400 → 화면 1000px 기준) — 구역 버튼을 누르면 그곳으로 확대
+    window.arenaCenter = (s) => {
+        const [ri, ro] = window.ARENA_R[s.ring] || window.ARENA_R[2], a = ((s.start + s.end) / 2 + 90) * Math.PI / 180, r = (ri + ro) / 2;
+        return { x: (200 + r * Math.cos(a)) * 2.5, y: (200 + r * Math.sin(a)) * 2.5 };
+    };
+
     // 확대·축소·이동 (휠 · 두 손가락 · 끌기 · 버튼). 라이브러리 없이 transform 하나만 바꾼다(GPU, 좌석 수천 개도 가볍게).
     // 끌어서 움직였으면 그 클릭은 좌석 선택으로 치지 않는다(moved)
     window.panZoom = () => ({
-        s: 1, x: 0, y: 0, min: .3, max: 4, moved: false, pts: new Map(), last: null, pinch: null,
+        s: 1, x: 0, y: 0, min: .3, max: 4, moved: false, pts: new Map(), last: null, pinch: null, busy: false, _t: null,
+        // 움직이는 동안만 GPU 한 장으로 (빠르게), 멈추면 그 크기로 다시 그린다 (선명하게)
+        nudge() { this.busy = true; clearTimeout(this._t); this._t = setTimeout(() => this.busy = false, 160) },
         get tf() { return `translate3d(${this.x}px, ${this.y}px, 0) scale(${this.s})` },
         zoomAt(f, cx, cy) {
+            this.nudge();
             const s = Math.min(this.max, Math.max(this.min, this.s * f)); f = s / this.s;
             this.x = cx - (cx - this.x) * f; this.y = cy - (cy - this.y) * f; this.s = s;
         },
@@ -60,6 +97,13 @@
                 this.x = (vp.clientWidth - cw * this.s) / 2; this.y = (vp.clientHeight - ch * this.s) / 2;
             }));
         },
+        // 한 점(내용 좌표 px)을 가운데로 크게 — 구역 버튼
+        focus(p, s = 4) {
+            const vp = this.$refs.vp; this.s = Math.min(this.max, s);
+            this.x = vp.clientWidth / 2 - p.x * this.s; this.y = vp.clientHeight / 2 - p.y * this.s;
+        },
+        // 누른 곳으로 확대 — 좌석도의 구역(호)을 누르면
+        zoomClick(e, f = 2.6) { const r = this.$refs.vp.getBoundingClientRect(); this.zoomAt(f, e.clientX - r.left, e.clientY - r.top) },
         wheel(e) { const r = this.$refs.vp.getBoundingClientRect(); this.zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top) },
         down(e) { this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); this.last = { x: e.clientX, y: e.clientY }; this.moved = false; this.pinch = null },
         move(e) {
@@ -72,7 +116,7 @@
             }
             const dx = e.clientX - this.last.x, dy = e.clientY - this.last.y;
             if (!this.moved && Math.hypot(dx, dy) < 5) return;
-            this.moved = true; this.x += dx; this.y += dy; this.last = { x: e.clientX, y: e.clientY };
+            this.nudge(); this.moved = true; this.x += dx; this.y += dy; this.last = { x: e.clientX, y: e.clientY };
         },
         up(e) { this.pts.delete(e.pointerId); if (this.pts.size < 2) this.pinch = null; setTimeout(() => this.moved = false, 0) },
     });
@@ -113,7 +157,36 @@
             this.loadingSeats = false;
             this.$nextTick(() => { this.drawSeats(); this.$dispatch('pz-fit') });
         },
-        drawSeats() { const el = document.getElementById('seat-canvas'); if (this.grid && el) el.innerHTML = window.seatGridHtml(this.grid, this.chosen) },
+        drawSeats() {
+            if (this.arena) return this.drawArena();
+            const el = document.getElementById('seat-canvas'); if (this.grid && el) el.innerHTML = window.seatGridHtml(this.grid, this.chosen);
+        },
+        // ── 전체 좌석도 (원형 아레나): 좌석을 제자리에 그리고 확대해서 고른다 ──
+        arena: @js($arena),
+        takenUrl: @js(route('concerts.taken', $event)),
+        takenMap: {},
+        async loadTaken() {
+            try {
+                const r = await fetch(this.takenUrl, { headers: { Accept: 'application/json' } });
+                if (!r.ok) throw new Error();
+                const d = await r.json();
+                this.takenMap = d.taken || {};
+                for (const s of this.sections) if (d.left && d.left[s.id] !== undefined) s.left = d.left[s.id];
+            } catch (e) { this.seatMsg = '좌석 현황을 불러오지 못했어요. 새로고침해 주세요.' }
+            this.drawArena();
+        },
+        drawArena() { const el = document.getElementById('arena-seats'); if (el) el.innerHTML = window.arenaSeats(this.sections, this.takenMap, this.chosen, this.selected) },
+        arenaClick(e) {
+            const c = e.target.closest('circle[data-k]'); if (!c || c.classList.contains('is-taken')) return;
+            const sid = Number(c.parentNode.dataset.s), k = c.dataset.k;
+            if (this.chosen.length && this.selected !== sid) { this.seatMsg = '한 번에 한 구역의 좌석만 고를 수 있어요. 고른 좌석을 비우고 다른 구역을 골라 주세요.'; return }
+            this.selected = sid;
+            const i = this.chosen.indexOf(k);
+            if (i >= 0) { this.chosen.splice(i, 1); c.classList.remove('is-chosen') }
+            else if (this.chosen.length >= this.limit) { this.seatMsg = '한 번에 ' + this.limit + '석까지 고를 수 있어요.'; return }
+            else { this.chosen.push(k); c.classList.add('is-chosen') }
+            this.seatMsg = ''; this.qty = this.chosen.length; this.step = 1;
+        },
         toggleSeat(e) {
             const b = e.target.closest('[data-seat]'); if (!b || b.disabled) return;
             const k = b.dataset.seat, i = this.chosen.indexOf(k);
@@ -143,7 +216,7 @@
         get mileageCap() { return Math.min(this.balance, Math.floor((this.total - this.discount) * {{ (int) \App\Models\Setting::get('mileage_use_max_rate') }} / 100)) },
         get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ (int) \App\Models\Setting::get('mileage_min_use') }} ? m : 0 },
      }"
-     x-init="setInterval(() => tick(), 1000); selected && pick(selected)">
+     x-init="setInterval(() => tick(), 1000); arena ? loadTaken() : (selected && pick(selected))">
 
     {{-- ── 위: 공연 · 회차 · 남은 시간 ── --}}
     <header class="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[22px] bg-white px-4 py-3.5 ring-1 ring-ink/[.08] lg:px-5">
@@ -183,6 +256,62 @@
     <div class="mt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
         {{-- ── 왼쪽: 좌석도 → 구역 좌석 ── --}}
         <section class="min-w-0 rounded-[24px] bg-paper/60 p-3 ring-1 ring-ink/[.06] sm:p-4" aria-labelledby="seat-title">
+          @if ($arena)
+            {{-- 전체 좌석도: 좌석이 제자리에 있다. 확대해서 바로 고른다 (구역을 누르면 그곳으로 확대) --}}
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+                <h2 id="seat-title" class="text-[15px] font-bold">좌석 고르기 <span class="sr-only">구역 고르기</span></h2>
+                <div class="flex flex-wrap gap-3 text-xs text-mist">
+                    @foreach ($tiers as $t)
+                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full" style="background: {{ $t['color'] }}"></span>{{ $t['name'] }}석</span>
+                    @endforeach
+                    <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-pick ring-1 ring-ink"></span>내가 고른 좌석</span>
+                    <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-ink/20"></span>판매됨</span>
+                </div>
+            </div>
+            <div class="pz mt-3" x-data="Object.assign(panZoom(), { max: 16 })" x-init="fit()" @pz-fit.window="fit()" @pz-focus.window="focus($event.detail)" @resize.window.debounce.200ms="fit()">
+                <div x-ref="vp" class="pz-vp" @wheel.prevent="wheel($event)" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointercancel="up($event)" @click.capture="moved && ($event.stopPropagation(), $event.preventDefault())">
+                    <div x-ref="content" class="pz-content" :class="busy && 'is-busy'" style="width: 1000px; height: 1000px" :style="'width:1000px; height:1000px; transform:' + tf">
+                        <svg viewBox="0 0 400 400" width="1000" height="1000" class="arena-map" role="group" aria-label="{{ $event->venue }} 좌석도 — 확대해서 좌석을 누르세요">
+                            {{-- 무대 --}}
+                            <rect x="140" y="14" width="120" height="34" rx="10" class="arena-stage"/>
+                            <text x="200" y="36" text-anchor="middle" font-family="Unbounded" font-size="12" font-weight="700" letter-spacing="3" class="arena-stage-text">STAGE</text>
+                            {{-- 구역 바탕 (누르면 그곳으로 확대) --}}
+                            <g @click="$event.target.classList.contains('arena-arc') && zoomClick($event)">
+                                @foreach ($event->sections as $s)
+                                    @php($c = $s->color ?: ($tierColors[$s->tier] ?? '#8B5CF6'))
+                                    <path d="{{ $s->arcPath() }}" class="arena-arc" fill="{{ $c }}" fill-opacity=".13" stroke="{{ $c }}" stroke-opacity=".45" stroke-width=".6"><title>{{ $s->code }}구역 · {{ $s->tier }}석 {{ number_format($s->price) }}원 · 잔여 {{ number_format($s->remaining()) }}석</title></path>
+                                @endforeach
+                            </g>
+                            {{-- 좌석 (window.arenaSeats 가 채운다) --}}
+                            <g id="arena-seats" @click="arenaClick($event)"></g>
+                            {{-- 구역 이름: 멀리서 볼 때만 --}}
+                            <g class="arena-labels" pointer-events="none" :style="'opacity:' + (s < 2.4 ? 1 : 0)">
+                                @foreach ($event->sections as $s)
+                                    @php($mid = deg2rad(($s->start_deg + $s->end_deg) / 2 + 90))
+                                    @php($rr = array_sum(\App\Services\VenueSetup::RING_RADII[$s->ring] ?? [160, 192]) / 2)
+                                    <text x="{{ round(200 + $rr * cos($mid), 1) }}" y="{{ round(203 + $rr * sin($mid), 1) }}" text-anchor="middle" font-family="Unbounded" font-size="9" font-weight="800">{{ $s->code }}</text>
+                                @endforeach
+                            </g>
+                        </svg>
+                    </div>
+                </div>
+                @include('partials.pz-controls')
+            </div>
+            <p x-show="seatMsg" x-text="seatMsg" role="status" class="mt-2 px-1 text-sm font-semibold text-signal"></p>
+            {{-- 구역 바로가기: 누르면 그 구역으로 확대 --}}
+            <ul class="mt-4 grid grid-cols-4 gap-2 text-sm sm:grid-cols-6 lg:grid-cols-9">
+                <template x-for="s in sections" :key="s.id">
+                    <li>
+                        <button type="button" @click="$dispatch('pz-focus', window.arenaCenter(s))" :disabled="!s.left"
+                                class="w-full rounded-xl bg-white px-2 py-1.5 text-left ring-1 transition disabled:opacity-40"
+                                :class="selected === s.id && chosen.length ? 'ring-2 ring-ink' : 'ring-ink/10 hover:ring-ink/40'">
+                            <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" :style="'background:' + s.color"></span><span class="num text-[13px] font-bold" x-text="s.code"></span></span>
+                            <span class="block text-[11px]" :class="s.left ? 'text-mist' : 'font-semibold text-signal'" x-text="s.left ? won(s.left) + '석' : '매진'"></span>
+                        </button>
+                    </li>
+                </template>
+            </ul>
+          @else
             <div class="flex items-center justify-between gap-2 px-1">
                 <h2 id="seat-title" class="text-[15px] font-bold">
                     <span x-show="view === 'map'">구역 고르기</span>
@@ -195,7 +324,7 @@
             <div x-show="view === 'map'" class="mt-3">
                 <div class="pz" x-data="panZoom()" x-init="fit()" @pz-fit.window="fit()" @resize.window.debounce.200ms="fit()">
                     <div x-ref="vp" class="pz-vp" @wheel.prevent="wheel($event)" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointercancel="up($event)" @click.capture="moved && ($event.stopPropagation(), $event.preventDefault())">
-                        <div x-ref="content" class="pz-content w-[900px]" :style="'transform:' + tf">
+                        <div x-ref="content" class="pz-content w-[900px]" :class="busy && 'is-busy'" :style="'transform:' + tf">
                             @if ($hasMap)
                                 @include('partials.seatmap', ['event' => $event, 'interactive' => true])
                             @else
@@ -231,7 +360,7 @@
                 {{-- 구역 좌석 (크게 · 확대/축소/이동) --}}
                 <div class="pz mt-3" x-data="panZoom()" @pz-fit.window="fit()" @resize.window.debounce.200ms="fit()">
                     <div x-ref="vp" class="pz-vp" @wheel.prevent="wheel($event)" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointercancel="up($event)" @click.capture="moved && ($event.stopPropagation(), $event.preventDefault())">
-                        <div x-ref="content" class="pz-content p-6" :style="'transform:' + tf + '; --tier:' + (section?.color || '#8B5CF6')">
+                        <div x-ref="content" class="pz-content p-6" :class="busy && 'is-busy'" :style="'transform:' + tf + '; --tier:' + (section?.color || '#8B5CF6')">
                             <div class="seat-stage mx-auto mb-6">STAGE</div>
                             <div id="seat-canvas" @click="toggleSeat($event)" role="group" aria-label="좌석"></div>
                         </div>
@@ -240,6 +369,7 @@
                 </div>
                 <p x-show="seatMsg" x-text="seatMsg" role="status" class="mt-2 px-1 text-sm font-semibold text-signal"></p>
             </div>
+          @endif
         </section>
 
         {{-- ── 오른쪽: 선택 좌석 → 할인·결제 ── --}}
@@ -259,7 +389,7 @@
 
                     <div class="mt-4 min-h-[120px]">
                         <template x-if="!section">
-                            <p class="grid h-[120px] place-items-center rounded-2xl bg-paper text-sm text-mist">좌석도에서 구역을 골라 주세요</p>
+                            <p class="grid h-[120px] place-items-center rounded-2xl bg-paper px-4 text-center text-sm text-mist" x-text="arena ? '좌석도를 확대해서 원하는 좌석을 눌러 주세요' : '좌석도에서 구역을 골라 주세요'">좌석도에서 구역을 골라 주세요</p>
                         </template>
                         {{-- 좌석을 직접 고르는 구역 --}}
                         <template x-if="section && section.grid">
@@ -316,7 +446,7 @@
                     @else
                         <button type="button" @click="ready && (step = 2, $nextTick(() => document.getElementById('pay').scrollIntoView({ behavior: 'smooth', block: 'start' })))" :disabled="!ready"
                                 class="mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35">
-                            <span x-text="ready ? '선택 완료 · ' + won(total) + '원' : (section ? '좌석을 골라 주세요' : '구역을 골라 주세요')">선택 완료</span>
+                            <span x-text="ready ? '선택 완료 · ' + won(total) + '원' : (section || arena ? '좌석을 골라 주세요' : '구역을 골라 주세요')">선택 완료</span>
                         </button>
                     @endif
                 </div>
@@ -406,11 +536,20 @@
 </div>
 
 <style>
+    /* 전체 좌석도 (원형 아레나) */
+    .arena-stage { fill: var(--color-ink) }
+    .arena-stage-text { fill: var(--color-white) }
+    .arena-arc { cursor: zoom-in }
+    #arena-seats circle { cursor: pointer }
+    #arena-seats circle.is-taken { fill: color-mix(in oklab, var(--color-ink) 22%, transparent); cursor: not-allowed }
+    #arena-seats circle.is-chosen { fill: var(--color-pick); stroke: var(--color-ink); stroke-width: .35 }
+    .arena-labels text { fill: var(--color-ink); stroke: var(--color-white); stroke-width: 2.2; paint-order: stroke; transition: opacity .2s }
     .pz { position: relative }
     .pz-vp { position: relative; height: min(70vh, 680px); min-height: 360px; overflow: hidden; border-radius: 20px; touch-action: none; cursor: grab;
         background: var(--color-white); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-ink) 8%, transparent); user-select: none }
     .pz-vp:active { cursor: grabbing }
-    .pz-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; width: max-content }
+    .pz-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; width: max-content }
+    .pz-content.is-busy { will-change: transform }
     .pz-content.w-[900px] { width: 900px }
     .seat-stage { width: min(70%, 420px); padding: 8px 0; border-radius: 0 0 40px 40px; text-align: center; font: 800 12px/1 var(--font-display); letter-spacing: .3em;
         color: var(--color-mist); background: color-mix(in oklab, var(--color-ink) 10%, transparent) }
