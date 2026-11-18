@@ -14,7 +14,7 @@ class SeatMap extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'tiers' => 'array', 'image_w' => 'integer', 'image_h' => 'integer',
+        'tiers' => 'array', 'plan' => 'array', 'image_w' => 'integer', 'image_h' => 'integer',
         'crop_x' => 'float', 'crop_y' => 'float', 'crop_w' => 'float', 'crop_h' => 'float',
     ];
 
@@ -50,9 +50,15 @@ class SeatMap extends Model
         return $this->hasMany(Event::class);
     }
 
-    public function imageUrl(): string
+    public function imageUrl(): ?string
     {
-        return route('media.seat-map', basename($this->image_path));
+        return $this->image_path ? route('media.seat-map', basename($this->image_path)) : null;
+    }
+
+    /** 편집기로 그린 도면 (배치도 이미지 위 박스가 아니라 무대·구역 모양을 그린 것) */
+    public function isPlan(): bool
+    {
+        return $this->kind === 'plan';
     }
 
     /** @return array{key:string,name:string,color:string,price:int,seats:int}|null */

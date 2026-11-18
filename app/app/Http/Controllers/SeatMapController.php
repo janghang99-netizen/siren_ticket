@@ -70,8 +70,12 @@ class SeatMapController extends Controller
         return redirect()->route('admin.seat-maps.edit', $map)->with('status', $status);
     }
 
-    public function edit(SeatMap $seatMap): View
+    public function edit(SeatMap $seatMap): View|RedirectResponse
     {
+        if ($seatMap->isPlan()) {   // 편집기로 그린 도면은 도면 편집기로
+            return redirect()->route('admin.seat-maps.plan', $seatMap);
+        }
+
         return view('admin.seat-map-edit', [
             'map' => $seatMap->load(['sections', 'venueRecord'])->loadCount('events'),
             'aiReady' => $this->reader->ready(),
@@ -119,7 +123,9 @@ class SeatMapController extends Controller
             $target->save();
             $this->maps->sync($target, $seatMap->tiers, $seatMap->sections->map->only(['code', 'tier', 'x', 'y', 'w', 'h', 'rows', 'seats_per_row', 'layout'])->all());
         } else {
+            if ($seatMap->image_path) {   // 도면은 밑그림 이미지가 없을 수 있다
             Storage::disk('local')->delete($seatMap->image_path);
+        }
             $seatMap->update($fresh);
             $target = $seatMap;
         }
@@ -178,7 +184,9 @@ class SeatMapController extends Controller
             return back()->withErrors(['payload' => '이 좌석표를 쓰는 공연이 있어 지울 수 없어요.']);
         }
         Audit::log('seat_map.deleted', $seatMap, "좌석표 삭제 · {$seatMap->name}");
-        Storage::disk('local')->delete($seatMap->image_path);
+        if ($seatMap->image_path) {   // 도면은 밑그림 이미지가 없을 수 있다
+            Storage::disk('local')->delete($seatMap->image_path);
+        }
         $seatMap->delete();
 
         return redirect()->route('admin.seat-maps.index')->with('status', '좌석표를 지웠어요.');

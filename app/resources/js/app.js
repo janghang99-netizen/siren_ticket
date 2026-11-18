@@ -1,5 +1,9 @@
 import './bootstrap';
 import Alpine from 'alpinejs';
+import SeatPlan from './seatplan';
+
+// 공연장 도면 좌석 위치 계산 (관리자 도면 편집기 · 팬 좌석 화면 공용)
+window.SeatPlan = SeatPlan;
 
 /** CSRF 포함 JSON 요청. 실패 시 서버 msg 를 담은 Error 를 던진다. */
 window.api = async (url, method = 'GET', body = null) => {

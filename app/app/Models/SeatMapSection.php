@@ -12,7 +12,7 @@ class SeatMapSection extends Model
 
     protected $casts = [
         'x' => 'float', 'y' => 'float', 'w' => 'float', 'h' => 'float',
-        'rows' => 'integer', 'seats_per_row' => 'integer', 'sort' => 'integer', 'layout' => 'array',
+        'rows' => 'integer', 'seats_per_row' => 'integer', 'sort' => 'integer', 'layout' => 'array', 'shape' => 'array',
     ];
 
     public function seatMap(): BelongsTo

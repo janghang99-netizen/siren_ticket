@@ -181,7 +181,10 @@
         @endforeach
     </section>
 
-    {{-- ⑤ 다담다만의 것: 공연장 매장 미리 주문 --}}
+    {{-- ⑤ 모든 티켓은 블록체인 티켓 --}}
+    @include('partials.blockchain-band')
+
+    {{-- ⑥ 다담다만의 것: 공연장 매장 미리 주문 --}}
     <section class="tix-wrap mt-16" aria-labelledby="pre-title">
         <div class="theme-keep relative overflow-hidden rounded-[28px] bg-ink px-6 py-10 text-white sm:px-10 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:px-14 lg:py-12">
             <div class="pointer-events-none absolute -right-10 -top-24 h-72 w-72 rounded-full bg-pick/25 blur-3xl" aria-hidden="true"></div>

@@ -393,3 +393,66 @@ Artisan::command('tickets:samples
     }
     $this->info("새로 넣은 샘플 작품 {$made}개");
 })->purpose('샘플 작품·회차·좌석을 manifest.json 으로 넣는다 (개발 서버용)');
+
+// 샘플 공연장 도면 (엔드 무대 아레나: 메인 무대·돌출 무대·콘솔, 플로어 F1~F4, 스탠드 2xx·3xx) — 편집기로 다듬을 수 있다
+Artisan::command('tickets:demo-plan
+    {venue : 공연장 이름}
+    {--apply= : 이 작품(slug)의 회차 좌석을 도면으로 바꾼다 (팔린 티켓이 없을 때만)}', function (\App\Services\SeatMap\SeatPlanService $plans, \App\Services\SeatMap\SeatMapService $maps) {
+    $venue = \App\Models\Venue::firstOrCreate(['name' => (string) $this->argument('venue')]);
+    $map = $plans->create($venue, $venue->name.' · 엔드 무대 (샘플 도면)');
+    $rect = fn ($code, $tier, $cx, $cy, $w, $h, $rot, $rows, $per, $alpha = false) => ['code' => $code, 'tier' => $tier, 'rows' => $rows, 'per' => $per,
+        'shape' => ['type' => 'rect', 'x' => $cx - $w / 2, 'y' => $cy - $h / 2, 'w' => $w, 'h' => $h, 'rot' => $rot, 'curve' => 0,
+            'row1' => 'top', 'dir' => 'ltr', 'align' => 'center', 'rowLabels' => $alpha ? 'alpha' : 'num']];
+    $sections = [
+        $rect('F1', 'VIP', 375, 185, 150, 50, 0, 6, 20), $rect('F2', 'VIP', 625, 185, 150, 50, 0, 6, 20),
+        $rect('F3', 'VIP', 380, 360, 160, 120, 0, 14, 22), $rect('F4', 'VIP', 620, 360, 160, 120, 0, 14, 22),
+    ];
+    foreach (['202' => 230, '203' => 350, '204' => 470, '205' => 590] as $code => $cy) {
+        $sections[] = $rect($code, 'R', 805, $cy, 110, 64, -90, 8, 18, true);   // 오른쪽 스탠드: 무대·플로어(왼쪽)를 본다
+    }
+    foreach (['214' => 230, '213' => 350, '212' => 470, '211' => 590] as $code => $cy) {
+        $sections[] = $rect($code, 'R', 195, $cy, 110, 64, 90, 8, 18, true);    // 왼쪽 스탠드
+    }
+    $sections[] = $rect('206', 'R', 735, 690, 120, 64, -45, 8, 20);
+    foreach (['207' => 620, '208' => 500, '209' => 380] as $code => $cx) {
+        $sections[] = $rect($code, 'R', $cx, 735, 112, 64, 0, 8, 20);
+    }
+    $sections[] = $rect('210', 'R', 265, 690, 120, 64, 45, 8, 20);
+    foreach (['314' => 230, '313' => 350, '312' => 470, '311' => 590] as $code => $cy) {
+        $sections[] = $rect($code, 'S', 95, $cy, 110, 70, 90, 10, 18, true);    // 왼쪽 2층
+    }
+    $sections[] = $rect('310', 'S', 195, 790, 130, 70, 45, 10, 20);
+    $sections[] = $rect('309', 'S', 400, 850, 170, 70, 0, 10, 28);
+    $sections[] = $rect('308', 'S', 600, 850, 170, 70, 0, 10, 28);
+
+    $plans->save($map, [
+        'tiers' => [['key' => 'VIP', 'name' => 'VIP', 'color' => '#8B5CF6', 'price' => 198000], ['key' => 'R', 'name' => 'R', 'color' => '#3B82F6', 'price' => 176000],
+            ['key' => 'S', 'name' => 'S', 'color' => '#10B981', 'price' => 143000]],
+        'plan' => [
+            'stage' => ['x' => 300, 'y' => 30, 'w' => 400, 'h' => 80, 'rot' => 0, 'label' => 'STAGE'],
+            'objects' => [['x' => 478, 'y' => 110, 'w' => 44, 'h' => 120, 'rot' => 0, 'label' => ''], ['x' => 435, 'y' => 230, 'w' => 130, 'h' => 56, 'rot' => 0, 'label' => 'STAGE'],
+                ['x' => 390, 'y' => 470, 'w' => 220, 'h' => 32, 'rot' => 0, 'label' => 'CONSOLE']],
+            'labels' => [['x' => 500, 'y' => 640, 'text' => 'FLOOR', 'size' => 26], ['x' => 500, 'y' => 945, 'text' => '2F', 'size' => 30]],
+        ],
+        'sections' => $sections,
+    ]);
+    $map = $map->fresh('sections');
+    $this->info("도면 #{$map->id}: 구역 {$map->sections->count()}개 · 좌석 ".number_format($map->totalSeats()).'석');
+
+    if ($slug = $this->option('apply')) {
+        $production = \App\Models\Production::where('slug', $slug)->firstOrFail();
+        foreach ($production->events()->get() as $event) {
+            if ($event->tickets()->exists()) {
+                $this->warn("{$event->name}: 팔린 티켓이 있어 바꾸지 않아요.");
+
+                continue;
+            }
+            \Illuminate\Support\Facades\DB::transaction(function () use ($event, $map, $maps) {
+                $event->sections()->delete();
+                $maps->applyToEvent($event, $map);
+            });
+            $this->info("{$event->name}: 도면 적용");
+        }
+        $production->update(['venue' => $venue->name, 'venue_id' => $venue->id]);
+    }
+})->purpose('샘플 공연장 도면(엔드 무대 아레나)을 만들고, 작품 회차에 적용한다');

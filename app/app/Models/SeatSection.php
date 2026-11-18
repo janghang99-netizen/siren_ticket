@@ -17,7 +17,7 @@ class SeatSection extends Model
         'start_deg' => 'integer',
         'end_deg' => 'integer',
         'x' => 'float', 'y' => 'float', 'w' => 'float', 'h' => 'float',
-        'rows' => 'integer', 'seats_per_row' => 'integer', 'layout' => 'array', 'blocked' => 'integer',
+        'rows' => 'integer', 'seats_per_row' => 'integer', 'layout' => 'array', 'blocked' => 'integer', 'shape' => 'array',
     ];
 
     /** 이 좌석이 구역에 있는지 — 좌석 리스트가 있으면 그 열의 실제 번호, 없으면 격자 안 */

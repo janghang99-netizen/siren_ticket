@@ -93,7 +93,9 @@
                 @php($first = $v->seatMaps->first())
                 <li data-href="{{ route('admin.venues.show', $v) }}" class="cursor-pointer overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5 transition hover:ring-stick/40">
                     <div class="bg-ink">
-                        @if ($first)
+                        @if ($first?->isPlan())
+                            @include('admin.partials.plan-thumb', ['m' => $first, 'class' => 'max-h-[220px]'])
+                        @elseif ($first)
                             <div class="relative w-full overflow-hidden" style="{{ $first->frameStyle() }}; max-height: 220px">
                                 <div style="{{ $first->innerStyle() }}"><img src="{{ $first->imageUrl() }}" alt="" class="block w-full" loading="lazy"></div>
                             </div>

@@ -27,17 +27,22 @@
                 <ul class="grid gap-4 md:grid-cols-2">
                     @foreach ($maps as $m)
                         <li data-href="{{ route('admin.seat-maps.edit', $m) }}" class="cursor-pointer overflow-hidden rounded-3xl bg-white ring-1 ring-ink/5 transition hover:ring-stick/40">
-                            <div class="bg-ink">
-                                <div class="relative w-full overflow-hidden" style="{{ $m->frameStyle() }}">
-                                    <div style="{{ $m->innerStyle() }}"><img src="{{ $m->imageUrl() }}" alt="" class="block w-full" loading="lazy"></div>
+                            @if ($m->isPlan())
+                                @include('admin.partials.plan-thumb', ['m' => $m, 'class' => 'max-h-[300px]'])
+                            @else
+                                <div class="bg-ink">
+                                    <div class="relative w-full overflow-hidden" style="{{ $m->frameStyle() }}">
+                                        <div style="{{ $m->innerStyle() }}"><img src="{{ $m->imageUrl() }}" alt="" class="block w-full" loading="lazy"></div>
+                                    </div>
                                 </div>
-                            </div>
+                            @endif
                             <div class="p-4">
                                 <h3 class="truncate font-black"><a href="{{ route('admin.seat-maps.edit', $m) }}">{{ $m->name }}</a></h3>
                                 <p class="mt-2 flex flex-wrap gap-1.5 text-xs">
                                     <span class="chip">구역 <b class="num ml-1">{{ $m->sections->count() }}</b></span>
                                     <span class="chip">좌석 <b class="num ml-1">{{ number_format($m->totalSeats()) }}</b></span>
                                     <span class="chip">공연 <b class="num ml-1">{{ $m->events_count }}</b></span>
+                                    @if ($m->isPlan())<span class="chip !bg-ink !text-white">도면</span>@endif
                                     @if ($m->read_by === 'temp')<span class="chip">임시</span>@endif
                                     @php($gap = app(\App\Services\SeatMap\SeatMapService::class)->seatGapNote($m->setRelation('venueRecord', $venue)))
                                     @if ($gap)<span class="chip !bg-signal/10 !text-signal" title="{{ $gap }}">객석 수 확인</span>@endif
@@ -78,6 +83,23 @@
     </div>
 
     <aside class="space-y-4">
+        {{-- 도면 편집기: 무대·구역 모양을 그려 좌석을 만든다 (배치도 이미지를 밑그림으로 깔 수 있다) --}}
+        <form method="POST" action="{{ route('admin.venues.plans.store', $venue) }}" class="space-y-3 rounded-3xl bg-ink p-5 text-white">
+            @csrf
+            <h2 class="font-bold">도면 그리기</h2>
+            <p class="text-xs text-white/70">무대·구역 모양(사각·부채꼴·다각형)을 그리고 열·좌석을 정하면, 팬 화면에서 도면 그대로 확대해 좌석을 골라요.</p>
+            <input name="name" class="field !py-2.5 text-ink" placeholder="예: {{ $venue->name }} · 엔드 무대" value="{{ old('name') }}" required maxlength="80" aria-label="도면 이름">
+            @error('name')<p class="text-sm text-pick">{{ $message }}</p>@enderror
+            @php($traceable = $maps->filter(fn ($m) => $m->image_path))
+            @if ($traceable->isNotEmpty())
+                <select name="trace_id" class="field !py-2.5 text-ink" aria-label="밑그림">
+                    <option value="">밑그림 없이</option>
+                    @foreach ($traceable as $m)<option value="{{ $m->id }}">밑그림: {{ $m->name }}</option>@endforeach
+                </select>
+            @endif
+            <button class="w-full rounded-full bg-pick py-2.5 text-sm font-bold text-ink">도면 편집기 열기</button>
+        </form>
+
         <form method="POST" action="{{ route('admin.venues.update', $venue) }}" class="space-y-3 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
             @csrf @method('PUT')
             <h2 class="font-bold">공연장 정보</h2>

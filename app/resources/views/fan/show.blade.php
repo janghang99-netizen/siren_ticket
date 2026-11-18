@@ -63,6 +63,10 @@
                             <p class="mt-0.5 flex items-center gap-2 text-lg font-black"><span class="h-2 w-2 rounded-full bg-[#2BB673]" aria-hidden="true"></span>지금 예매할 수 있어요</p>
                         @endif
                         <p class="mt-1 text-[13px] text-mist">1인 최대 {{ $maxPerBuyer }}매 · 회원만 예매할 수 있어요</p>
+                        <a href="{{ route('about.blockchain') }}" class="theme-keep mt-3 inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-[12px] font-bold text-pick">
+                            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                            블록체인 티켓 · 위조·암표 방지 <span aria-hidden="true">›</span>
+                        </a>
                     </div>
                 </div>
             </div>

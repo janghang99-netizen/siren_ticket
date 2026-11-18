@@ -13,10 +13,15 @@
         'color' => $s->color ?: ($tierColors[$s->tier] ?? '#8B5CF6'),
         // 전체 좌석도에 좌석을 실제 위치로 그릴 때 (원형 아레나 구역)
         'ring' => $s->ring, 'start' => $s->start_deg, 'end' => $s->end_deg, 'rows' => $s->rows, 'per' => $s->seats_per_row,
+        // 공연장 도면(편집기로 그린 좌석표): 구역 모양 · 열 이름
+        'shape' => $s->shape, 'layout' => $s->layout,
     ])->values();
-    // 원형 아레나 + 모든 구역이 좌석 격자: 전체 좌석도 위에 좌석을 그리고 확대해서 고른다
-    $arena = ! $event->seat_map_id && $event->sections->isNotEmpty()
-        && $event->sections->every(fn ($s) => $s->hasSeatGrid() && $s->ring !== null && ! $s->layout);
+    // 공연장 도면: 구역(섹터)만 보이다가 확대하면 좌석을 불러와 그린다
+    $planMode = (bool) $event->seatMap?->isPlan() && $event->sections->isNotEmpty() && $event->sections->every(fn ($s) => $s->shape);
+    $plan = $planMode ? $event->seatMap->plan : null;
+    // 원형 아레나 + 모든 구역이 좌석 격자: 전체 좌석도 위에 좌석을 그리고 확대해서 고른다 (도면도 같은 방식)
+    $arena = $planMode || (! $event->seat_map_id && $event->sections->isNotEmpty()
+        && $event->sections->every(fn ($s) => $s->hasSeatGrid() && $s->ring !== null && ! $s->layout));
     $tiers = $event->sections->groupBy('tier')->map(fn ($g, $t) => [
         'name' => $t, 'price' => (int) $g->min('price'), 'left' => (int) $g->sum(fn ($s) => $s->remaining()), 'color' => $tierColors[$t] ?? '#8B5CF6',
     ])->sortByDesc('price')->values();
@@ -70,6 +75,38 @@
         }
         return h;
     };
+    // ── 공연장 도면 (관리자 도면 편집기로 그린 좌석표) — 좌석 위치는 window.SeatPlan (편집기와 같은 계산) ──
+    window.planEsc = (t) => String(t ?? '').replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+    window.planSeatsSvg = (sections, taken, chosen, sel) => {
+        let h = '';
+        for (const s of sections) {
+            const set = new Set(taken[s.id] || []);
+            h += `<g data-s="${s.id}" fill="${s.color}">`;
+            for (const st of window.SeatPlan.seats(s)) {
+                const cls = set.has(st.k) ? 'is-taken' : (sel === s.id && chosen.includes(st.k) ? 'is-chosen' : '');
+                h += `<circle cx="${st.x.toFixed(1)}" cy="${st.y.toFixed(1)}" r="${st.r.toFixed(2)}" data-k="${st.k}"${cls ? ` class="${cls}"` : ''}/>`;
+            }
+            h += '</g>';
+        }
+        return h;
+    };
+    // 구역(섹터) 바탕 — 남은 좌석이 많을수록 진하게
+    window.planBaseSvg = (plan, sections) => {
+        const P = window.SeatPlan, esc = window.planEsc;
+        const box = (o, cls) => `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="10" class="${cls}" transform="${P.boxTransform(o)}"/>`
+            + `<text x="${o.x + o.w / 2}" y="${o.y + o.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="${Math.min(34, o.h * .42)}" font-weight="800" class="plan-obj-text">${esc(o.label)}</text>`;
+        let h = box(plan.stage, 'plan-stage');
+        (plan.objects || []).forEach(o => h += box(o, 'plan-object'));
+        for (const s of sections) {
+            const ratio = Math.min(1, s.left / Math.max(1, P.capacity(s)));
+            h += `<path d="${P.outline(s)}" data-sec="${s.id}" class="plan-sec" fill="${s.color}" style="--fo:${(s.left ? .35 + .6 * ratio : .08).toFixed(2)}"><title>${esc(s.code)}구역 · ${esc(s.tier)}석 · 잔여 ${s.left.toLocaleString()}석</title></path>`;
+        }
+        (plan.labels || []).forEach(l => h += `<text x="${l.x}" y="${l.y}" text-anchor="middle" dominant-baseline="central" font-size="${l.size}" font-weight="800" class="plan-label">${esc(l.text)}</text>`);
+        return h;
+    };
+    window.planCodesSvg = (sections) => sections.map(s => { const p = window.SeatPlan.center(s);
+        return `<text x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="central" font-size="26" font-weight="900">${window.planEsc(s.code)}</text>` }).join('');
+
     // 구역 가운데 (좌석도 400 → 화면 1000px 기준) — 구역 버튼을 누르면 그곳으로 확대
     window.arenaCenter = (s) => {
         const [ri, ro] = window.ARENA_R[s.ring] || window.ARENA_R[2], a = ((s.start + s.end) / 2 + 90) * Math.PI / 180, r = (ri + ro) / 2;
@@ -175,7 +212,23 @@
             } catch (e) { this.seatMsg = '좌석 현황을 불러오지 못했어요. 새로고침해 주세요.' }
             this.drawArena();
         },
-        drawArena() { const el = document.getElementById('arena-seats'); if (el) el.innerHTML = window.arenaSeats(this.sections, this.takenMap, this.chosen, this.selected) },
+        drawArena() {
+            const el = document.getElementById('arena-seats'); if (!el) return;
+            el.innerHTML = this.plan
+                ? window.planSeatsSvg(this.sections, this.takenMap, this.chosen, this.selected)
+                : window.arenaSeats(this.sections, this.takenMap, this.chosen, this.selected);
+        },
+        // 도면: 구역(섹터) 바탕·이름 — 남은 좌석이 많을수록 진하게. 좌석은 확대했을 때 불러온다
+        plan: @js($plan),
+        seatsLoaded: false,
+        ensureSeats() { if (this.seatsLoaded) return; this.seatsLoaded = true; this.loadTaken() },
+        drawPlanBase() {
+            if (!this.plan) return;
+            const base = document.getElementById('plan-base'), codes = document.getElementById('plan-codes');
+            if (base) base.innerHTML = window.planBaseSvg(this.plan, this.sections);
+            if (codes) codes.innerHTML = window.planCodesSvg(this.sections);
+        },
+        sectionCenter(s) { return this.plan ? window.SeatPlan.center(s) : window.arenaCenter(s) },
         arenaClick(e) {
             const c = e.target.closest('circle[data-k]'); if (!c || c.classList.contains('is-taken')) return;
             const sid = Number(c.parentNode.dataset.s), k = c.dataset.k;
@@ -197,7 +250,11 @@
         },
         removeSeat(k) { this.chosen = this.chosen.filter(x => x !== k); this.qty = this.chosen.length; this.drawSeats(); if (!this.chosen.length) this.step = 1 },
         clearAll() { this.chosen = []; this.qty = this.section && !this.section.grid ? 1 : 0; this.step = 1; this.drawSeats() },
-        seatLabel(k) { const [r, n] = k.split('-'); return ((this.grid && this.grid.labels[r]) || r) + '열 ' + n + '번' },
+        seatLabel(k) {
+            const [r, n] = k.split('-'), lay = this.section?.layout;
+            const name = (this.grid && this.grid.labels[r]) || (Array.isArray(lay) && lay.find(x => String(x.n) === r)?.label) || r;
+            return name + '열 ' + n + '번';
+        },
         tick() {
             if (this.secs > 0) { this.secs--; return }
             this.expired = true; this.chosen = []; this.step = 1; this.secs = 600; this.drawSeats();
@@ -216,7 +273,7 @@
         get mileageCap() { return Math.min(this.balance, Math.floor((this.total - this.discount) * {{ (int) \App\Models\Setting::get('mileage_use_max_rate') }} / 100)) },
         get mileageUse() { const m = Math.min(Number(this.mileage) || 0, this.mileageCap); return m >= {{ (int) \App\Models\Setting::get('mileage_min_use') }} ? m : 0 },
      }"
-     x-init="setInterval(() => tick(), 1000); arena ? loadTaken() : (selected && pick(selected))">
+     x-init="setInterval(() => tick(), 1000); plan ? $nextTick(() => drawPlanBase()) : (arena ? loadTaken() : (selected && pick(selected)))">
 
     {{-- ── 위: 공연 · 회차 · 남은 시간 ── --}}
     <header class="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[22px] bg-white px-4 py-3.5 ring-1 ring-ink/[.08] lg:px-5">
@@ -225,6 +282,7 @@
         @endif
         <div class="min-w-0 flex-1">
             <h1 class="truncate text-[17px] font-black tracking-tight lg:text-xl">{{ $p?->title ?? $event->name }}</h1>
+            <a href="{{ route('about.blockchain') }}" target="_blank" class="theme-keep mt-1 inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[11px] font-bold text-pick">블록체인 티켓 · 양도 불가 ›</a>
             <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-mist">
                 <span>{{ $event->venue }}</span>
                 @if ($rounds->count() > 1)
@@ -271,6 +329,16 @@
             <div class="pz mt-3" x-data="Object.assign(panZoom(), { max: 16 })" x-init="fit()" @pz-fit.window="fit()" @pz-focus.window="focus($event.detail)" @resize.window.debounce.200ms="fit()">
                 <div x-ref="vp" class="pz-vp" @wheel.prevent="wheel($event)" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointercancel="up($event)" @click.capture="moved && ($event.stopPropagation(), $event.preventDefault())">
                     <div x-ref="content" class="pz-content" :class="busy && 'is-busy'" style="width: 1000px; height: 1000px" :style="'width:1000px; height:1000px; transform:' + tf">
+                      @if ($planMode)
+                        {{-- 공연장 도면: 처음엔 구역(섹터)만, 확대하면 좌석을 불러와 그린다 --}}
+                        <svg viewBox="0 0 1000 1000" width="1000" height="1000" class="arena-map" role="group" aria-label="{{ $event->venue }} 좌석 도면 — 구역을 누르거나 확대해서 좌석을 고르세요"
+                             x-effect="s >= 1.8 && ensureSeats()">
+                            <g id="plan-base" :class="s >= 1.8 && 'is-zoomed'"
+                               @click="const p = $event.target.closest('[data-sec]'); p && (s < 1.8 ? focus(sectionCenter(sections.find(x => x.id == p.dataset.sec)), 3.2) : zoomClick($event, 1.6))"></g>
+                            <g id="arena-seats" @click="arenaClick($event)" :style="'opacity:' + (s >= 1.8 ? 1 : 0) + '; pointer-events:' + (s >= 1.8 ? 'auto' : 'none')"></g>
+                            <g id="plan-codes" class="arena-labels" pointer-events="none" :style="'opacity:' + (s < 2.6 ? 1 : 0)"></g>
+                        </svg>
+                      @else
                         <svg viewBox="0 0 400 400" width="1000" height="1000" class="arena-map" role="group" aria-label="{{ $event->venue }} 좌석도 — 확대해서 좌석을 누르세요">
                             {{-- 무대 --}}
                             <rect x="140" y="14" width="120" height="34" rx="10" class="arena-stage"/>
@@ -293,6 +361,7 @@
                                 @endforeach
                             </g>
                         </svg>
+                      @endif
                     </div>
                 </div>
                 @include('partials.pz-controls')
@@ -302,7 +371,7 @@
             <ul class="mt-4 grid grid-cols-4 gap-2 text-sm sm:grid-cols-6 lg:grid-cols-9">
                 <template x-for="s in sections" :key="s.id">
                     <li>
-                        <button type="button" @click="$dispatch('pz-focus', window.arenaCenter(s))" :disabled="!s.left"
+                        <button type="button" @click="$dispatch('pz-focus', sectionCenter(s))" :disabled="!s.left"
                                 class="w-full rounded-xl bg-white px-2 py-1.5 text-left ring-1 transition disabled:opacity-40"
                                 :class="selected === s.id && chosen.length ? 'ring-2 ring-ink' : 'ring-ink/10 hover:ring-ink/40'">
                             <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" :style="'background:' + s.color"></span><span class="num text-[13px] font-bold" x-text="s.code"></span></span>
@@ -540,6 +609,15 @@
     .arena-stage { fill: var(--color-ink) }
     .arena-stage-text { fill: var(--color-white) }
     .arena-arc { cursor: zoom-in }
+    /* 공연장 도면 */
+    .plan-stage { fill: color-mix(in oklab, var(--color-ink) 28%, transparent) }
+    .plan-object { fill: color-mix(in oklab, var(--color-ink) 16%, transparent) }
+    .plan-obj-text { fill: var(--color-white); letter-spacing: .08em; pointer-events: none }
+    html[data-theme="dark"] .plan-obj-text { fill: var(--color-ink) }
+    .plan-label { fill: var(--color-mist); pointer-events: none }
+    .plan-sec { fill-opacity: var(--fo, .8); cursor: zoom-in; transition: fill-opacity .25s }
+    #plan-base.is-zoomed .plan-sec { fill-opacity: .1; stroke: currentColor; stroke-opacity: .12 }
+    #plan-codes text { font-family: var(--font-display) }
     #arena-seats circle { cursor: pointer }
     #arena-seats circle.is-taken { fill: color-mix(in oklab, var(--color-ink) 22%, transparent); cursor: not-allowed }
     #arena-seats circle.is-chosen { fill: var(--color-pick); stroke: var(--color-ink); stroke-width: .35 }

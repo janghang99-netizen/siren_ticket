@@ -304,6 +304,7 @@ class SeatMapService
                 'capacity' => $s->capacity(), 'ring' => 0, 'start_deg' => 0, 'end_deg' => 0,
                 'x' => $s->x, 'y' => $s->y, 'w' => $s->w, 'h' => $s->h, 'rows' => $s->rows, 'seats_per_row' => $s->seats_per_row,
                 'layout' => $s->layout,
+                'shape' => $s->shape,   // 도면(편집기로 그린 좌석표): 구역 모양 — 팬 좌석 화면이 이 모양으로 좌석을 그린다
             ]);
         }
         $event->update(['seat_map_id' => $map->id]);
