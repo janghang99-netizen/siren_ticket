@@ -109,7 +109,7 @@ html[data-theme="dark"] .theme-icon-moon, html:not([data-theme="dark"]) .theme-i
         --notch: 14px;
         --cut: 62%;
         position: relative;
-        background: #fff;
+        background: var(--color-white);   /* 다크모드에선 어두운 카드 */
         border-radius: 18px;
         -webkit-mask:
             radial-gradient(circle var(--notch) at 0 var(--cut), #0000 98%, #000) left / 51% 100% no-repeat,
@@ -129,7 +129,7 @@ html[data-theme="dark"] .theme-icon-moon, html:not([data-theme="dark"]) .theme-i
                active:scale-[.98] disabled:opacity-40 disabled:pointer-events-none;
     }
     /* 버튼은 무채색만: 잉크(주 동작) · 흰 유리(보조) */
-    .btn-ink { @apply bg-ink text-white hover:bg-black; }
+    .btn-ink { @apply bg-ink text-white hover:opacity-90; }   /* 다크모드에서도 글자가 보이게 (검정으로 바꾸지 않는다) */
     .btn-stick { @apply bg-white/80 text-ink ring-1 ring-ink/15 backdrop-blur hover:bg-white; }
     .btn-ghost { @apply bg-white/60 text-ink ring-1 ring-ink/10 backdrop-blur hover:bg-white; }
 
@@ -155,6 +155,16 @@ html[data-theme="dark"] .theme-icon-moon, html:not([data-theme="dark"]) .theme-i
                 color-mix(in oklab, var(--theme) 40%, white) 0%,
                 rgb(255 255 255 / .82) 55%,
                 color-mix(in oklab, var(--theme) 25%, #E3F1FF) 100%);
+    }
+    /* 다크모드: 같은 색감을 어둡게 (글자가 밝아지므로 바탕도 어둡게) */
+    html[data-theme="dark"] .fandom-soft {
+        background:
+            radial-gradient(80% 60% at 100% 0%, color-mix(in oklab, #FF7AB0 22%, transparent) 0%, transparent 70%),
+            radial-gradient(70% 55% at 0% 100%, color-mix(in oklab, #6FA8FF 20%, transparent) 0%, transparent 70%),
+            linear-gradient(160deg,
+                color-mix(in oklab, var(--theme) 30%, #17151F) 0%,
+                #1B1824 55%,
+                color-mix(in oklab, var(--theme) 18%, #17151F) 100%);
     }
 
     .field {

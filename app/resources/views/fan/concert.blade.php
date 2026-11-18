@@ -315,7 +315,7 @@
                         <p class="mt-5 grid h-14 place-items-center rounded-2xl bg-paper text-[15px] font-bold text-mist">지금은 예매 기간이 아니에요</p>
                     @else
                         <button type="button" @click="ready && (step = 2, $nextTick(() => document.getElementById('pay').scrollIntoView({ behavior: 'smooth', block: 'start' })))" :disabled="!ready"
-                                class="mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-35">
+                                class="mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35">
                             <span x-text="ready ? '선택 완료 · ' + won(total) + '원' : (section ? '좌석을 골라 주세요' : '구역을 골라 주세요')">선택 완료</span>
                         </button>
                     @endif

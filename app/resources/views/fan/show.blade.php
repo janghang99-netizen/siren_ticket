@@ -5,7 +5,7 @@
 @php
     $first = $rounds->first();
     $tierNames = ['VIP' => 'VIP석', 'R' => 'R석', 'S' => 'S석', 'A' => 'A석'];
-    $tierDot = ['VIP' => '#17132B', 'R' => '#6C4BFF', 'S' => '#2BB673', 'A' => '#FF8A3D'];
+    $tierDot = ['VIP' => '#8B5CF6', 'R' => '#3B82F6', 'S' => '#10B981', 'A' => '#F59E0B'];   // 좌석 선택 화면과 같은 등급 색
 @endphp
 
 @section('content')
@@ -188,7 +188,7 @@
 
                 {{-- 예매 --}}
                 <div class="mt-4">
-                    <a x-show="cur && cur.open && cur.left > 0" x-bind:href="cur && cur.url" class="flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white transition hover:bg-black">예매하기</a>
+                    <a x-show="cur && cur.open && cur.left > 0" x-bind:href="cur && cur.url" class="flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white transition hover:opacity-90">예매하기</a>
                     <p x-show="cur && ! cur.open" x-cloak class="flex h-14 w-full items-center justify-center rounded-2xl bg-paper text-[15px] font-bold text-ink/70" x-text="cur && (cur.opens + ' 예매 오픈')"></p>
                     <p x-show="cur && cur.open && cur.left === 0" x-cloak class="flex h-14 w-full items-center justify-center rounded-2xl bg-paper text-[15px] font-bold text-signal">매진</p>
                 </div>

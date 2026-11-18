@@ -112,7 +112,7 @@
             @foreach (\App\Models\Production::GENRES as $key => $name)
                 <li>
                     <a href="{{ route('shows.genre', $key) }}" class="group flex flex-col items-center gap-2 text-center">
-                        <span class="grid h-14 w-14 place-items-center rounded-[20px] bg-paper text-ink transition group-hover:-translate-y-0.5 group-hover:bg-ink group-hover:text-pick lg:h-[72px] lg:w-[72px] lg:rounded-3xl">
+                        <span class="grid h-14 w-14 place-items-center rounded-[20px] bg-paper text-ink transition group-hover:-translate-y-0.5 group-hover:bg-ink group-hover:text-white lg:h-[72px] lg:w-[72px] lg:rounded-3xl">
                             <svg viewBox="0 0 24 24" class="h-6 w-6 lg:h-7 lg:w-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{!! $icons[$key] !!}</svg>
                         </span>
                         <span class="text-[13px] font-semibold lg:text-sm">{{ $name }}</span>
@@ -133,7 +133,7 @@
                     <li class="w-[150px] shrink-0 snap-start lg:w-auto">
                         <a href="{{ route('shows.show', $p) }}" class="group block">
                             @include('partials.poster', ['p' => $p])
-                            <p class="mt-3 inline-flex items-center gap-1.5 rounded-md bg-ink px-2 py-1 text-xs font-bold text-pick">
+                            <p class="theme-keep mt-3 inline-flex items-center gap-1.5 rounded-md bg-ink px-2 py-1 text-xs font-bold text-pick">
                                 <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                                 {{ $openLabel($p->salesOpenAt()) }}
                             </p>
