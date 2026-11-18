@@ -45,21 +45,7 @@
                 </div>
                 {{-- NFT 티켓 + 30초마다 바뀌는 입장 코드 (캡처로는 입장 불가) --}}
                 @if ($t->token)
-                    <div class="mt-4 rounded-2xl bg-paper px-4 py-3 text-xs">
-                        <div class="flex items-center justify-between">
-                            <span class="font-bold">NFT 티켓 <span class="num text-mist">#{{ $t->token->token_id }}</span></span>
-                            <span class="chip bg-ink/5">{{ $t->token->statusLabel() }} · 양도 불가</span>
-                        </div>
-                        <p class="num mt-1 text-mist">내 지갑 {{ \App\Models\TicketToken::short($t->token->owner_address) }} · {{ $t->token->network }} ·
-                            @if ($t->token->mint_tx && $t->token->explorerUrl($t->token->mint_tx))
-                                <a href="{{ $t->token->explorerUrl($t->token->mint_tx) }}" target="_blank" rel="noopener" class="row-link text-ink">발행 기록 보기</a>
-                            @elseif ($t->token->status === 'pending')
-                                <span>체인 기록 대기 중</span>
-                            @else
-                                발행 {{ \App\Models\TicketToken::short((string) $t->token->mint_tx) }}
-                            @endif
-                        </p>
-                    </div>
+                    @include('partials.ticket-chain', ['tk' => $t->token])
                     @if ($t->status === 'paid' && auth('member')->id() === $t->member_id)
                         <div class="mt-3 rounded-2xl bg-ink p-4 text-center text-paper"
                              x-data="{ code: '', left: 25, show: false,

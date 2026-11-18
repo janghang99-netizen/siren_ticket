@@ -125,6 +125,19 @@ class NftTicketTest extends TestCase
         $member = $this->makeMember();
         $t = $this->buy(1, $member)->first();
         $this->actingAsMember($member);
-        $this->get(route('tickets'))->assertOk()->assertSee('NFT 티켓')->assertSee('#'.$t->token->token_id);
+        $this->get(route('tickets'))->assertOk()->assertSee('NFT 티켓')->assertSee('#'.$t->token->token_id)
+            ->assertSee('블록체인 인증 티켓');
+
+        // 블록체인(카이아)에 기록된 토큰: 발행·입장 기록, NFT 보기, 내 지갑 기록 — 공식 탐색기 링크
+        if ($t->token->network === 'local') {
+            $this->get(route('tickets'))->assertSee('다담다 서버에 기록돼요');
+        }
+        $t->token->update(['network' => 'kaia-kairos', 'contract' => '0xabc', 'mint_tx' => '0xmint1', 'used_tx' => '0xused1', 'used_at' => now(), 'status' => 'used']);
+        $base = rtrim(config('siren.nft.kaia.explorer'), '/');
+        $this->get(route('tickets'))->assertOk()
+            ->assertSee('카이아 테스트넷')
+            ->assertSee($base.'/tx/0xmint1', false)->assertSee($base.'/tx/0xused1', false)
+            ->assertSee($base.'/nft/0xabc/'.$t->token->token_id, false)
+            ->assertSee($base.'/address/'.$t->token->owner_address, false);
     }
 }
