@@ -115,6 +115,12 @@ class GateCheckInTest extends TestCase
         $this->actingAs($this->gateUser(), 'web')
             ->postJson(route('gate.scan.submit'), ['code' => $nft->entryCode($t2), 'event_id' => $this->event->id])->assertOk();
         $this->assertNotNull($t2->token->fresh()->used_tx);
+
+        // 응답 뒤 전송이 실패해 밀린 기록은 검표 화면의 현황 새로고침이 이어 보낸다 (크론 없는 호스팅)
+        $t3 = $this->ticket();
+        $nft->checkIn($nft->entryCode($t3));
+        $this->getJson(route('gate.stats', $this->event))->assertOk();
+        $this->assertNotNull($t3->token->fresh()->used_tx);
     }
 
     public function test_super_admin_manages_gate_staff(): void

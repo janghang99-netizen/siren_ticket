@@ -77,6 +77,11 @@ class GateController extends Controller
     /** 공연 입장 현황 (게이트 전체 합) — 검표 화면이 15초마다 받아 간다 */
     public function stats(Event $event): JsonResponse
     {
+        // 크론이 없는 호스팅에서도: 검표 화면들이 15초마다 부를 때 밀린 블록체인 ‘사용됨’ 기록을 응답 뒤에 이어 보낸다 (잠금으로 한 줄)
+        if (\App\Models\TicketToken::where('status', 'used')->whereNull('used_tx')->whereNotNull('mint_tx')->exists()) {
+            dispatch(fn () => app(NftTicketService::class)->flushUsed(50))->afterResponse();
+        }
+
         return response()->json($this->nft->entryStats($event->id))->header('Cache-Control', 'no-store');
     }
 
