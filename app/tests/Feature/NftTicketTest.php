@@ -116,7 +116,7 @@ class NftTicketTest extends TestCase
         $admin = User::factory()->create(['role' => 'super_admin']);
         $this->actingAs($admin, 'web')->get(route('admin.check-in'))->assertOk();
         $this->postJson(route('admin.check-in.scan'), ['code' => $code])->assertOk()->assertJsonPath('ok', true);
-        $this->postJson(route('admin.check-in.scan'), ['code' => $code])->assertStatus(422);
+        $this->postJson(route('admin.check-in.scan'), ['code' => $code])->assertStatus(409)->assertJsonPath('reason', 'already_used');
         $this->get(route('admin.check-in'))->assertSee('A1구역');
     }
 

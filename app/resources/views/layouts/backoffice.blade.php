@@ -18,6 +18,7 @@
             ['admin.venues.index', '공연장', 'admin.venues.*|admin.seat-maps.*'],
             ['admin.tickets.index', '티켓 판매', 'admin.tickets.*'],
             ['admin.check-in', '입장 검표', 'admin.check-in*'],
+            ['admin.gate-staff', '검표원', 'admin.gate-staff*'],
             ['admin.vendors.index', '입점업체', 'admin.vendors.*'],
             ['admin.stores.index', '매장', 'admin.stores.*'],
             ['admin.orders.index', '전체 주문', 'admin.orders.*'],

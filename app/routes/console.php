@@ -273,13 +273,32 @@ Artisan::command('nft:deploy {--base-uri=}', function () {
     $this->warn('아직 블록에 안 들어갔어요. 잠시 뒤 영수증을 확인해 주세요.');
 })->purpose('카이아에 SirenTicket(양도 불가 NFT) 컨트랙트를 배포한다');
 
-// 체인 전송 실패분 재시도 (발행·소각·입장 표시)
+// 체인 전송 실패분 재시도 (발행·소각) + 입장 ‘사용됨’ 기록 한 줄로 보내기 — 공연 날 검표가 몰려도 게이트는 기다리지 않는다
 Artisan::command('nft:retry', function (\App\Services\Nft\NftTicketService $nft) {
     $d = $nft->retryPending();
     $this->info("재전송 — 발행 {$d['mint']} · 소각 {$d['burn']} · 입장 {$d['used']}");
 })->purpose('체인에 못 보낸 NFT 발행·소각·입장 기록을 다시 보낸다');
 
-\Illuminate\Support\Facades\Schedule::command('nft:retry')->everyFiveMinutes()->withoutOverlapping();
+\Illuminate\Support\Facades\Schedule::command('nft:retry')->everyMinute()->withoutOverlapping();
+
+// 검표원 계정 (공연장 입구 휴대폰 검표 화면만 쓰는 계정) — 관리 화면 ‘검표원’에서도 만든다
+Artisan::command('staff:gate {email} {--name=검표원} {--gate= : 기본 게이트 이름 (예: 1번 게이트)}', function () {
+    $email = strtolower(trim((string) $this->argument('email')));
+    $user = \App\Models\User::firstOrNew(['email' => $email]);
+    if ($user->exists && ! $user->isGate()) {
+        $this->error('이미 다른 역할로 쓰는 이메일이에요.');
+
+        return 1;
+    }
+    $user->fill(['name' => $this->option('name'), 'role' => 'gate', 'vendor_id' => null, 'gate_name' => $this->option('gate')]);
+    if (! $user->exists) {
+        $user->password = \Illuminate\Support\Str::random(40);
+    }
+    $user->save();
+    $token = \Illuminate\Support\Facades\Password::broker('users')->createToken($user);
+    $this->info("검표원 계정: {$email}".($user->gate_name ? " · {$user->gate_name}" : ''));
+    $this->line('비밀번호 설정 링크: '.route('staff.password.reset', ['token' => $token, 'email' => $email]));
+})->purpose('검표원 계정을 만들고 비밀번호 설정 링크를 출력한다');
 
 // 상품명 번역 (원본 다담다: Claude API) — 새 상품·이름 바뀐 상품을 언어마다 최대 150개씩
 Artisan::command('translations:products {--lang=*}', function (\App\Services\Translation\ProductTranslationService $tr) {

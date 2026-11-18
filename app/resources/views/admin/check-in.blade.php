@@ -2,13 +2,18 @@
 @section('title', '입장 검표')
 @section('eyebrow', 'NFT 티켓 · 30초 입장 코드')
 
+@section('actions')
+    <a href="{{ route('admin.gate-staff') }}" class="btn-ghost !py-2.5 text-sm">검표원 계정</a>
+    <a href="{{ route('gate.scan') }}" target="_blank" class="btn-ink !py-2.5 text-sm">휴대폰 검표 화면</a>
+@endsection
+
 @section('content')
 <div class="grid gap-5 xl:grid-cols-[1fr_1fr]">
     <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5"
              x-data="{ code: '', result: null, ok: false, busy: false,
                  async scan() {
                      if (!this.code) return; this.busy = true;
-                     try { const r = await api('{{ route('admin.check-in.scan') }}', 'POST', { code: this.code }); this.ok = true; this.result = r.message }
+                     try { const r = await api('{{ route('admin.check-in.scan') }}', 'POST', { code: this.code, gate: '운영사 PC' }); this.ok = true; this.result = r.message }
                      catch (e) { this.ok = false; this.result = e.message }
                      this.code = ''; this.busy = false; this.$refs.input.focus();
                  } }">

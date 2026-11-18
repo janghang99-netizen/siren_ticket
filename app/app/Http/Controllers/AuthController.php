@@ -34,7 +34,7 @@ class AuthController extends Controller
         }
 
         $user = Auth::guard('web')->user();
-        if (! $user->isSuperAdmin() && ! $user->isVendor()) {
+        if (! $user->isSuperAdmin() && ! $user->isVendor() && ! $user->isGate()) {
             Auth::logout();
 
             return back()->withInput($request->only('email'))->withErrors(['email' => '관리 화면을 쓸 수 없는 계정이에요.']);
@@ -63,6 +63,9 @@ class AuthController extends Controller
     {
         if ($user?->isSuperAdmin()) {
             return route('admin.events.index');
+        }
+        if ($user?->isGate()) {
+            return route('gate.scan');
         }
 
         return $user?->vendor?->isActive() ? route('partner.board') : route('partner.status');

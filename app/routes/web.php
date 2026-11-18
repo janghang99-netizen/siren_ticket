@@ -120,6 +120,13 @@ Route::get('/nft/tickets/{ticket}/image.svg', [\App\Http\Controllers\NftControll
 Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController::class, 'entryCode'])
     ->middleware(['ticketing', 'auth:member', 'throttle:20,1'])->name('tickets.entry-code');
 
+// ── 공연장 입구 휴대폰 검표 (검표원·운영사) — 카메라로 관객 QR 을 연속으로 찍는다 ──
+Route::prefix('gate')->name('gate.')->middleware(['auth', 'can:check-in', 'ticketing'])->controller(\App\Http\Controllers\GateController::class)->group(function () {
+    Route::get('/', 'scanner')->name('scan');
+    Route::post('/scan', 'scan')->middleware('throttle:240,1')->name('scan.submit');
+    Route::get('/events/{event}/stats', 'stats')->middleware('throttle:60,1')->name('stats');
+});
+
 // ── 관리 화면 로그인 (슈퍼어드민 / 입점업체 공용) ──
 // 이미 로그인해 있어도 로그인 화면을 연다 — 운영사 ↔ 입점업체 계정 바꾸기
 Route::get('/login', [AuthController::class, 'form'])->name('login');
@@ -219,7 +226,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::post('/customers/{customer}/mileage', 'customerAdjust')->name('customers.adjust');
 
     Route::get('/check-in', [\App\Http\Controllers\NftController::class, 'checkInForm'])->middleware('ticketing')->name('check-in');
-    Route::post('/check-in', [\App\Http\Controllers\NftController::class, 'checkIn'])->middleware(['ticketing', 'throttle:120,1'])->name('check-in.scan');
+    Route::post('/check-in', [\App\Http\Controllers\GateController::class, 'scan'])->middleware(['ticketing', 'throttle:240,1'])->name('check-in.scan');
+    // 검표원 계정 (공연장 입구 휴대폰 검표만)
+    Route::controller(\App\Http\Controllers\GateController::class)->group(function () {
+        Route::get('/gate-staff', 'staff')->name('gate-staff');
+        Route::post('/gate-staff', 'staffStore')->name('gate-staff.store');
+        Route::put('/gate-staff/{user}', 'staffUpdate')->name('gate-staff.update');
+        Route::delete('/gate-staff/{user}', 'staffDestroy')->name('gate-staff.destroy');
+    });
 
     // 번역 (원본 다담다 admin/translate_products.php) — 상품명 Claude 번역 · 구글 오역 교정 사전
     Route::controller(\App\Http\Controllers\TranslationController::class)->group(function () {

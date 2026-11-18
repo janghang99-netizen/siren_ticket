@@ -47,15 +47,53 @@
                 @if ($t->token)
                     @include('partials.ticket-chain', ['tk' => $t->token])
                     @if ($t->status === 'paid' && auth('member')->id() === $t->member_id)
-                        <div class="mt-3 rounded-2xl bg-ink p-4 text-center text-paper"
-                             x-data="{ code: '', left: 25, show: false,
-                                 async load() { try { const r = await api('{{ route('tickets.entry-code', $t) }}'); this.code = r.code; this.left = r.refresh } catch (e) { this.code = '' } },
-                                 open() { this.show = true; this.load(); setInterval(() => { if (--this.left <= 0) this.load() }, 1000) } }">
-                            <button type="button" x-show="!show" @click="open()" class="w-full text-sm font-bold">입장 코드 보기 (공연장 입구에서)</button>
+                        {{-- 입장 QR: 25초마다 새 코드(30초 유효) · 검표원 휴대폰 카메라로 찍는다 · 열어 둔 동안 화면이 꺼지지 않게 --}}
+                        <div class="theme-keep mt-3 rounded-2xl bg-ink p-4 text-center text-paper"
+                             x-data="{ code: '', svg: '', left: 25, total: 25, show: false, used: false, failed: false, timer: null, lock: null,
+                                 async load() {
+                                     try {
+                                         const r = await api('{{ route('tickets.entry-code', $t) }}');
+                                         this.failed = false;
+                                         if (!r.code) { this.used = r.status === 'used'; this.stop(); return }
+                                         this.code = r.code; this.svg = await qrSvg(r.code); this.left = this.total = r.refresh;
+                                     } catch (e) { this.failed = true; this.left = 5 }
+                                 },
+                                 async open() {
+                                     this.show = true; await this.load();
+                                     this.timer = setInterval(() => { if (--this.left <= 0) this.load() }, 1000);
+                                     try { this.lock = await navigator.wakeLock?.request('screen') } catch (e) {}
+                                 },
+                                 stop() { clearInterval(this.timer); this.lock?.release?.(); this.lock = null },
+                                 close() { this.show = false; this.stop() } }"
+                             @visibilitychange.document="if (show && !document.hidden) { load(); try { navigator.wakeLock?.request('screen').then(l => lock = l) } catch (e) {} }">
+                            <button type="button" x-show="!show" @click="open()" class="flex w-full items-center justify-center gap-2 py-1 text-sm font-bold">
+                                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+                                입장 QR 보기 (공연장 입구에서)
+                            </button>
                             <div x-show="show" x-cloak>
-                                <p class="text-[11px] text-paper/60">입구 직원에게 보여 주세요 · <span class="num" x-text="left"></span>초 뒤 바뀌어요</p>
-                                <p class="num mt-2 break-all text-lg font-black tracking-wide" x-text="code || '불러오는 중…'"></p>
-                                <p class="mt-1 text-[11px] text-paper/60">캡처한 화면은 쓸 수 없어요</p>
+                                <template x-if="used">
+                                    <p class="py-6 text-lg font-black">입장 완료된 티켓이에요</p>
+                                </template>
+                                <template x-if="!used">
+                                    <div>
+                                        <p class="text-[12px] font-semibold text-paper/70">검표원에게 이 QR을 보여 주세요</p>
+                                        <div class="relative mx-auto mt-3 aspect-square w-full max-w-[260px] rounded-2xl p-4" style="background:#fff">
+                                            <div x-show="svg" x-html="svg" class="h-full w-full [&>svg]:h-full [&>svg]:w-full" role="img" aria-label="입장 QR 코드"></div>
+                                            <p x-show="!svg" class="grid h-full place-items-center text-sm font-bold" style="color:#17132B">불러오는 중…</p>
+                                        </div>
+                                        <div class="mx-auto mt-3 h-1 w-full max-w-[260px] overflow-hidden rounded-full bg-paper/15">
+                                            <div class="h-full rounded-full bg-pick transition-[width] duration-1000 ease-linear" :style="`width:${Math.max(0, left / total * 100)}%`"></div>
+                                        </div>
+                                        <p class="mt-2 text-[11px] text-paper/60" x-show="!failed"><span class="num" x-text="left"></span>초 뒤 새 QR로 바뀌어요 · 캡처한 화면은 통과하지 못해요</p>
+                                        <p class="mt-2 text-[11px] font-bold text-signal" x-show="failed" x-cloak>인터넷 연결이 약해요. 잠시 뒤 다시 받아 올게요.</p>
+                                        <p class="mt-1 text-[11px] text-paper/45">화면 밝기를 올리면 더 빨리 찍혀요</p>
+                                        <details class="mt-2 text-[11px] text-paper/50">
+                                            <summary class="cursor-pointer">QR이 안 찍힐 때 (코드 보기)</summary>
+                                            <p class="num mt-1 break-all font-bold text-paper/80" x-text="code"></p>
+                                        </details>
+                                    </div>
+                                </template>
+                                <button type="button" @click="close()" class="mt-3 text-[12px] font-semibold text-paper/60 underline underline-offset-2">닫기</button>
                             </div>
                         </div>
                     @endif

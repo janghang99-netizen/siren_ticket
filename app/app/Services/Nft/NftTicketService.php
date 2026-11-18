@@ -7,6 +7,7 @@ use App\Models\CustomerWallet;
 use App\Models\Ticket;
 use App\Models\TicketToken;
 use App\Services\OrderException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -142,14 +143,10 @@ class NftTicketService
         foreach (TicketToken::where('status', 'burned')->whereNull('burn_tx')->whereNotNull('mint_tx')->limit($limit)->get() as $t) {
             $done['burn'] += (int) $this->pushBurn($t);
         }
-        foreach (TicketToken::where('status', 'used')->whereNull('used_tx')->limit($limit)->get() as $t) {
-            if (! $t->mint_tx && $this->pushMintOnly($t)) {
-                $done['mint']++;
-            }
-            if ($t->fresh()->mint_tx) {
-                $done['used'] += (int) $this->pushUsed($t);
-            }
+        foreach (TicketToken::where('status', 'used')->whereNull('used_tx')->whereNull('mint_tx')->limit($limit)->get() as $t) {
+            $done['mint'] += (int) $this->pushMintOnly($t);
         }
+        $done['used'] = $this->flushUsed();
 
         return $done;
     }
@@ -203,8 +200,14 @@ class NftTicketService
         return "SIREN1.{$ticket->ticket_no}.{$window}.".$this->sign($ticket->ticket_no, $window);
     }
 
-    /** 검표: 서명·시간 창·토큰 상태 확인 후 한 번만 입장 처리 */
-    public function checkIn(string $code, ?int $now = null): Ticket
+    /**
+     * 검표: 서명·시간 창·공연·토큰 상태 확인 후 한 번만 입장 처리.
+     * DB 에서 바로 확정하고(중복 입장은 행 잠금이 막는다) 블록체인 ‘사용됨’ 기록은 하지 않는다 —
+     * 게이트 여러 곳이 동시에 찍어도 기다리지 않게 flushUsed() 가 응답 뒤·스케줄러에서 한 줄로 보낸다.
+     *
+     * @param  int|null  $eventId  검표원이 고른 공연 (다른 공연 티켓은 거절)
+     */
+    public function checkIn(string $code, ?int $now = null, ?int $eventId = null, ?int $byUserId = null, ?string $gate = null): Ticket
     {
         $parts = explode('.', trim($code));
         if (count($parts) !== 4 || $parts[0] !== 'SIREN1') {
@@ -219,28 +222,73 @@ class NftTicketService
             throw new OrderException('위조된 입장 코드예요.', 'forged_code');
         }
 
-        $ticket = DB::transaction(function () use ($ticketNo) {
-            $ticket = Ticket::with(['event', 'section', 'token'])->where('ticket_no', $ticketNo)->lockForUpdate()->firstOrFail();
+        return DB::transaction(function () use ($ticketNo, $eventId, $byUserId, $gate) {
+            $ticket = Ticket::with(['event', 'section', 'token'])->where('ticket_no', $ticketNo)->lockForUpdate()->first();
+            if (! $ticket) {
+                throw new OrderException('없는 티켓이에요.', 'not_found');
+            }
+            if ($eventId && $ticket->event_id !== $eventId) {
+                throw new OrderException("다른 공연 티켓이에요 — {$ticket->event->artist} ".$ticket->event->starts_at->format('m.d H:i'), 'wrong_event');
+            }
             if ($ticket->event->isCancelled()) {
                 throw new OrderException('취소된 공연의 티켓이에요.', 'cancelled');
             }
             if ($ticket->status === 'used') {
-                throw new OrderException('이미 입장한 티켓이에요. ('.$ticket->checked_in_at?->format('H:i:s').' 입장)', 'already_used', 409);
+                $where = $ticket->checked_in_gate ? " · {$ticket->checked_in_gate}" : '';
+                throw new OrderException('이미 입장한 티켓이에요 ('.$ticket->checked_in_at?->format('H:i:s')." 입장{$where})", 'already_used', 409);
             }
             if ($ticket->status !== 'paid' || ($ticket->token && ! in_array($ticket->token->status, ['minted', 'pending'], true))) {
                 throw new OrderException('쓸 수 없는 티켓이에요 (취소·소각됨).', 'invalid');
             }
-            $ticket->update(['status' => 'used', 'checked_in_at' => now()]);
+            $ticket->update(['status' => 'used', 'checked_in_at' => now(), 'checked_in_by' => $byUserId, 'checked_in_gate' => $gate]);
             $ticket->token?->update(['status' => 'used', 'used_at' => now()]);
 
             return $ticket;
         });
-        // 체인 기록은 입장을 막지 않게 커밋 뒤에 (발행 전이면 재시도 명령이 발행 후 처리)
-        if ($ticket->token?->mint_tx) {
-            $this->pushUsed($ticket->token);
+    }
+
+    /**
+     * 입장한 토큰의 블록체인 ‘사용됨’ 기록을 한 줄로 차례대로 보낸다 (검표 응답 뒤 + 매분 스케줄러).
+     * 이미 누가 보내는 중이면(잠금) 바로 돌아간다 — 그쪽이 이어서 보내고, 남은 건 다음 스케줄러가 보낸다.
+     * 발행 기록이 아직 없는 토큰은 retryPending() 이 발행부터 보낸다.
+     */
+    public function flushUsed(int $limit = 300): int
+    {
+        $lock = Cache::lock('nft:flush-used', 300);
+        if (! $lock->get()) {
+            return 0;
+        }
+        $sent = 0;
+        $tried = [];
+        try {
+            while ($sent < $limit) {
+                $batch = TicketToken::where('status', 'used')->whereNull('used_tx')->whereNotNull('mint_tx')
+                    ->whereNotIn('id', $tried ?: [0])->orderBy('used_at')->limit(25)->get();
+                if ($batch->isEmpty()) {
+                    break;
+                }
+                foreach ($batch as $t) {
+                    $tried[] = $t->id;
+                    if (! $this->pushUsed($t)) {
+                        return $sent;   // 체인이 안 받으면 멈추고 다음 차례에 다시
+                    }
+                    $sent++;
+                }
+            }
+        } finally {
+            $lock->release();
         }
 
-        return $ticket;
+        return $sent;
+    }
+
+    /** 공연별 입장 현황 (검표 화면) */
+    public function entryStats(int $eventId): array
+    {
+        $row = Ticket::where('event_id', $eventId)->whereIn('status', ['paid', 'used'])
+            ->selectRaw("COUNT(*) AS total, SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) AS entered")->first();
+
+        return ['entered' => (int) $row?->entered, 'total' => (int) $row?->total];
     }
 
     private function sign(string $ticketNo, int $window): string

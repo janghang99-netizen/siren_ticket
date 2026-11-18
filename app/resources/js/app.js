@@ -26,6 +26,18 @@ window.api = async (url, method = 'GET', body = null) => {
 
 window.won = (n) => Number(n).toLocaleString('ko-KR');
 
+/** QR 그리기 (내 티켓 입장 QR) — 쓰는 화면에서만 따로 받아 온다 */
+window.qrSvg = async (text) => {
+    const { default: qrcode } = await import('qrcode-generator');
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+};
+
+/** QR 읽기 (검표 화면, 기기에 BarcodeDetector 가 없을 때) */
+window.loadJsQR = async () => (await import('jsqr')).default;
+
 /**
  * 목록 행 클릭 → 상세. <tr data-href="..."> 에 적용.
  * 행 안의 링크·버튼·입력·폼은 원래 동작을 우선한다. Ctrl/⌘·가운데 클릭은 새 탭.

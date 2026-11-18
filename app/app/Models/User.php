@@ -27,6 +27,7 @@ class User extends Authenticatable
     protected $fillable = [
         'role',
         'vendor_id',
+        'gate_name',
         'name',
         'email',
         'password',
@@ -66,6 +67,12 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->role === 'super_admin';
+    }
+
+    /** 검표원 (공연장 입구 — 휴대폰 검표 화면만) */
+    public function isGate(): bool
+    {
+        return $this->role === 'gate';
     }
 
     /** 입점업체 계정 (자기 업체 매장들만) */

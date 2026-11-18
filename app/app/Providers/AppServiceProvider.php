@@ -51,5 +51,8 @@ class AppServiceProvider extends ServiceProvider
 
         // 입점업체 계정 자체 (심사 상태 화면 — 승인 전에도 볼 수 있음)
         Gate::define('vendor-account', fn (User $u) => $u->isVendor());
+
+        // 입장 검표: 검표원 계정 + 운영사
+        Gate::define('check-in', fn (User $u) => $u->isGate() || $u->isSuperAdmin());
     }
 }

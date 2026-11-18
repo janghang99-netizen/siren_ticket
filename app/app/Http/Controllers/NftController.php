@@ -4,11 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Ticket;
 use App\Models\TicketToken;
-use App\Services\Audit;
 use App\Services\Nft\NftTicketService;
-use App\Services\OrderException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
@@ -73,22 +70,5 @@ SVG;
             'recent' => Ticket::with('event', 'section', 'token')->where('status', 'used')->latest('checked_in_at')->limit(20)->get(),
         ]);
     }
-
-    public function checkIn(Request $request): RedirectResponse|JsonResponse
-    {
-        $code = $request->validate(['code' => ['required', 'string', 'max:120']])['code'];
-        try {
-            $ticket = $this->nft->checkIn($code);
-        } catch (OrderException $e) {
-            if ($request->expectsJson()) {
-                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
-            }
-
-            return back()->withErrors(['code' => $e->getMessage()]);
-        }
-        Audit::log('ticket.checked_in', $ticket, "입장 {$ticket->ticket_no} · {$ticket->seatLabel()}");
-        $msg = "입장 OK — {$ticket->event->artist} {$ticket->seatLabel()}";
-
-        return $request->expectsJson() ? response()->json(['ok' => true, 'message' => $msg]) : back()->with('status', $msg);
-    }
+    // 검표 처리는 GateController::scan (휴대폰 검표 화면과 공용)
 }
