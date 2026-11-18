@@ -55,7 +55,7 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
-            'prefix' => '',
+            'prefix' => env('DB_PREFIX', ''),   // 다른 사이트와 DB 를 같이 쓰는 호스팅(카페24 테스트 서버)에선 dd_
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
@@ -75,7 +75,7 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
-            'prefix' => '',
+            'prefix' => env('DB_PREFIX', ''),
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,

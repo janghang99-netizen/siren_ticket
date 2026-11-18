@@ -248,7 +248,7 @@ class AdminController extends Controller
                 ->orderByRaw("CASE slot WHEN 'pre' THEN 0 WHEN 'intermission' THEN 1 ELSE 2 END")->get(),
             'sold' => DB::table('order_items')->join('orders', 'orders.id', '=', 'order_items.order_id')
                 ->where('orders.store_id', $store->id)->whereIn('orders.status', [2, 3, 4, 5, 6])
-                ->groupBy('order_items.product_id')->selectRaw('order_items.product_id, SUM(order_items.qty) as qty')
+                ->groupBy('order_items.product_id')->select('order_items.product_id')->selectRaw('SUM(qty) as qty')
                 ->pluck('qty', 'product_id'),
             'orders' => $orders,
         ]);

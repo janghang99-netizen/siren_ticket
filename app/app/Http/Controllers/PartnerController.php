@@ -185,7 +185,7 @@ class PartnerController extends Controller
             ->where('orders.store_id', $store->id)
             ->whereIn('orders.status', [2, 3, 4, 5, 6])
             ->groupBy('order_items.product_id')
-            ->selectRaw('order_items.product_id, SUM(order_items.qty) as qty')
+            ->select('order_items.product_id')->selectRaw('SUM(qty) as qty')   // 표 이름을 raw 에 쓰지 않는다 (DB 접두어 대응)
             ->pluck('qty', 'product_id');
 
         return view('partner.products', $this->shared($request) + ['products' => $products, 'sold' => $sold, 'categories' => $this->categories($request)]);

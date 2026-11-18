@@ -44,7 +44,7 @@ class FanController extends Controller
             ->whereIn('oi.product_id', $candidates->pluck('id'))
             ->where('o.created_at', '>=', now()->subDays(30))
             ->whereNotIn('o.status', [\App\Enums\OrderStatus::Pending->value, \App\Enums\OrderStatus::Cancelled->value, \App\Enums\OrderStatus::Refunded->value])
-            ->groupBy('oi.product_id')->selectRaw('oi.product_id, sum(oi.qty) as qty')->pluck('qty', 'product_id');
+            ->groupBy('oi.product_id')->select('oi.product_id')->selectRaw('sum(qty) as qty')->pluck('qty', 'product_id');
         $picks = $candidates->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->image_path ? 1 : 0])->take(6)->values();
 
         return view('fan.home', ['events' => $events, 'headliner' => $headliner, 'stores' => $stores, 'picks' => $picks]);

@@ -295,3 +295,29 @@ Artisan::command('translations:products {--lang=*}', function (\App\Services\Tra
 })->purpose('번역 대기 상품명을 Claude 로 번역해 사전에 넣는다');
 
 \Illuminate\Support\Facades\Schedule::command('translations:products')->hourly()->withoutOverlapping();
+
+// 새 서버에서 관리 계정 만들기: 비밀번호는 출력된 링크로 본인이 직접 정한다 (명령에 비밀번호를 넣지 않는다)
+Artisan::command('staff:invite
+    {email : 로그인 이메일}
+    {--name=관리자 : 표시 이름}
+    {--vendor= : 판매자 계정이면 업체 번호 (없으면 운영사 슈퍼관리자)}', function () {
+    $email = strtolower(trim((string) $this->argument('email')));
+    $vendorId = $this->option('vendor') ? (int) $this->option('vendor') : null;
+    if ($vendorId && ! \App\Models\Vendor::whereKey($vendorId)->exists()) {
+        $this->error("업체 {$vendorId}번이 없어요.");
+
+        return 1;
+    }
+    $user = \App\Models\User::firstOrNew(['email' => $email]);
+    if (! $user->exists) {
+        $user->fill(['name' => $this->option('name'), 'role' => $vendorId ? 'vendor' : 'super_admin', 'vendor_id' => $vendorId]);
+        $user->password = \Illuminate\Support\Str::random(40);   // 아무도 모르는 값 — 링크로 새로 정한다
+        $user->save();
+        $this->info('계정을 만들었어요: '.$email.' ('.($vendorId ? "판매자 · 업체 {$vendorId}" : '슈퍼관리자').')');
+    } else {
+        $this->line('이미 있는 계정이에요 — 비밀번호 설정 링크만 새로 만들어요.');
+    }
+    $token = \Illuminate\Support\Facades\Password::broker('users')->createToken($user);
+    $this->line('비밀번호 설정 링크 (한 번만 쓰고, 일정 시간이 지나면 만료):');
+    $this->line(route('staff.password.reset', ['token' => $token, 'email' => $email]));
+})->purpose('관리 계정을 만들고 비밀번호 설정 링크를 출력한다');
