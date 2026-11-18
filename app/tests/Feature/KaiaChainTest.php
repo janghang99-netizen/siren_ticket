@@ -126,6 +126,11 @@ class KaiaChainTest extends TestCase
                 return $this->tx();
             }
 
+            public function ownerOf(string $tokenId): ?string
+            {
+                return null;
+            }
+
             private function tx(): string
             {
                 if ($this->down) {
@@ -168,5 +173,98 @@ class KaiaChainTest extends TestCase
         // 설정에 나라를 넣으면 그 거주 국가만 서버 기록으로 돌릴 수 있다 (기본은 비어 있음)
         config(['siren.nft.offchain_residence' => ['CN']]);
         $this->assertSame(['kaia-kairos', 'local'], [$nft->chainFor($t1)->network(), $nft->chainFor($t3)->network()]);
+    }
+
+    /** DB 를 새로 만든 뒤 티켓 ID 가 예전에 체인에 발행한 번호와 겹쳐도, 번호를 바꿔 발행한다 (재시도가 영원히 실패하지 않는다) */
+    public function test_mint_moves_to_a_new_token_id_when_the_number_is_already_taken_on_chain(): void
+    {
+        $chain = new class implements TicketChain
+        {
+            /** @var array<string, string> 체인에 이미 있는 토큰 번호 => 주인 */
+            public array $owners = [];
+
+            public bool $down = false;
+
+            public function network(): string
+            {
+                return 'kaia-kairos';
+            }
+
+            public function contract(): string
+            {
+                return '0x00000000000000000000000000000000000000aa';
+            }
+
+            public function createWallet(int $customerId): array
+            {
+                return ['address' => '0x'.str_pad(dechex($customerId), 40, 'c', STR_PAD_LEFT), 'secret' => null];
+            }
+
+            public function mint(string $tokenId, string $to, string $metadataUri, string $metadataHash): string
+            {
+                if ($this->down) {
+                    throw new RuntimeException('RPC down');
+                }
+                if (isset($this->owners[$tokenId])) {
+                    throw new RuntimeException('카이아 RPC 오류 (eth_estimateGas): execution reverted');
+                }
+                $this->owners[$tokenId] = $to;
+
+                return '0x'.str_repeat('2', 64);
+            }
+
+            public function burn(string $tokenId): string
+            {
+                return '0x'.str_repeat('3', 64);
+            }
+
+            public function markUsed(string $tokenId): string
+            {
+                return '0x'.str_repeat('4', 64);
+            }
+
+            public function ownerOf(string $tokenId): ?string
+            {
+                if ($this->down) {
+                    throw new RuntimeException('RPC down');
+                }
+
+                return $this->owners[$tokenId] ?? null;
+            }
+        };
+        $this->app->instance(TicketChain::class, $chain);
+
+        $event = Event::create(['slug' => 'k2', 'name' => '투어', 'artist' => '아스테리아', 'starts_at' => now()->addDays(20), 'sales_open_at' => now()->subDay(), 'max_per_buyer' => 4]);
+        $section = SeatSection::create(['event_id' => $event->id, 'code' => 'A1', 'name' => 'A1', 'tier' => 'R', 'price' => 1000, 'capacity' => 10, 'ring' => 1, 'start_deg' => 0, 'end_deg' => 30]);
+        $member = $this->makeMember('01012340009');
+        $svc = app(TicketService::class);
+
+        // 예전 DB 시절에 다른 지갑으로 발행된 번호 1~3 이 체인에 남아 있다
+        $old = '0x'.str_repeat('9', 40);
+        $chain->owners = ['1' => $old, '2' => $old, '3' => $old];
+
+        // ① 예매하는 그 자리에서 번호를 바꿔 발행한다
+        $t1 = $svc->purchase($event, $section, 1, $member->name, $member->phone, now(), member: $member)->first();
+        $tok = $t1->token;
+        $this->assertSame('minted', $tok->status);
+        $this->assertNotSame((string) $t1->id, $tok->token_id);
+        $this->assertMatchesRegularExpression('/^[1-9][0-9]{0,18}$/', $tok->token_id);
+        $this->assertSame(strtolower($tok->owner_address), strtolower($chain->owners[$tok->token_id]));
+        $this->assertSame($old, $chain->owners[(string) $t1->id]);                    // 예전 토큰은 건드리지 않는다
+        $this->getJson(route('nft.metadata', $tok->token_id))->assertOk();            // 새 번호로 메타데이터가 열린다
+
+        // ② 체인이 죽어 대기로 남은 토큰도, 살아난 뒤 재시도가 번호를 바꿔 발행한다
+        $chain->down = true;
+        $t2 = $svc->purchase($event, $section, 1, $member->name, $member->phone, now(), member: $member)->first();
+        $this->assertSame(['pending', (string) $t2->id], [$t2->token->status, $t2->token->token_id]);
+        $chain->down = false;
+        $this->assertSame(1, app(NftTicketService::class)->retryPending()['mint']);
+        $this->assertSame('minted', $t2->token->fresh()->status);
+        $this->assertNotSame((string) $t2->id, $t2->token->fresh()->token_id);
+
+        // ③ 겹치지 않는 번호는 그대로 티켓 ID 를 쓴다
+        unset($chain->owners['3']);
+        $t3 = $svc->purchase($event, $section, 1, $member->name, $member->phone, now(), member: $member)->first();
+        $this->assertSame(['minted', (string) $t3->id], [$t3->token->status, $t3->token->token_id]);
     }
 }

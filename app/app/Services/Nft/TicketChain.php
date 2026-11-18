@@ -27,4 +27,7 @@ interface TicketChain
 
     /** 입장 표시 @return string 트랜잭션 해시 */
     public function markUsed(string $tokenId): string;
+
+    /** 이 번호의 토큰을 지금 가진 지갑 주소. 그런 토큰이 체인에 없으면 null */
+    public function ownerOf(string $tokenId): ?string;
 }

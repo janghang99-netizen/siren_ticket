@@ -1,13 +1,13 @@
 {{-- 내 티켓의 블록체인 기록 — 발행 → 입장 → (취소면) 소각, 단계마다 탐색기 링크. $tk = TicketToken --}}
 @php
+    $pending = $tk->onChain() && ! $tk->mint_tx;
     $steps = [
-        ['발행', '좌석 토큰이 내 지갑에 발행됐어요', $tk->minted_at, $tk->mint_tx, true],
+        ['발행', $pending ? '좌석 토큰을 블록체인에 보내는 중이에요' : '좌석 토큰이 내 지갑에 발행됐어요', $tk->minted_at, $tk->mint_tx, true],
         ['입장', '검표하면 ‘사용됨’이 한 번만 기록돼요', $tk->used_at, $tk->used_tx ?? null, $tk->status === 'used'],
     ];
     if ($tk->status === 'burned') {
         $steps[] = ['소각', '예매를 취소해 토큰이 없어졌어요', $tk->burned_at, $tk->burn_tx, true];
     }
-    $pending = $tk->onChain() && ! $tk->mint_tx;
 @endphp
 <div class="theme-keep mt-4 overflow-hidden rounded-2xl text-white" style="background: linear-gradient(150deg, #1B1733 0%, #0E0C15 100%)">
     <div class="flex items-center justify-between gap-2 px-4 pt-4">

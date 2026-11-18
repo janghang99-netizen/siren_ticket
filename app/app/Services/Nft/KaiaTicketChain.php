@@ -52,6 +52,20 @@ class KaiaTicketChain implements TicketChain
         return $this->callContract(Abi::call('markUsed(uint256)', [['uint256', (int) $tokenId]]));
     }
 
+    public function ownerOf(string $tokenId): ?string
+    {
+        try {
+            $res = $this->read(Abi::call('ownerOf(uint256)', [['uint256', (int) $tokenId]]));
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'revert')) {
+                return null;   // NoSuchToken — 없는 번호
+            }
+            throw $e;
+        }
+
+        return '0x'.substr(Hex::strip($res), -40);
+    }
+
     // ── 배포·운영 도구 ──
 
     /** 컨트랙트 배포 트랜잭션을 보내고 해시를 돌려준다 (주소는 영수증에서) */

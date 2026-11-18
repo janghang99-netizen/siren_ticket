@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** 좌석 티켓 NFT (1티켓 = 1토큰) */
 class TicketToken extends Model
 {
-    public const STATUSES = ['minted' => '발행됨', 'used' => '입장 완료', 'burned' => '소각(취소)'];
+    public const STATUSES = ['pending' => '발행 대기', 'minted' => '발행됨', 'used' => '입장 완료', 'burned' => '소각(취소)'];
 
     protected $guarded = ['id'];
 

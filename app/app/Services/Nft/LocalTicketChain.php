@@ -35,6 +35,11 @@ class LocalTicketChain implements TicketChain
         return $this->fake("used|{$tokenId}");
     }
 
+    public function ownerOf(string $tokenId): ?string
+    {
+        return null;   // 서버 기록만 — 번호가 겹칠 체인이 없다
+    }
+
     private function fake(string $s): string
     {
         return '0x'.hash('sha256', $s.'|'.microtime(true));

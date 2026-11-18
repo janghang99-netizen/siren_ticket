@@ -76,7 +76,7 @@ class NftTicketService
     {
         try {
             $chain = $this->chainByNetwork($token->network);
-            $tx = $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash);
+            $tx = $this->sendMint($token, $chain);
             $token->update(['status' => 'minted', 'mint_tx' => $tx, 'minted_at' => now(), 'last_error' => null, 'contract' => $token->contract ?: $chain->contract()]);
 
             return true;
@@ -86,6 +86,42 @@ class NftTicketService
 
             return false;
         }
+    }
+
+    /**
+     * 발행 전송. 실패했는데 그 번호가 체인에 이미 다른 지갑 소유로 있으면 번호를 바꿔 한 번 더 보낸다.
+     * (토큰 번호는 기본이 티켓 ID 라서, DB 를 새로 만들거나 옮기면 예전에 발행한 번호와 겹칠 수 있다 — 그러면 재시도해도 영원히 실패한다.)
+     */
+    private function sendMint(TicketToken $token, TicketChain $chain): string
+    {
+        try {
+            return $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash);
+        } catch (Throwable $e) {
+            if (! $this->moveOffTakenId($token, $chain)) {
+                throw $e;
+            }
+
+            return $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash);
+        }
+    }
+
+    /** 이 번호를 체인에서 다른 지갑이 갖고 있으면 겹치지 않는 번호로 바꾼다. 바꿨으면 true */
+    private function moveOffTakenId(TicketToken $token, TicketChain $chain): bool
+    {
+        try {
+            $owner = $chain->ownerOf($token->token_id);
+        } catch (Throwable) {
+            return false;   // 체인에 물어볼 수 없으면 건드리지 않는다 (다음 재시도에서 다시 본다)
+        }
+        // 없는 번호(다른 이유로 실패)이거나, 이미 이 고객 지갑에 있는 경우(발행은 됐는데 응답만 놓침)는 번호를 바꾸면 안 된다
+        if ($owner === null || strtolower($owner) === strtolower((string) $token->owner_address)) {
+            return false;
+        }
+        $token->loadMissing('ticket');
+        // 티켓 번호(무작위 문자열)에서 만든 60비트 숫자 — DB 를 새로 만들어도 다시 겹치지 않는다
+        $token->update(['token_id' => (string) hexdec(substr(hash('sha256', "token|{$token->network}|{$token->contract}|{$token->ticket->ticket_no}"), 0, 15))]);
+
+        return true;
     }
 
     public function burn(Ticket $ticket): void
@@ -156,7 +192,7 @@ class NftTicketService
     {
         try {
             $chain = $this->chainByNetwork($token->network);
-            $token->update(['mint_tx' => $chain->mint($token->token_id, $token->owner_address, route('nft.metadata', $token->token_id), $token->metadata_hash),
+            $token->update(['mint_tx' => $this->sendMint($token, $chain),
                 'minted_at' => now(), 'contract' => $token->contract ?: $chain->contract(), 'last_error' => null]);
 
             return true;
