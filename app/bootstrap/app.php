@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ? route('member.account')
             : \App\Http\Controllers\AuthController::home($request->user()));
         $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class]);
+        $middleware->append(\App\Http\Middleware\BlockSearchIndexing::class);   // SITE_NOINDEX=true 인 개발 서버: 검색 노출 금지
         // 공연 티켓 판매 기능 켜기/끄기 (슈퍼관리자 설정)
         $middleware->alias(['ticketing' => \App\Http\Middleware\EnsureTicketingEnabled::class]);
     })

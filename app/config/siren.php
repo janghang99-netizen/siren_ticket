@@ -4,6 +4,9 @@ use App\Services\Payments\MockCardGateway;
 use App\Services\Payments\PosGateway;
 
 return [
+    // 개발·테스트 서버: 검색 엔진(구글·네이버 등)에 수집·노출되지 않게 (robots.txt 전체 차단 + noindex 헤더·메타)
+    'noindex' => (bool) env('SITE_NOINDEX', false),
+
     // 결제수단 => 환불 구현. 여기 없는 결제수단은 주문 생성 시 거부된다.
     'gateways' => [
         'card' => MockCardGateway::class,

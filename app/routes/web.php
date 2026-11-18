@@ -322,3 +322,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
     Route::post('/settings/ticketing', 'ticketingToggle')->name('settings.ticketing');
     Route::put('/settings/site', 'siteSave')->name('settings.site');   // 화면 이름 · 사업자 정보   // 공연 티켓 판매 기능 켜기/끄기
 });
+
+// 검색 로봇 안내 — 개발·테스트 서버(SITE_NOINDEX=true)는 전부 막는다
+Route::get('/robots.txt', fn () => response(config('siren.noindex') ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nDisallow:\n", 200, ['Content-Type' => 'text/plain; charset=UTF-8']))->name('robots');
