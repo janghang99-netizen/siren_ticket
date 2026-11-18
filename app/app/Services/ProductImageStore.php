@@ -16,21 +16,24 @@ class ProductImageStore
 
     public const QUALITY = 82;
 
-    /** @return string storage/app/private 기준 경로 (products/xxxx.webp) */
-    public function store(UploadedFile $file): string
+    /**
+     * @param  string  $dir  products(상품 사진) · productions(작품 포스터·배너)
+     * @return string storage/app/private 기준 경로 (products/xxxx.webp)
+     */
+    public function store(UploadedFile $file, string $dir = 'products', int $maxSide = self::MAX_SIDE): string
     {
         $name = Str::random(40);
-        $resized = $this->resize($file);
+        $resized = $this->resize($file, $maxSide);
         if ($resized !== null) {
-            Storage::disk('local')->put("products/{$name}.webp", $resized);
+            Storage::disk('local')->put("{$dir}/{$name}.webp", $resized);
 
-            return "products/{$name}.webp";
+            return "{$dir}/{$name}.webp";
         }
 
-        return $file->storeAs('products', $name.'.'.$file->extension(), 'local');
+        return $file->storeAs($dir, $name.'.'.$file->extension(), 'local');
     }
 
-    private function resize(UploadedFile $file): ?string
+    private function resize(UploadedFile $file, int $maxSide = self::MAX_SIDE): ?string
     {
         if (! function_exists('imagecreatefromstring') || ! function_exists('imagewebp')) {
             return null;
@@ -41,7 +44,7 @@ class ProductImageStore
         }
         $w = imagesx($src);
         $h = imagesy($src);
-        $scale = min(1, self::MAX_SIDE / max($w, $h));
+        $scale = min(1, $maxSide / max($w, $h));
         $nw = max(1, (int) round($w * $scale));
         $nh = max(1, (int) round($h * $scale));
 

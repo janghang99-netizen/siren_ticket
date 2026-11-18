@@ -49,8 +49,14 @@ class StoreOperationsTest extends TestCase
     public function test_home_shows_stores_and_menu_and_order_tab_goes_to_stores(): void
     {
         $event = Event::first();
+        // 메인(공연 예매 포털): 공연으로 가는 예매 링크 + 공연장 매장 미리 주문 안내 + 하단 '매장주문' 탭
         $this->get(route('home'))->assertOk()
-            ->assertSee('줄 서지 말고, 미리 주문')
+            ->assertSee(route('concerts.show', $event), false)
+            ->assertSee('줄 서지 말고 미리 주문')
+            ->assertSee(route('order.entry'), false);
+
+        // 그 공연의 매장 목록: 주문 받는 매장만
+        $this->get(route('stores.index', $event))->assertOk()
             ->assertSee('아레나 커피')                                   // 주문 받는 매장 (슬롯 있음)
             ->assertDontSee('오븐 베이커리')                             // 이 공연 슬롯이 없는 매장은 안 보임
             ->assertSee('아메리카노')

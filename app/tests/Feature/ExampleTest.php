@@ -12,6 +12,10 @@ class ExampleTest extends TestCase
     /** 공연도 매장도 없어도 홈은 상시 매장 주문 화면(빈 상태 안내)으로 열린다. */
     public function test_home_renders_empty_state(): void
     {
+        // 공연 기능을 켠 메인(예매 포털): 공연이 없으면 안내
+        $this->get('/')->assertOk()->assertSee('곧 공연이 열려요');
+        // 끄면 다담다 상시 매장 주문 홈
+        \App\Models\Setting::put(['ticketing_enabled' => '0']);
         $this->get('/')->assertOk()->assertSee('먼저 주문하고')->assertSee('지금 주문 받는 매장이 아직 없어요');
     }
 

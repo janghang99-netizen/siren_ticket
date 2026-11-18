@@ -13,7 +13,17 @@ class ProductImageController extends Controller
 {
     public function show(string $file): BinaryFileResponse
     {
-        $path = 'products/'.$file;
+        return $this->serve('products/'.$file);
+    }
+
+    /** 작품 포스터·배너 */
+    public function production(string $file): BinaryFileResponse
+    {
+        return $this->serve('productions/'.$file);
+    }
+
+    private function serve(string $path): BinaryFileResponse
+    {
         abort_unless(Storage::disk('local')->exists($path), 404);
 
         return response()->file(Storage::disk('local')->path($path), [

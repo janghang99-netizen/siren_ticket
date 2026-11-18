@@ -57,6 +57,7 @@ class AdminController extends Controller
         $ticketing = \App\Models\Setting::ticketingEnabled();
         $data = $this->validateEvent($request) + $request->validate([
             'seat_map_id' => ['nullable', 'integer', 'exists:seat_maps,id'],
+            'production_id' => ['nullable', 'integer', 'exists:productions,id'],   // 이 작품의 회차로 (없으면 작품을 새로 만든다)
             'tiers' => [$ticketing ? 'required_without:seat_map_id' : 'nullable', 'array'],
             'tiers.*.price' => ['required_with:tiers', 'integer', 'min:0'],
             'tiers.*.capacity' => ['required_with:tiers', 'integer', 'min:1', 'max:5000'],
@@ -67,7 +68,13 @@ class AdminController extends Controller
         }
 
         $event = DB::transaction(function () use ($data, $venue, $maps, $seatMap) {
-            $event = Event::create($this->eventFields($data) + [
+            $fields = $this->eventFields($data);
+            $productionId = $data['production_id'] ?? \App\Models\Production::create([
+                'slug' => Str::lower(Str::random(10)), 'title' => $fields['name'], 'artist' => $fields['artist'],
+                'venue' => $fields['venue'], 'venue_id' => $fields['venue_id'], 'theme_color' => $fields['theme_color'],
+            ])->id;
+            $event = Event::create($fields + [
+                'production_id' => $productionId,
                 'slug' => Carbon::parse($data['starts_at'])->format('Ymd-Hi').'-'.Str::lower(Str::random(5)),
             ]);
             if ($seatMap) {

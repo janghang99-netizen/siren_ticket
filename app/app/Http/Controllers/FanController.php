@@ -13,6 +13,7 @@ use App\Models\StampProgram;
 use App\Services\Benefits\BenefitService;
 use App\Services\Benefits\PhoneVerificationService;
 use App\Models\Order;
+use App\Models\Production;
 use App\Models\SeatSection;
 use App\Models\Store;
 use App\Models\Ticket;
@@ -29,7 +30,12 @@ class FanController extends Controller
 {
     public function home(): View
     {
-        $events = Event::with('sections')->where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
+        // 공연 기능을 켜면 메인은 공연 예매 포털 (배너 · 장르 · 오픈 예정 · 랭킹). 끄면 다담다 상시 매장 주문 홈
+        if (\App\Models\Setting::ticketingEnabled()) {
+            return $this->ticketHome();
+        }
+
+        $events =Event::with('sections')->where('status', 'scheduled')->where('starts_at', '>', now()->subHours(6))->orderBy('starts_at')->get();
 
         // 티켓 판매를 쓰면 가장 가까운 공연이 홈의 주인공. 안 쓰면(다담다) 상시 매장 주문이 홈.
         $headliner = \App\Models\Setting::ticketingEnabled() ? $events->first() : null;
@@ -48,6 +54,70 @@ class FanController extends Controller
         $picks = $candidates->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->image_path ? 1 : 0])->take(6)->values();
 
         return view('fan.home', ['events' => $events, 'headliner' => $headliner, 'stores' => $stores, 'picks' => $picks]);
+    }
+
+    /** 공연 메인 — 큰 배너 · 장르 · 오픈 예정 · 장르별 랭킹 · 공연장 */
+    private function ticketHome(): View
+    {
+        $all = $this->showing();
+        $sold = $this->recentSales();
+        $ranked = $all->sortBy(fn (Production $p) => [-(int) ($sold[$p->id] ?? 0), $p->nextEvent()?->starts_at->timestamp])->values();
+
+        $featured = $all->where('is_featured', true)->sortBy(fn (Production $p) => [$p->sort, $p->nextEvent()?->starts_at->timestamp])->values();
+
+        return view('fan.ticket-home', [
+            'hero' => ($featured->isNotEmpty() ? $featured : $ranked)->take(8)->values(),
+            'openSoon' => $all->filter(fn (Production $p) => $p->opensLater())->sortBy(fn (Production $p) => $p->salesOpenAt()->timestamp)->values(),
+            'ranked' => $ranked,
+            'genreCounts' => $all->countBy('genre'),
+            'venues' => $all->groupBy('venue')->map->count()->sortDesc()->take(8),
+            'storeCount' => Store::whereHas('vendor', fn ($q) => $q->where('state', 'approved'))->count(),
+        ]);
+    }
+
+    /** 장르별 공연 목록 */
+    public function genre(string $genre, Request $request): View
+    {
+        return $this->showList($request, Production::GENRES[$genre], $this->showing()->where('genre', $genre), $genre);
+    }
+
+    /** 공연 검색 — 작품명 · 아티스트 · 공연장 */
+    public function search(Request $request): View
+    {
+        $q = trim((string) $request->query('q', ''));
+        $hits = $q === '' ? collect() : $this->showing()->filter(fn (Production $p) => collect([$p->title, $p->artist, $p->venue])
+            ->contains(fn ($v) => mb_stripos((string) $v, $q) !== false));
+
+        return $this->showList($request, $q === '' ? '공연 검색' : "‘{$q}’ 검색 결과", $hits, null, $q);
+    }
+
+    private function showList(Request $request, string $title, $items, ?string $genre, string $q = ''): View
+    {
+        $sort = $request->query('sort') === 'rank' ? 'rank' : 'date';
+        $sold = $this->recentSales();
+        $items = $sort === 'rank'
+            ? $items->sortBy(fn (Production $p) => [-(int) ($sold[$p->id] ?? 0), $p->nextEvent()?->starts_at->timestamp])
+            : $items->sortBy(fn (Production $p) => $p->nextEvent()?->starts_at->timestamp);
+
+        return view('fan.shows', ['title' => $title, 'productions' => $items->values(), 'genre' => $genre, 'q' => $q, 'sort' => $sort,
+            'genreCounts' => $this->showing()->countBy('genre')]);
+    }
+
+    /** 지금 볼 수 있는 작품 (다가오는 회차가 있는) — 회차·구역 가격을 함께 불러온다 */
+    private function showing()
+    {
+        return Production::showing()
+            ->with(['events' => fn ($q) => $q->where('status', 'scheduled')->with('sections')])
+            ->get();
+    }
+
+    /** 최근 14일 작품별 판매 티켓 수 (랭킹) */
+    private function recentSales()
+    {
+        return \Illuminate\Support\Facades\DB::table('tickets')->join('events', 'events.id', '=', 'tickets.event_id')
+            ->whereIn('tickets.status', ['paid', 'used'])->where('tickets.created_at', '>=', now()->subDays(14))
+            ->groupBy('events.production_id')->select('events.production_id')->selectRaw('count(*) as n')
+            ->pluck('n', 'production_id');
     }
 
     /** 하단 '매장주문' 탭 — 상시 매장 주문 (공연과 상관없이 늘 연다. 원본 다담다 기본 동작) */

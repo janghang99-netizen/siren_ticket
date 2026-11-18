@@ -321,3 +321,75 @@ Artisan::command('staff:invite
     $this->line('비밀번호 설정 링크 (한 번만 쓰고, 일정 시간이 지나면 만료):');
     $this->line(route('staff.password.reset', ['token' => $token, 'email' => $email]));
 })->purpose('관리 계정을 만들고 비밀번호 설정 링크를 출력한다');
+
+// 샘플 작품(공연) 넣기 — 폴더의 manifest.json + 포스터·배너 이미지. 아티스트 사진은 git 에 넣지 않고 서버에만 둔다
+Artisan::command('tickets:samples
+    {dir : manifest.json 과 이미지가 있는 폴더}
+    {--fresh : 이미 넣은 샘플(slug sample-*)을 지우고 다시}', function (\App\Services\VenueSetup $venueSetup) {
+    $dir = rtrim((string) $this->argument('dir'), '/'.DIRECTORY_SEPARATOR);
+    $items = json_decode((string) @file_get_contents($dir.'/manifest.json'), true);
+    if (! is_array($items)) {
+        $this->error("manifest.json 을 읽지 못했어요: {$dir}");
+
+        return 1;
+    }
+    if ($this->option('fresh')) {
+        foreach (\App\Models\Production::where('slug', 'like', 'sample-%')->get() as $old) {
+            foreach ($old->events()->get() as $e) {
+                if ($e->tickets()->exists()) {
+                    $this->warn("{$old->title}: 팔린 티켓이 있어 지우지 않아요.");
+
+                    continue 2;
+                }
+                $e->delete();
+            }
+            $old->delete();
+        }
+    }
+    $put = function (?string $file) use ($dir): ?string {
+        if (! $file || ! is_file($dir.'/'.$file)) {
+            return null;
+        }
+        $path = 'productions/'.\Illuminate\Support\Str::random(40).'.'.pathinfo($file, PATHINFO_EXTENSION);
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, file_get_contents($dir.'/'.$file));
+
+        return $path;
+    };
+
+    $made = 0;
+    foreach ($items as $it) {
+        $slug = 'sample-'.$it['key'];
+        if (\App\Models\Production::where('slug', $slug)->exists()) {
+            $this->line("이미 있음: {$it['title']}");
+
+            continue;
+        }
+        $venue = \App\Models\Venue::firstOrCreate(['name' => $it['venue']]);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($it, $slug, $venue, $put, $venueSetup) {
+            $p = \App\Models\Production::create([
+                'slug' => $slug, 'title' => $it['title'], 'artist' => $it['artist'] ?? '', 'genre' => $it['genre'] ?? 'concert',
+                'venue' => $venue->name, 'venue_id' => $venue->id, 'theme_color' => $it['theme_color'] ?? '#6C4BFF',
+                'poster_path' => $put($it['poster'] ?? null), 'banner_path' => $put($it['banner'] ?? null),
+                'runtime_minutes' => $it['runtime'] ?? null, 'age_rating' => $it['age'] ?? null, 'description' => $it['description'] ?? null,
+                'badge' => $it['badge'] ?? null, 'is_featured' => (bool) ($it['featured'] ?? false), 'sort' => (int) ($it['sort'] ?? 0),
+            ]);
+            $tiers = collect($it['tiers'] ?? ['VIP' => [150000, 120], 'R' => [121000, 200], 'S' => [99000, 260]])
+                ->map(fn ($t) => ['price' => (int) $t[0], 'capacity' => (int) $t[1]])->all();
+            foreach ($it['dates'] as $n => $at) {
+                $starts = \Illuminate\Support\Carbon::parse($at);
+                $event = \App\Models\Event::create([
+                    'production_id' => $p->id, 'slug' => $slug.'-'.($n + 1),
+                    'name' => $it['title'].(count($it['dates']) > 1 ? ' · DAY '.($n + 1) : ''), 'artist' => $it['artist'] ?? '',
+                    'venue' => $venue->name, 'venue_id' => $venue->id, 'starts_at' => $starts, 'doors_at' => $starts->copy()->subHour(),
+                    'sales_open_at' => isset($it['sales_open']) ? \Illuminate\Support\Carbon::parse($it['sales_open']) : now()->subDay(),
+                    'theme_color' => $p->theme_color, 'max_per_buyer' => 4, 'status' => 'scheduled',
+                ]);
+                $venueSetup->createSections($event, $tiers);
+                $venueSetup->ensureSlots($event);
+            }
+        });
+        $made++;
+        $this->info("샘플 작품: {$it['title']} (회차 ".count($it['dates']).'개)');
+    }
+    $this->info("새로 넣은 샘플 작품 {$made}개");
+})->purpose('샘플 작품·회차·좌석을 manifest.json 으로 넣는다 (개발 서버용)');
