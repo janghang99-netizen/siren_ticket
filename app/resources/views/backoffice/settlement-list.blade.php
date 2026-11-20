@@ -24,9 +24,18 @@
                         <td class="px-5 py-3"><a href="{{ route($route, $s) }}" class="num font-semibold underline-offset-4 hover:underline">{{ $s->period_start->format('Y.m.d') }} – {{ $s->period_end->format('m.d') }}</a></td>
                         @if ($showVendor)<td class="px-3 py-3">{{ $s->vendor->name }}</td>@endif
                         <td class="num px-3 py-3 text-right">{{ number_format($s->order_count) }}</td>
-                        <td class="num px-3 py-3 text-right">{{ number_format($s->gross_amount) }}</td>
-                        <td class="num px-3 py-3 text-right text-mist">−{{ number_format($s->commission_amount) }}</td>
-                        <td class="num px-3 py-3 text-right font-black">{{ number_format($s->payout_amount) }}</td>
+                        @php $card = ($cards ?? [])[$s->id] ?? null; @endphp
+                        @if ($card)
+                            {{-- 원샷 정산 완료목록(운영사): 페이레터를 불러온 업체는 카드결제 기준으로 표시만 바꾼다 (원본 jungsan_list.php) --}}
+                            <td class="num px-3 py-3 text-right">{{ number_format($card['card']) }}<p class="text-xs text-mist">주문 기준 {{ number_format($s->gross_amount) }}</p></td>
+                            <td class="num px-3 py-3 text-right text-mist">−{{ number_format($card['fee'] + $card['vat']) }}</td>
+                            <td class="num px-3 py-3 text-right align-top font-black">{{ number_format($card['pay']) }}
+                                @include('admin.partials.card-note', ['c' => $card, 'vendor' => $s->vendor, 'old' => $s->payout_amount, 'src' => 'done'])</td>
+                        @else
+                            <td class="num px-3 py-3 text-right">{{ number_format($s->gross_amount) }}</td>
+                            <td class="num px-3 py-3 text-right text-mist">−{{ number_format($s->commission_amount) }}</td>
+                            <td class="num px-3 py-3 text-right font-black">{{ number_format($s->payout_amount) }}</td>
+                        @endif
                         <td class="px-5 py-3">
                             <span @class(['chip', 'bg-ink/10' => $s->status === 'paid', 'bg-pick' => $s->status !== 'paid'])>{{ $s->statusLabel() }}</span>
                             @if ($s->overdueDays())<span class="chip bg-signal/10 text-signal">지연 {{ $s->overdueDays() }}일</span>@endif

@@ -69,9 +69,32 @@ class OrderWebhookSender
             'add_price' => 0,
             'line_total' => $i->line_total,
             'total_amount' => $order->total_amount,
-            'pay_method' => $order->pay_method,
+            'pay_method' => self::payMethodLabel((string) $order->pay_method, (string) $i->name),
             'card_approval_no' => $order->card_approval_no,
         ])->values()->all();
+    }
+
+    /**
+     * EIS 상품행 결제수단: '카드' / '현금' / '이체' / '' (원본 inc/webhook_order.php _wh_pay_method, 2026-11-20).
+     *  - 이관 앱 코드: card·pos_card → 카드, pos_cash → 현금, pos_transfer → 이체
+     *  - 원본에서 옮겨 온 결제수단 글자(마일리지결제·네이버페이 등)는 원본 규칙 그대로:
+     *    '마일리지' → 상품명 앞 [현금]→현금, [계좌이체]→이체, 그 외 카드 (현장카드 개발 전 임시 구분)
+     *    '현금' → 현금, '계좌이체'·'무통장' → 이체, 그 외(간편결제·온라인 PG) → 카드, 비면 ''
+     */
+    public static function payMethodLabel(string $payMethod, string $itemName = ''): string
+    {
+        $t = trim($payMethod);
+
+        return match (true) {
+            $t === '' => '',
+            in_array($t, ['card', 'pos_card'], true) => '카드',
+            $t === 'pos_cash' => '현금',
+            $t === 'pos_transfer' => '이체',
+            str_contains($t, '마일리지') => str_starts_with($itemName, '[현금]') ? '현금' : (str_starts_with($itemName, '[계좌이체]') ? '이체' : '카드'),
+            str_contains($t, '현금') => '현금',
+            str_contains($t, '계좌이체') || str_contains($t, '무통장') => '이체',
+            default => '카드',
+        };
     }
 
     private function log(Order $order, ?string $url, bool $ok, string $result, ?array $payload): void

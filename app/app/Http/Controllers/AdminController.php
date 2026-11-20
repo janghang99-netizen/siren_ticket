@@ -283,16 +283,56 @@ class AdminController extends Controller
 
     // ── 정산 ──
 
-    public function settlements(): View
+    public function settlements(Request $request, SettlementService $service, \App\Services\PgSettlementService $pg): View
     {
         $unsettled = Order::where('status', 5)->whereNull('settlement_id');
+        $sDate = \App\Services\PgSettlementService::isYmd($request->query('s_date')) ? $request->query('s_date') : null;
+        $eDate = \App\Services\PgSettlementService::isYmd($request->query('e_date')) ? $request->query('e_date') : null;
+
+        // 원샷 판매자 정산 대기목록 (원본 go_money.php). 페이레터를 불러온 업체는 카드결제 기준으로 표시만 덮어쓴다
+        $pending = $service->pendingByVendor($sDate, $eDate)->map(function (array $r) use ($pg, $sDate) {
+            [$from, $to] = $pg->pendingWindow($r['vendor'], $sDate);
+            $r['card'] = $pg->cardSettle($r['vendor'], $from, $to);
+
+            return $r;
+        });
+        // 원샷 정산 완료목록 (원본 jungsan_list.php) — 정산서마다 같은 규칙의 승인일 기간
+        $settlements = Settlement::with('vendor')->latest('id')->paginate(30)->withQueryString();
+        $cards = [];
+        foreach ($settlements as $s) {
+            [$from, $to] = $pg->bundleWindow($s);
+            $c = $pg->cardSettle($s->vendor, $from, $to);
+            if ($c['ok']) {
+                $cards[$s->id] = $c;
+            }
+        }
 
         return view('admin.settlements', [
-            'settlements' => Settlement::with('vendor')->latest('id')->paginate(30),
+            'settlements' => $settlements,
+            'cards' => $cards,
+            'pending' => $pending,
+            'sDate' => $sDate, 'eDate' => $eDate,
+            'importedPending' => (clone $unsettled)->whereNotNull('imported_from')->count(),
             'unsettledCount' => (clone $unsettled)->count(),
             'unsettledAmount' => (int) (clone $unsettled)->sum('total_amount'),
             'oldest' => (clone $unsettled)->min('picked_up_at'),
         ]);
+    }
+
+    /** 원샷 판매자 정산 [정산완료] — 그 업체의 수령완료 주문(주문일 기간)을 정산서로 묶는다 (원본 go_money.php mode=seller_reg) */
+    public function settlementOneshot(Request $request, Vendor $vendor, SettlementService $service): RedirectResponse
+    {
+        $data = $request->validate(['s_date' => ['nullable', 'date_format:Y-m-d'], 'e_date' => ['nullable', 'date_format:Y-m-d']]);
+        $from = Carbon::parse($data['s_date'] ?? '2000-01-01');
+        $to = Carbon::parse($data['e_date'] ?? now()->toDateString());
+        $made = $service->generate($from, $to, $vendor->id, 'created_at');
+        foreach ($made as $s) {
+            \App\Services\Audit::log('settlement.generated', $s, '원샷 정산서 #'.$s->id.' 생성 (주문일 '.$from->toDateString().'~'.$to->toDateString().') 지급액 '.number_format($s->payout_amount).'원');
+        }
+
+        return back()->with('status', $made->isEmpty()
+            ? "{$vendor->name}: 정산할 수령완료 주문이 없어요."
+            : "{$vendor->name} 정산서를 만들었어요. 지급액 ".number_format($made->sum('payout_amount')).'원 — 송금 후 지급 완료로 표시해 주세요.');
     }
 
     public function settlementGenerate(Request $request, SettlementService $service): RedirectResponse

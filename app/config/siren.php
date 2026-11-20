@@ -55,6 +55,21 @@ return [
         ],
     ],
 
+    // 페이레터 결제내역 조회 (판매자 정산 보고서 — 카드결제 기준 정산). 원본 btcs/config.php 의 PAYLETTER_* 와 같은 뜻.
+    // 키·가맹점 ID 는 .env 에만 넣는다 (git 금지). 온라인 가맹점 2개는 사이트 공용 → 그 업체 주문번호인 줄만 저장,
+    // 매장 카드단말기 가맹점은 PAYLETTER_TERMINAL_STORE(매장 코드)의 것으로 전부 저장한다.
+    'payletter' => [
+        'url' => rtrim((string) env('PAYLETTER_URL', ''), '/'),
+        'clients' => [
+            ['client_id' => env('PAYLETTER_CLIENT_ID'), 'search_key' => env('PAYLETTER_SEARCH_KEY'), 'kind' => 'online'],
+            ['client_id' => env('PAYLETTER_CLIENT_ID_2'), 'search_key' => env('PAYLETTER_SEARCH_KEY_2'), 'kind' => 'online'],
+            ['client_id' => env('PAYLETTER_CLIENT_ID_3'), 'search_key' => env('PAYLETTER_SEARCH_KEY_3'), 'kind' => 'terminal', 'store_code' => env('PAYLETTER_TERMINAL_STORE')],
+        ],
+    ],
+    // 카드결제 기준 정산: 이용료(%) · 이용료에 붙는 부가세(%) — 원본 SP_CARD_RATE / SP_CARD_VAT
+    'card_settle_rate' => 8.5,
+    'card_settle_vat' => 10,
+
     // 인증한 휴대폰 번호를 이 세션에서 몇 분 동안 유지할지
     'phone_session_minutes' => 60,
 ];

@@ -24,9 +24,43 @@ use Illuminate\Support\Facades\DB;
  */
 class SettlementService
 {
-    /** @return Collection<int, Settlement> 새로 만든 정산서 (대상 없으면 빈 컬렉션) */
-    public function generate(CarbonInterface $from, CarbonInterface $to, ?int $vendorId = null): Collection
+    /**
+     * 원샷 판매자 정산 대기목록 (원본 admin/go_money.php mode=seller) — 업체별 수령완료·정산서 없는 주문 합계.
+     *  정산 처리([정산완료] = generate(주문일 기준, 업체))로 묶일 주문과 같은 기준으로 센다. 원본에서 옮겨 온 주문은 빠진다.
+     *
+     * @return Collection<int, array{vendor:Vendor, count:int, gross:int, coupon:int, mileage:int, commission:int, vat:int, payout:int, first:string, last:string}>
+     */
+    public function pendingByVendor(?string $from = null, ?string $to = null): Collection
     {
+        $vatRate = (float) Setting::get('commission_vat_rate');
+
+        return Order::with('store:id,vendor_id')
+            ->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id')->whereNull('imported_from')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from.' 00:00:00'))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to.' 23:59:59'))
+            ->get()->filter(fn (Order $o) => $o->store?->vendor_id)
+            ->groupBy(fn (Order $o) => $o->store->vendor_id)
+            ->map(function (Collection $g, $vid) use ($vatRate) {
+                $gross = (int) $g->sum('total_amount');
+                $coupon = (int) $g->sum(fn (Order $o) => $o->coupon_funded_by === 'vendor' ? $o->coupon_discount : 0);
+                $mileage = (int) $g->sum('mileage_earn');
+                $commission = (int) $g->sum(fn (Order $o) => $o->commission());
+                $vat = (int) round($commission * $vatRate / 100);
+
+                return ['vendor' => Vendor::find($vid), 'count' => $g->count(), 'gross' => $gross, 'coupon' => $coupon, 'mileage' => $mileage,
+                    'commission' => $commission, 'vat' => $vat, 'payout' => $gross - $coupon - $commission - $vat - $mileage,
+                    'first' => $g->min('created_at')->toDateString(), 'last' => $g->max('created_at')->toDateString()];
+            })
+            ->filter(fn ($r) => $r['vendor'])->sortBy(fn ($r) => $r['vendor']->name)->values();
+    }
+
+    /**
+     * @param  string  $dateField  기간 기준: picked_up_at(수령일, 기본·자동 정산) / created_at(주문일, 원샷 판매자 정산)
+     * @return Collection<int, Settlement> 새로 만든 정산서 (대상 없으면 빈 컬렉션)
+     */
+    public function generate(CarbonInterface $from, CarbonInterface $to, ?int $vendorId = null, string $dateField = 'picked_up_at'): Collection
+    {
+        $dateField = $dateField === 'created_at' ? 'created_at' : 'picked_up_at';
         $start = $from->copy()->startOfDay();
         $end = $to->copy()->endOfDay();
         if ($start->gt($end)) {
@@ -34,12 +68,12 @@ class SettlementService
         }
         $vatRate = (float) Setting::get('commission_vat_rate');
 
-        return DB::transaction(function () use ($start, $end, $vendorId, $vatRate) {
+        return DB::transaction(function () use ($start, $end, $vendorId, $vatRate, $dateField) {
             $orders = Order::with('store:id,vendor_id')
                 ->where('status', OrderStatus::PickedUp->value)
                 ->whereNull('settlement_id')
                 ->whereNull('imported_from')   // 원본에서 옮겨 온 주문은 원본 정산 기록을 따른다
-                ->whereBetween('picked_up_at', [$start, $end])
+                ->whereBetween($dateField, [$start, $end])
                 ->when($vendorId, fn ($q) => $q->whereHas('store', fn ($s) => $s->where('vendor_id', $vendorId)))
                 ->lockForUpdate()
                 ->get()

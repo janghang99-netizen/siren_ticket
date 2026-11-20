@@ -340,6 +340,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 
     Route::get('/settlements', 'settlements')->name('settlements.index');
     Route::post('/settlements', 'settlementGenerate')->name('settlements.generate');
+    Route::post('/settlements/oneshot/{vendor}', 'settlementOneshot')->name('settlements.oneshot');   // 원샷 판매자 정산 [정산완료]
+    // 판매자 정산 보고서 (카드결제·PG 기준) — 페이레터 내역 불러오기·삭제·CSV (원본 openmarket_settle_report.php)
+    Route::get('/settlements/report', [\App\Http\Controllers\SettlementReportController::class, 'show'])->name('settlements.report');
+    Route::get('/settlements/report/export', [\App\Http\Controllers\SettlementReportController::class, 'export'])->name('settlements.report.export');
+    Route::post('/settlements/pg-load', [\App\Http\Controllers\SettlementReportController::class, 'load'])->middleware('throttle:200,1')->name('settlements.pg-load');
+    Route::delete('/vendors/{vendor}/pg-loads/{load}', [\App\Http\Controllers\SettlementReportController::class, 'destroyLoad'])->whereNumber('load')->name('settlements.pg-load.destroy');
     Route::get('/settlements/{settlement}', 'settlement')->name('settlements.show');
     Route::patch('/settlements/{settlement}/pay', 'settlementPay')->name('settlements.pay');
     Route::patch('/settlements/{settlement}/tax-invoice', 'settlementTaxInvoice')->name('settlements.tax-invoice');
