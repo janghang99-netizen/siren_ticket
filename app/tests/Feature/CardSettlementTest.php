@@ -202,6 +202,9 @@ class CardSettlementTest extends TestCase
         // 완료목록: 첫 정산서는 첫 주문일과 PG 첫 승인일 중 빠른 날부터
         $this->assertSame(['2026-11-01', '2026-11-06'], $pg->bundleWindow($s));
         $this->get(route('admin.settlements.index'))->assertOk()->assertSee('정산 완료목록')->assertSee('src=done', false);
+        // 정산서 상세: 카드 기준 금액·설명·보고서 버튼 (지급액은 정산서 값 그대로)
+        $this->get(route('admin.settlements.show', $s))->assertOk()->assertSee('카드결제 기준 정산금액')
+            ->assertSee(number_format((int) round(33000 - 33000 * 0.085 * 1.1)))->assertSee(number_format($s->payout_amount));
     }
 
     public function test_vendor_cannot_open_report(): void

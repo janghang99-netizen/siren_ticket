@@ -30,5 +30,16 @@
 @endif
 
 @section('content')
+    @if ($card && $card['ok'])
+        {{-- 카드결제(PG) 기준 정산금액 — 페이레터를 불러온 업체만. 표시만: 지급액·지급 처리는 아래 정산서 그대로 (원본 jungsan_list.php) --}}
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-3xl bg-pick/40 p-5 ring-1 ring-ink/5">
+            <div>
+                <p class="text-xs font-semibold text-mist">카드결제 기준 정산금액 (실제 송금 기준)</p>
+                <p class="num mt-1 text-2xl font-black">{{ number_format($card['pay']) }}<span class="font-sans text-sm font-semibold">원</span></p>
+                <p class="mt-1 text-xs text-mist">현금·계좌이체는 매장 직접 수령이라 빠져요. 세금계산서(이용료) 공급가 <span class="num">{{ number_format($card['fee']) }}</span> · 세액 <span class="num">{{ number_format($card['vat']) }}</span></p>
+            </div>
+            <div class="min-w-[260px]">@include('admin.partials.card-note', ['c' => $card, 'vendor' => $settlement->vendor, 'old' => $settlement->payout_amount, 'src' => 'done'])</div>
+        </div>
+    @endif
     @include('backoffice.settlement-detail')
 @endsection

@@ -348,10 +348,13 @@ class AdminController extends Controller
             : "정산서 {$made->count()}건을 만들었어요. 지급액 합계 ".number_format($made->sum('payout_amount')).'원');
     }
 
-    public function settlement(Settlement $settlement): View
+    public function settlement(Settlement $settlement, \App\Services\PgSettlementService $pg): View
     {
+        [$from, $to] = $pg->bundleWindow($settlement->load('vendor'));
+
         return view('admin.settlement', [
-            'settlement' => $settlement->load('vendor'),
+            'card' => $pg->cardSettle($settlement->vendor, $from, $to),
+            'settlement' => $settlement,
             'orders' => $settlement->orders()->with('store', 'items')->orderBy('picked_up_at')->get(),
         ]);
     }
