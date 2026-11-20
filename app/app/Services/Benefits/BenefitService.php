@@ -154,6 +154,15 @@ class BenefitService
             return;
         }
         $this->releaseOrder($order, restoreCoupon: false);
+        $this->revokeEarned($order);
+    }
+
+    /** 수령 때 준 적립금·스탬프 회수 (준 적이 없으면 아무 일도 하지 않는다. 한 번만 처리된다). */
+    public function revokeEarned(Order $order): void
+    {
+        if (! $order->customer_id) {
+            return;
+        }
         $customer = Customer::find($order->customer_id);
         $subject = 'order:'.$order->order_no;
         if ($this->ledger->done("mileage:earn:{$subject}")) {

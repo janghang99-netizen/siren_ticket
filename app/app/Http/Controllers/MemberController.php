@@ -73,7 +73,10 @@ class MemberController extends Controller
         if ($existing && ! $social) {
             return back()->withInput()->withErrors(['phone' => '이미 가입한 번호 또는 이메일이에요. 로그인하거나 비밀번호를 재설정해 주세요.']);
         }
-        if ($existing && ($data['channel'] === 'sms' ? $existing->phone !== $phone : $existing->email !== $email)) {
+        // 연결은 기존 회원이 "인증한" 번호·이메일로 받을 때만 (남이 적어만 둔 번호·이메일로는 연결하지 않는다)
+        if ($existing && ($data['channel'] === 'sms'
+            ? ($existing->phone !== $phone || ! $existing->phone_verified_at)
+            : ($existing->email !== $email || ! $existing->email_verified_at))) {
             return back()->withInput()->withErrors(['phone' => '이미 다른 회원이 쓰는 번호 또는 이메일이에요. 고객센터로 문의해 주세요.']);
         }
 
@@ -114,6 +117,15 @@ class MemberController extends Controller
         if (! empty($p['link_member_id'])) {
             // SNS → 기존 회원 연결 (인증번호로 본인 확인 끝)
             $member = Member::findOrFail($p['link_member_id']);
+            if ($member->isLocked()) {
+                return redirect()->route('member.login')->withErrors(['identifier' => '계정이 잠시 잠겨 있어요. 잠시 뒤 다시 해 주세요.']);
+            }
+            if ($member->hasTwoFactor()) {
+                // OTP 를 켠 회원은 인증번호만으로 SNS 를 연결하지 않는다 — 로그인해서 직접 연결해야 한다
+                $request->session()->forget(['member_signup', 'member_social']);
+
+                return redirect()->route('member.login')->withErrors(['identifier' => '2단계 인증을 쓰는 계정이에요. 먼저 로그인해 주세요.']);
+            }
             if ($social) {
                 $this->linkSocial($member, $social);
             }
@@ -134,9 +146,14 @@ class MemberController extends Controller
                 'locale' => $p['locale'] ?? 'ko',   // 가입할 때 보던 화면 언어
                 'phone_verified_at' => $p['channel'] === 'sms' ? now() : null,
                 'email_verified_at' => $p['channel'] === 'email' ? now() : null,
-                'customer_id' => Customer::forPhone($p['phone'])->id,   // 비회원 때 쌓인 마일리지·쿠폰이 그대로 이어진다
+                // 문자로 번호를 인증했을 때만 그 번호에 쌓인 마일리지·쿠폰을 잇는다
+                'customer_id' => $p['channel'] === 'sms' ? Customer::forPhone($p['phone'])->id : null,
             ]);
             $m->forceFill(['password' => $p['password_hash'], 'password_changed_at' => now()])->save();   // 이미 해시된 값은 다시 해시하지 않는다
+            if (! $m->customer_id) {
+                // 이메일 인증 가입: 번호는 본인 것인지 확인하지 못했다 → 그 번호의 혜택과 섞이지 않는 빈 지갑을 따로 만든다
+                $m->forceFill(['customer_id' => Customer::forMember($m)->id])->save();
+            }
             if ($social) {
                 $this->linkSocial($m, $social);
             }
@@ -334,6 +351,10 @@ class MemberController extends Controller
 
     public function twoFactorSetup(Request $request): RedirectResponse
     {
+        // 이미 켜져 있으면 덮어쓰지 못한다 — 먼저 끄기(비밀번호 + 코드)를 거쳐야 한다
+        if ($request->user('member')->hasTwoFactor()) {
+            return back()->withErrors(['code' => '2단계 인증이 이미 켜져 있어요. 바꾸려면 먼저 꺼 주세요.']);
+        }
         $request->session()->put('member_2fa_setup', Totp::newSecret());
 
         return back();

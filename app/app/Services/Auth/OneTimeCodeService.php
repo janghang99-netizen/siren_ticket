@@ -45,12 +45,13 @@ class OneTimeCodeService
         if ($channel === 'email') {
             Mail::raw($text, fn ($m) => $m->to($destination)->subject(__('[:brand] 인증번호 :code', ['code' => $code, 'brand' => \App\Models\Setting::brand()])));
 
-            return in_array(config('mail.default'), ['log', 'array'], true) ? $code : null;
+            return in_array(config('mail.default'), ['log', 'array'], true) && config('siren.show_dev_codes') ? $code : null;
         }
         if (config('siren.sms_driver') === 'log') {
             Log::info("[SMS 개발용] {$destination} {$text}");
 
-            return $code;
+            // 화면에는 개발용 표시를 켠 서버에서만 보여 준다 (그 밖에는 로그에만 남는다)
+            return config('siren.show_dev_codes') ? $code : null;
         }
         app(SmsSender::class)->send($destination, $text);
 
@@ -65,11 +66,11 @@ class OneTimeCodeService
         if (! $row) {
             throw new OrderException('인증번호가 만료됐어요. 다시 받아 주세요.', 'code_expired');
         }
-        if ($row->attempts >= self::MAX_ATTEMPTS) {
+        // 시도 횟수를 먼저 차감한다 (동시에 여러 번 보내도 5번을 넘기지 못하게, 조건부 UPDATE)
+        if (! DB::table('one_time_codes')->where('id', $row->id)->where('attempts', '<', self::MAX_ATTEMPTS)->increment('attempts')) {
             throw new OrderException('여러 번 틀렸어요. 인증번호를 다시 받아 주세요.', 'too_many', 429);
         }
         if (! hash_equals($row->code_hash, $this->hash($purpose, $destination, preg_replace('/\D/', '', $code)))) {
-            DB::table('one_time_codes')->where('id', $row->id)->increment('attempts');
             throw new OrderException('인증번호가 맞지 않아요.', 'code_wrong');
         }
         // 동시에 두 번 써도 한 번만 통과 (조건부 UPDATE)

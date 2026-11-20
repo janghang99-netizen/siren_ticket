@@ -23,7 +23,9 @@ class EnsureMemberSession
             $request->session()->put('member_session_version', $guard->user()->session_version);
         } elseif ((int) $version !== (int) $guard->user()->session_version) {
             $guard->logout();
-            $request->session()->forget('member_session_version');
+            // 세션을 통째로 비운다 — 세션에 남은 티켓·주문 번호 목록으로 계속 보고 취소하지 못하게
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return redirect()->route('member.login')->with('status', '보안을 위해 다시 로그인해 주세요. (비밀번호가 바뀌었거나 모든 기기에서 로그아웃했어요)');
         }

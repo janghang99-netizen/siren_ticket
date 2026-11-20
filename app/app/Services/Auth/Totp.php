@@ -49,6 +49,10 @@ class Totp
         if (strlen($code) !== 6) {
             return null;
         }
+        // 비밀키가 비었거나 너무 짧으면 누구나 코드를 계산할 수 있다 → 항상 거절
+        if (strlen(self::decode($secret)) < 10) {
+            return null;
+        }
         $current = intdiv($now ?? time(), 30);
         foreach ([0, -1, 1] as $drift) {
             $step = $current + $drift;

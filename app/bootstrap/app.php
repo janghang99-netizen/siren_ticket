@@ -19,7 +19,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn ($request) => $request->is('member/*')
             ? route('member.account')
             : \App\Http\Controllers\AuthController::home($request->user()));
-        $middleware->web(append: [\App\Http\Middleware\EnsureMemberSession::class]);
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureMemberSession::class,
+            // 관리 계정(운영사·업체·검표원): 비밀번호가 바뀌면 다른 기기에 남은 로그인을 끊는다
+            \App\Http\Middleware\EnsureStaffSession::class,
+        ]);
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->append(\App\Http\Middleware\BlockSearchIndexing::class);   // SITE_NOINDEX=true 인 개발 서버: 검색 노출 금지
         // 공연 티켓 판매 기능 켜기/끄기 (슈퍼관리자 설정)
         $middleware->alias(['ticketing' => \App\Http\Middleware\EnsureTicketingEnabled::class]);

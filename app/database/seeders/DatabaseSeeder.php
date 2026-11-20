@@ -25,6 +25,10 @@ class DatabaseSeeder extends Seeder
 {
     public function run(VenueSetup $venue): void
     {
+        // 개발용 계정(비밀번호 password)을 만든다 → 실서비스 환경에서는 실행하지 않는다
+        if (app()->isProduction()) {
+            throw new \RuntimeException('개발용 시드는 실서비스(APP_ENV=production)에서 실행할 수 없어요.');
+        }
         User::create(['role' => 'super_admin', 'name' => '운영사', 'email' => 'admin@siren.test', 'password' => 'password']);
 
         // ── 공연 일정 (슈퍼어드민이 등록하는 것과 같은 경로) ──

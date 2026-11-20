@@ -90,7 +90,7 @@ class InquiryController extends Controller
         $inquiry->forceFill(['answer' => $data['answer'], 'status' => 'answered', 'answered_by' => $request->user()->id, 'answered_at' => now()])->save();
         Audit::log('inquiry.answer', $inquiry, "1:1 문의 #{$inquiry->id} 답변");
 
-        if ($first && ($phone = $inquiry->customer?->phone)) {
+        if ($first && ($phone = $inquiry->customer?->smsPhone())) {
             try {
                 $sms->send($phone, '['.Setting::brand().'] 1:1 문의에 답변이 달렸어요. '.route('inquiries.show', $inquiry));
             } catch (\Throwable $e) {

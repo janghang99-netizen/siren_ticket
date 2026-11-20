@@ -431,6 +431,10 @@ class FanController extends Controller
             'mileage_use' => ['nullable', 'integer', 'min:0'],
         ], ['agree_terms.accepted' => '주문 전에 이용약관과 판매자 정보 제공에 동의해 주세요.']);
 
+        // 주문 시간대는 이 공연의 것이어야 한다 (같은 매장의 다른 공연 시간대를 쓰지 못하게)
+        if ($event && ! \App\Models\CapacitySlot::whereKey($data['slot_id'])->where('event_id', $event->id)->exists()) {
+            throw new OrderException('주문 시간대를 다시 골라 주세요.');
+        }
         $ticket = $event ? $this->ticketFor($request, $event) : null;
         $couponId = $data['coupon_issue_id'] ?? null;
         $mileage = (int) ($data['mileage_use'] ?? 0);

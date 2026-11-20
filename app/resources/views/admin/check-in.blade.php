@@ -10,15 +10,25 @@
 @section('content')
 <div class="grid gap-5 xl:grid-cols-[1fr_1fr]">
     <section class="rounded-3xl bg-white p-6 ring-1 ring-ink/5"
-             x-data="{ code: '', result: null, ok: false, busy: false,
+             x-data="{ code: '', result: null, ok: false, busy: false, eventId: {{ (int) $defaultEvent }},
                  async scan() {
-                     if (!this.code) return; this.busy = true;
-                     try { const r = await api('{{ route('admin.check-in.scan') }}', 'POST', { code: this.code, gate: '운영사 PC' }); this.ok = true; this.result = r.message }
+                     if (!this.code) return;
+                     if (!this.eventId) { this.ok = false; this.result = '공연을 먼저 고르세요'; return; }
+                     this.busy = true;
+                     try { const r = await api('{{ route('admin.check-in.scan') }}', 'POST', { code: this.code, event_id: this.eventId, gate: '운영사 PC' }); this.ok = true; this.result = r.message }
                      catch (e) { this.ok = false; this.result = e.message }
                      this.code = ''; this.busy = false; this.$refs.input.focus();
                  } }">
         <h2 class="font-bold">코드 스캔</h2>
         <p class="mt-1 text-sm text-mist">팬 화면의 입장 코드를 스캐너로 읽거나 입력하세요. 코드는 30초마다 바뀌어서 캡처 화면은 통과하지 못하고, 한 번 입장한 티켓은 다시 쓸 수 없어요.</p>
+        <label for="check-in-event" class="mt-4 block text-xs font-semibold text-mist">검표할 공연</label>
+        <select id="check-in-event" x-model.number="eventId" class="field mt-1">
+            <option value="0">공연을 고르세요</option>
+            @foreach ($events as $e)
+                <option value="{{ $e->id }}">{{ $e->artist }} · {{ $e->starts_at->format('m.d H:i') }}</option>
+            @endforeach
+        </select>
+        <p class="mt-1 text-xs text-mist">고른 공연의 티켓만 통과해요. 다른 공연·다른 날 티켓은 거절돼요.</p>
         <form @submit.prevent="scan()" class="mt-4 flex gap-2">
             <label for="code" class="sr-only">입장 코드</label>
             <input id="code" x-ref="input" x-model="code" class="field num" placeholder="SIREN1.A1-XXXXXXXX.…" autofocus autocomplete="off">

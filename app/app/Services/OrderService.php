@@ -273,7 +273,7 @@ class OrderService
             return;
         }
         try {
-            $phone = \App\Models\Customer::whereKey($order->customer_id)->value('phone');
+            $phone = \App\Models\Customer::find($order->customer_id)?->smsPhone();
             if ($phone) {
                 $store = $order->store()->value('name');
                 app(\App\Services\Benefits\SmsSender::class)->send($phone,
@@ -363,7 +363,8 @@ class OrderService
                 $this->refundOrFail($order);
                 $this->releaseResources($order);
                 $this->benefits->releaseOrder($order);
-                $fields += ['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => '구매자 요청 취소(매장 승인)'];
+                $this->benefits->revokeEarned($order);
+                $fields += ['status' => OrderStatus::Refunded,'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => '구매자 요청 취소(매장 승인)'];
             }
             $order->update($fields);
 
@@ -389,6 +390,7 @@ class OrderService
             $this->refundOrFail($order);
             $this->releaseResources($order);
             $this->benefits->releaseOrder($order);
+            $this->benefits->revokeEarned($order);
             $order->update(['status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(), 'cancel_reason' => $reason]);
 
             return true;
@@ -428,6 +430,8 @@ class OrderService
             $this->refundOrFail($order);
             $this->releaseResources($order);
             $this->benefits->releaseOrder($order);
+            // 수령완료를 되돌린 뒤 취소하는 경우: 수령 때 준 적립금·스탬프를 회수한다 (적립만 남기지 못하게)
+            $this->benefits->revokeEarned($order);
             $order->update([
                 'status' => OrderStatus::Refunded, 'cancelled_at' => now(), 'refunded_at' => now(),
                 'cancel_reason' => $reason,

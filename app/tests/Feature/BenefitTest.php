@@ -121,6 +121,25 @@ class BenefitTest extends TestCase
         $this->assertSame([5000, 0, 'vendor'], [$o2->coupon_discount, $o2->paid_amount, $o2->coupon_funded_by]);
     }
 
+    public function test_revert_then_cancel_takes_back_earned_mileage_and_stamps(): void
+    {
+        // 수령완료(적립) → 되돌리기 → 취소를 되풀이해 적립금만 남기지 못한다
+        StampProgram::create(['owner' => 'store', 'store_id' => $this->store->id, 'name' => '커피 스탬프', 'need_count' => 10]);
+        $svc = app(OrderService::class);
+        $o = $this->pickUp($this->order(2));
+        $this->assertSame(600, $this->fan->fresh()->mileage_balance);
+
+        foreach (range(1, 3) as $i) {
+            $o = $svc->revert($o);   // 수령완료 → 준비완료 → 준비중 → 결제완료
+        }
+        $this->assertSame(OrderStatus::Paid, $o->status);
+        $o = $svc->cancelByBuyer($o);
+
+        $this->assertSame(OrderStatus::Refunded, $o->status);
+        $this->assertSame(0, $this->fan->fresh()->mileage_balance);
+        $this->assertSame(0, $this->fan->stampCards()->first()->count);
+    }
+
     public function test_refund_after_pickup_takes_back_earned_mileage_and_stamps(): void
     {
         StampProgram::create(['owner' => 'store', 'store_id' => $this->store->id, 'name' => '커피 스탬프', 'need_count' => 10]);

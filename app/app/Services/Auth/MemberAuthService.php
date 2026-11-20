@@ -115,6 +115,10 @@ class MemberAuthService
     public function completeStepUp(Request $request, string $code): Member
     {
         $member = $this->pending($request) ?? throw new OrderException('처음부터 다시 로그인해 주세요.', 'expired');
+        // OTP 를 켠 회원은 OTP 로만 통과한다 (인증번호 단계로 OTP 를 건너뛰지 못하게)
+        if ($member->hasTwoFactor()) {
+            throw new OrderException('처음부터 다시 로그인해 주세요.', 'expired');
+        }
         [, $dest] = $member->stepUpChannel();
         try {
             $this->codes->verify('login', $dest, $code);
@@ -131,6 +135,10 @@ class MemberAuthService
     public function completeTwoFactor(Request $request, string $code): Member
     {
         $member = $this->pending($request) ?? throw new OrderException('처음부터 다시 로그인해 주세요.', 'expired');
+        // OTP 를 켜지 않은 회원은 이 단계로 들어올 수 없다 (새 기기 인증번호 단계를 건너뛰지 못하게)
+        if (! $member->hasTwoFactor()) {
+            throw new OrderException('처음부터 다시 로그인해 주세요.', 'expired');
+        }
         $rlKey = 'member-2fa:'.$member->id;
         if (RateLimiter::tooManyAttempts($rlKey, 5)) {
             throw new OrderException('여러 번 틀렸어요. 잠시 뒤에 다시 해 주세요.', 'throttled', 429);
@@ -150,6 +158,9 @@ class MemberAuthService
     /** OTP 앱 코드(리플레이 방지) 또는 1회용 복구 코드 */
     public function checkTwoFactor(Member $member, string $code): bool
     {
+        if (! $member->hasTwoFactor()) {
+            return false;
+        }
         $lastKey = 'member-totp-step:'.$member->id;
         $step = Totp::verify((string) $member->two_factor_secret, $code, Cache::get($lastKey));
         if ($step !== null) {

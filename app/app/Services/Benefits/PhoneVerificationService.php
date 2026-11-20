@@ -40,7 +40,8 @@ class PhoneVerificationService
         if (config('siren.sms_driver') === 'log') {
             Log::info("[SMS 개발용] {$phone} 인증번호 {$code}");
 
-            return $code;
+            // 화면에는 개발용 표시를 켠 서버에서만 보여 준다 (그 밖에는 로그에만 남는다)
+            return config('siren.show_dev_codes') ? $code : null;
         }
 
         // 실발송: 문자 발송사가 정해지면 SmsSender 구현을 바인딩한다
@@ -58,11 +59,11 @@ class PhoneVerificationService
         if (! $row) {
             throw new OrderException('인증번호가 만료됐어요. 다시 받아 주세요.', 'code_expired');
         }
-        if ($row->attempts >= self::MAX_ATTEMPTS) {
+        // 시도 횟수를 먼저 차감한다 (동시에 여러 번 보내도 5번을 넘기지 못하게, 조건부 UPDATE)
+        if (! DB::table('phone_verifications')->where('id', $row->id)->where('attempts', '<', self::MAX_ATTEMPTS)->increment('attempts')) {
             throw new OrderException('여러 번 틀렸어요. 인증번호를 다시 받아 주세요.', 'too_many', 429);
         }
         if (! hash_equals($row->code_hash, hash('sha256', $phone.trim($code)))) {
-            DB::table('phone_verifications')->where('id', $row->id)->increment('attempts');
             throw new OrderException('인증번호가 맞지 않아요.', 'code_wrong');
         }
         DB::table('phone_verifications')->where('id', $row->id)->update(['verified_at' => now(), 'updated_at' => now()]);

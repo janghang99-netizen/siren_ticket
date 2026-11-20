@@ -66,7 +66,15 @@ SVG;
 
     public function checkInForm(): View
     {
+        // 검표할 공연 목록 (휴대폰 검표 화면과 같은 범위). 오늘 공연이 하나면 그 공연이 먼저 골라진다.
+        $events = \App\Models\Event::where('starts_at', '>=', now()->subHours(12))->where('starts_at', '<=', now()->addDays(60))
+            ->orderBy('starts_at')->limit(30)->get()
+            ->reject(fn (\App\Models\Event $e) => $e->isCancelled())->values();
+        $today = $events->filter(fn (\App\Models\Event $e) => $e->starts_at->isToday());
+
         return view('admin.check-in', [
+            'events' => $events,
+            'defaultEvent' => $today->count() === 1 ? $today->first()->id : ($events->count() === 1 ? $events->first()->id : 0),
             'recent' => Ticket::with('event', 'section', 'token')->where('status', 'used')->latest('checked_in_at')->limit(20)->get(),
         ]);
     }

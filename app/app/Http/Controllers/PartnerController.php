@@ -114,7 +114,7 @@ class PartnerController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer'],
             'items.*.option_id' => ['nullable', 'integer'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.qty' => ['required', 'integer', 'min:1', 'max:99'],
             'items.*.dine_option' => ['nullable', 'in:매장,포장'],
             // 현장 카드 단말기 (준비 단계): 카드결제면 단말기·승인번호를 남겨 단말기 매출과 대사
             'terminal_id' => ['nullable', 'integer', 'required_if:pay_method,pos_card'],

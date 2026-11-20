@@ -46,13 +46,14 @@ class GateController extends Controller
     {
         $data = $request->validate([
             'code' => ['required', 'string', 'max:120'],
-            'event_id' => ['nullable', 'integer'],
+            // 공연을 꼭 고른다 — 고르지 않으면 다른 공연·다른 날 티켓도 통과해 버린다
+            'event_id' => ['required', 'integer'],
             'gate' => ['nullable', 'string', 'max:40'],
-        ]);
+        ], ['event_id.required' => '공연을 먼저 고르세요.']);
         $user = $request->user();
         $gate = trim((string) ($data['gate'] ?? '')) ?: $user->gate_name;
         try {
-            $ticket = $this->nft->checkIn($data['code'], null, $data['event_id'] ?? null, $user->id, $gate);
+            $ticket = $this->nft->checkIn($data['code'], null, (int) $data['event_id'], $user->id, $gate);
         } catch (OrderException $e) {
             return response()->json(['ok' => false, 'reason' => $e->reason, 'message' => $e->getMessage(), 'msg' => $e->getMessage()],
                 $e->reason === 'already_used' ? 409 : 422);

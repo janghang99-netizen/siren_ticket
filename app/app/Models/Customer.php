@@ -28,6 +28,21 @@ class Customer extends Model
         return static::firstOrCreate(['phone' => $phone], ['customer_key' => 'C'.strtoupper(Str::random(15))]);
     }
 
+    /**
+     * 번호를 인증하지 않은 회원(이메일 인증 가입)의 지갑. 휴대폰 번호 대신 회원 고유 키(M + 회원번호)로 만들어
+     * 그 번호로 쌓인 다른 사람의 혜택과 섞이지 않는다.
+     */
+    public static function forMember(Member $member): self
+    {
+        return static::firstOrCreate(['phone' => 'M'.$member->id], ['customer_key' => 'C'.strtoupper(Str::random(15))]);
+    }
+
+    /** 문자를 보낼 수 있는 번호 (회원 고유 키로 만든 지갑은 번호가 없다) */
+    public function smsPhone(): ?string
+    {
+        return ctype_digit((string) $this->phone) ? $this->phone : null;
+    }
+
     /** 010-****-5678 */
     public function maskedPhone(): string
     {

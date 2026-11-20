@@ -115,8 +115,8 @@ Route::get('/media/products/{file}',[\App\Http\Controllers\ProductImageControlle
 Route::get('/translate/dict/{lang}', [\App\Http\Controllers\TranslationController::class, 'dict'])->whereIn('lang', ['en', 'ja', 'zh'])->name('translate.dict');
 
 // ── NFT 티켓: 공개 메타데이터(tokenURI)·이미지, 팬 입장 코드 ──
-Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->name('nft.metadata');
-Route::get('/nft/tickets/{ticket}/image.svg', [\App\Http\Controllers\NftController::class, 'image'])->whereNumber('ticket')->name('nft.image');
+Route::get('/nft/tickets/{tokenId}', [\App\Http\Controllers\NftController::class, 'metadata'])->where('tokenId', '[0-9]+')->middleware('throttle:60,1')->name('nft.metadata');
+Route::get('/nft/tickets/{ticket}/image.svg', [\App\Http\Controllers\NftController::class, 'image'])->whereNumber('ticket')->middleware('throttle:60,1')->name('nft.image');
 Route::get('/tickets/{ticket}/entry-code', [\App\Http\Controllers\NftController::class, 'entryCode'])
     ->middleware(['ticketing', 'auth:member', 'throttle:20,1'])->name('tickets.entry-code');
 
