@@ -34,21 +34,37 @@
         </section>
     @else
 
-    {{-- ① 큰 배너 — 작품을 넘겨 보며 바로 예매 --}}
-    <section class="tix-wrap mt-4 lg:mt-6" aria-roledescription="carousel" aria-label="추천 공연"
-             x-data="{ i: 0, n: {{ $hero->count() }}, play: ! window.matchMedia('(prefers-reduced-motion: reduce)').matches, go(k) { this.i = (k + this.n) % this.n } }"
+    {{-- ① 큰 배너 — 작품을 넘겨 보며 바로 예매. 넓은 화면에서는 이전·다음 공연이 좌우에 잘려 보인다 --}}
+    @php
+        // 좌우에 이전·다음을 두려면 5장 이상이어야 넘어갈 때 자리가 겹치지 않는다. 모자라면 같은 순서로 되풀이한다.
+        $real = $hero->count();
+        $slides = $hero->toBase();
+        while ($real > 1 && $slides->count() < 5) {
+            $slides = $slides->concat($hero);
+        }
+        $n = $slides->count();
+    @endphp
+    <section class="mt-4 overflow-hidden lg:mt-6" aria-roledescription="carousel" aria-label="추천 공연"
+             x-data="{ i: 0, p: 0, n: {{ $n }}, play: ! window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+                       go(k) { this.p = this.i; this.i = (k + this.n) % this.n },
+                       off(k, at) { const v = ((k - at) % this.n + this.n) % this.n; return v > this.n / 2 ? v - this.n : v },
+                       css(k) { const d = this.off(k, this.i); return 'transform:translateX(calc(' + d + ' * (100% + var(--gap))));opacity:' + (d ? .55 : 1) + (Math.abs(d - this.off(k, this.p)) > 1 ? ';transition:none' : '') } }"
              x-init="setInterval(() => { if (play && n > 1) go(i + 1) }, 6000)">
-        <div class="theme-keep relative h-[460px] overflow-hidden rounded-[28px] bg-ink text-white sm:h-[420px] lg:h-[460px]">
-            @foreach ($hero as $k => $p)
+        <div class="tix-wrap">
+        <div class="relative h-[460px] [--gap:16px] sm:h-[420px] lg:h-[460px] lg:[--gap:24px]">
+            @foreach ($slides as $k => $p)
                 @php($ev = $p->nextEvent())
-                <article class="absolute inset-0 transition-opacity duration-700" x-bind:class="i === {{ $k }} ? 'opacity-100' : 'pointer-events-none opacity-0'"
-                         @if ($k > 0) style="opacity:0" x-bind:style="''" @endif
-                         aria-roledescription="slide" aria-label="{{ $k + 1 }} / {{ $hero->count() }}" x-bind:aria-hidden="i !== {{ $k }}">
+                @php($d0 = $k > $n / 2 ? $k - $n : $k)
+                <article class="theme-keep absolute inset-0 overflow-hidden rounded-[28px] bg-ink text-white transition-[transform,opacity] duration-700 ease-out motion-reduce:transition-none"
+                         style="transform:translateX(calc({{ $d0 }} * (100% + var(--gap))));opacity:{{ $d0 ? '.55' : '1' }}" x-bind:style="css({{ $k }})"
+                         x-bind:class="off({{ $k }}, i) ? 'cursor-pointer' : ''"
+                         @click.capture="if (off({{ $k }}, i)) { $event.preventDefault(); $event.stopPropagation(); go(i + off({{ $k }}, i)) }"
+                         aria-roledescription="slide" aria-label="{{ $k % $real + 1 }} / {{ $real }}" x-bind:aria-hidden="i !== {{ $k }}">
                     {{-- 배경: 가로 배너, 없으면 포스터를 크게 흐리게 --}}
                     @if ($p->bannerUrl())
-                        <img src="{{ $p->bannerUrl() }}" alt="" class="absolute inset-0 h-full w-full object-cover" @if ($k > 0) loading="lazy" @endif>
+                        <img src="{{ $p->bannerUrl() }}" alt="" class="absolute inset-0 h-full w-full object-cover" @if (abs($d0) > 1) loading="lazy" @endif>
                     @elseif ($p->posterUrl())
-                        <img src="{{ $p->posterUrl() }}" alt="" class="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-2xl" @if ($k > 0) loading="lazy" @endif>
+                        <img src="{{ $p->posterUrl() }}" alt="" class="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-2xl" @if (abs($d0) > 1) loading="lazy" @endif>
                     @else
                         <div class="poster-gen theme-keep absolute inset-0" style="--theme: {{ $p->theme_color }}"></div>
                     @endif
@@ -80,19 +96,19 @@
                             </div>
                         </div>
                         <a href="{{ route('shows.show', $p) }}" class="hidden w-[230px] shrink-0 rotate-[1.5deg] shadow-[0_30px_60px_-20px_rgba(0,0,0,.6)] transition hover:rotate-0 md:block lg:w-[260px]" tabindex="-1" aria-hidden="true">
-                            @include('partials.poster', ['p' => $p, 'eager' => $k === 0])
+                            @include('partials.poster', ['p' => $p, 'eager' => abs($d0) <= 1])
                         </a>
                     </div>
                 </article>
             @endforeach
 
-            @if ($hero->count() > 1)
-                <div class="absolute right-4 top-4 flex items-center gap-1.5 sm:bottom-6 sm:right-6 sm:top-auto">
+            @if ($real > 1)
+                <div class="theme-keep absolute right-4 top-4 z-10 flex items-center gap-1.5 text-white sm:bottom-6 sm:right-6 sm:top-auto">
                     <button type="button" @click="go(i - 1)" class="grid h-10 w-10 place-items-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white hover:text-ink" aria-label="이전 공연">
                         <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                     </button>
                     <span class="num min-w-[64px] rounded-full bg-black/30 px-3 py-2 text-center text-xs font-bold backdrop-blur" aria-live="polite">
-                        <span x-text="String(i + 1).padStart(2, '0')">01</span><span class="text-white/50"> / {{ str_pad($hero->count(), 2, '0', STR_PAD_LEFT) }}</span>
+                        <span x-text="String(i % {{ $real }} + 1).padStart(2, '0')">01</span><span class="text-white/50"> / {{ str_pad($real, 2, '0', STR_PAD_LEFT) }}</span>
                     </span>
                     <button type="button" @click="play = ! play" class="grid h-10 w-10 place-items-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white hover:text-ink" x-bind:aria-label="play ? '자동 넘김 멈춤' : '자동 넘김 시작'">
                         <svg x-show="play" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
@@ -103,6 +119,7 @@
                     </button>
                 </div>
             @endif
+        </div>
         </div>
     </section>
 
