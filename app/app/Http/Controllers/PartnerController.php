@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Settlement;
 use App\Models\Store;
+use App\Models\Vendor;
 use App\Services\OrderService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -196,6 +197,56 @@ class PartnerController extends Controller
         return view('partner.product-form', $this->shared($request) + ['product' => null, 'categories' => $this->categories($request)]);
     }
 
+    /** 주류판매 자격: 지금 상태와 신청 방법 */
+    public function liquor(Request $request): View
+    {
+        // 매장이 아직 없어도 신청은 할 수 있게 (shared() 는 매장이 없으면 403)
+        $stores = $this->vendorStores($request);
+
+        return view('partner.liquor', [
+            'stores' => $stores, 'store' => $stores->isEmpty() ? null : $this->currentStore($request),
+            'vendor' => $request->user()->vendor->load('liquorChecker'), 'bizTypes' => Vendor::LIQUOR_BIZ_TYPES,
+        ]);
+    }
+
+    /** 주류판매 자격 신청 — 영업형태·신고번호·영업신고증을 내면 '확인 대기'가 된다 */
+    public function liquorRequest(Request $request): RedirectResponse
+    {
+        $vendor = $request->user()->vendor;
+        abort_if($vendor->canSellLiquor(), 422, '이미 승인된 업체예요.');
+        $hasPermit = ! empty($vendor->documents['liquor_permit']);
+        $data = $request->validate([
+            'biz_type' => ['required', \Illuminate\Validation\Rule::in(array_keys(Vendor::LIQUOR_BIZ_TYPES))],
+            'liquor_license_no' => ['required', 'string', 'max:40'],
+            'permit' => [$hasPermit ? 'nullable' : 'required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
+        ], [
+            'biz_type.required' => '영업형태를 골라 주세요.',
+            'liquor_license_no.required' => '주류판매(의제주류판매업) 신고번호를 적어 주세요.',
+            'permit.required' => '영업신고증(또는 주류판매업 면허증) 사본을 올려 주세요.',
+            'permit.mimes' => 'JPG·PNG·PDF 파일만 올릴 수 있어요.',
+            'permit.max' => '파일은 10MB 까지 올릴 수 있어요.',
+        ]);
+        if (! Vendor::LIQUOR_BIZ_TYPES[$data['biz_type']]['allowed']) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['biz_type' => Vendor::LIQUOR_BIZ_TYPES[$data['biz_type']]['guide']]);
+        }
+
+        $docs = $vendor->documents ?? [];
+        if ($request->hasFile('permit')) {
+            $old = $docs['liquor_permit'] ?? null;
+            $docs['liquor_permit'] = $request->file('permit')->store("vendor-docs/{$vendor->id}", 'local');
+            if ($old) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($old);
+            }
+        }
+        $vendor->update([
+            'liquor_status' => 'pending', 'liquor_biz_type' => $data['biz_type'], 'liquor_license_no' => $data['liquor_license_no'],
+            'liquor_requested_at' => now(), 'documents' => $docs,
+        ]);
+        \App\Services\Audit::log('vendor.liquor_requested', $vendor, "‘{$vendor->name}’ 주류판매 자격 신청 ({$data['biz_type']})");
+
+        return back()->with('status', '주류판매 자격을 신청했어요. 운영사가 서류를 확인한 뒤 승인하면 주류 상품을 등록할 수 있어요.');
+    }
+
     public function productEdit(Request $request, Product $product): View
     {
         $this->authorizeStore($request, $product->store_id);
@@ -359,9 +410,14 @@ class PartnerController extends Controller
             'image.dimensions' => '이미지는 가로·세로 200~6000픽셀이어야 해요.',
         ]);
 
-        // B2 주류는 주류판매 신고번호가 있는 업체만
-        if ($request->boolean('is_alcohol') && ! $request->user()->vendor->liquor_license_no) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['is_alcohol' => '주류판매 신고번호가 등록된 업체만 주류를 팔 수 있어요. 운영사에 신고번호 등록을 요청해 주세요.']);
+        // B2 주류는 운영사가 서류를 확인해 '승인'한 업체만 (원본 product_add_reg.php / modify.php 의 alcohol_seller_status 검사)
+        $vendor = $request->user()->vendor;
+        if ($request->boolean('is_alcohol') && ! $vendor->canSellLiquor()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['is_alcohol' => match ($vendor->liquor_status) {
+                'pending' => '주류판매 자격을 운영사가 확인하고 있어요. 승인되면 주류 상품을 등록할 수 있어요.',
+                'rejected' => '주류판매 자격이 반려됐어요'.($vendor->liquor_memo ? " ({$vendor->liquor_memo})" : '').'. ‘주류판매 자격’ 메뉴에서 서류를 고쳐 다시 신청해 주세요.',
+                default => '주류는 운영사 승인을 받은 업체만 팔 수 있어요. ‘주류판매 자격’ 메뉴에서 영업형태와 영업신고증을 내고 신청해 주세요.',
+            }]);
         }
 
         return DB::transaction(function () use ($request, $data, $product) {
