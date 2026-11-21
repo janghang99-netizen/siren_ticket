@@ -129,6 +129,7 @@ class PolicyTest extends TestCase
 
     public function test_b2_alcohol_needs_adult_confirmation_and_flags_id_check(): void
     {
+        $this->vendor->update(['liquor_status' => 'approved', 'liquor_biz_type' => '일반음식점']);
         $beer = Product::create(['store_id' => $this->store->id, 'name' => '맥주', 'price' => 9000, 'is_alcohol' => true]);
 
         try {
@@ -143,15 +144,7 @@ class PolicyTest extends TestCase
         $this->assertNotNull($o->adult_confirmed_at);
     }
 
-    public function test_b2_only_licensed_vendor_can_register_alcohol(): void
-    {
-        $payload = ['name' => '맥주', 'price' => 9000, 'stock_deduct_at' => 'order', 'is_alcohol' => '1', 'agree_prohibited' => '1'];
-        $this->actingAs($this->vendorUser)->post(route('partner.products.store'), $payload)->assertSessionHasErrors('is_alcohol');
-
-        $this->vendor->update(['liquor_license_no' => '제403-1호']);
-        $this->actingAs($this->vendorUser->fresh())->post(route('partner.products.store'), $payload)->assertRedirect(route('partner.products'));
-        $this->assertTrue(Product::where('name', '맥주')->first()->is_alcohol);
-    }
+    // B2 주류 등록 자격(운영사 승인)은 LiquorApprovalTest 에서 검증
 
     // ── C. 정산 ──
 

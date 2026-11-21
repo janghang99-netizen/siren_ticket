@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 /** 비회원 팬 — 휴대폰 번호 하나가 한 사람. 마일리지·쿠폰·스탬프가 여기에 묶인다. */
@@ -54,6 +55,12 @@ class Customer extends Model
     public function couponIssues(): HasMany
     {
         return $this->hasMany(CouponIssue::class);
+    }
+
+    /** 이 지갑을 쓰는 팬 회원 (비회원 주문 고객이면 없다) */
+    public function member(): HasOne
+    {
+        return $this->hasOne(Member::class);
     }
 
     public function stampCards(): HasMany

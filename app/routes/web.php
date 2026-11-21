@@ -162,6 +162,9 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
 
     Route::get('/products', 'products')->name('products');
     Route::get('/products/new', 'productCreate')->name('products.create');
+    // 주류판매 자격 신청 (영업형태·신고번호·영업신고증) → 운영사 확인
+    Route::get('/liquor', 'liquor')->name('liquor');
+    Route::post('/liquor', 'liquorRequest')->middleware('throttle:10,1')->name('liquor.request');
     Route::post('/products', 'productStore')->name('products.store');
     Route::get('/products/{product}/edit', 'productEdit')->name('products.edit');
     Route::put('/products/{product}', 'productUpdate')->name('products.update');
@@ -214,6 +217,7 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(\App\Http\Controllers\BenefitAdminController::class)->group(function () {
     Route::get('/coupons', 'coupons')->name('coupons.index');
     Route::get('/coupons/new', 'couponCreate')->name('coupons.create');
+    Route::get('/coupons/stamps', 'stampCards')->name('coupons.stamps');   // 회원별 스탬프 현황
     Route::post('/coupons', 'couponStore')->name('coupons.store');
     Route::get('/coupons/{coupon}', 'coupon')->whereNumber('coupon')->name('coupons.show');
     Route::get('/coupons/{coupon}/edit', 'couponEdit')->name('coupons.edit');
@@ -242,6 +246,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
         Route::post('/translations/run', 'run')->middleware('throttle:10,1')->name('translations.run');
         Route::post('/translations/fixes', 'fixStore')->name('translations.fixes.store');
         Route::delete('/translations/fixes/{fix}', 'fixDestroy')->name('translations.fixes.destroy');
+    });
+
+    // 주류판매 자격 관리 (원본 다담다 admin/alcohol_seller_manage.php) — 서류 확인 후 승인/반려
+    Route::controller(\App\Http\Controllers\LiquorController::class)->group(function () {
+        Route::get('/liquor', 'index')->name('liquor');
+        Route::put('/liquor/{vendor}', 'decide')->whereNumber('vendor')->name('liquor.decide');
     });
 
     Route::get('/ledger', 'ledger')->name('ledger');

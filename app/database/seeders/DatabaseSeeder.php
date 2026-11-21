@@ -71,12 +71,14 @@ class DatabaseSeeder extends Seeder
             ]],
         ];
 
-        $liquor = ['beerhouse' => '제403-5-00000호'];   // 주류판매 신고번호가 있는 업체만 주류 판매
+        $liquor = ['beerhouse' => '제403-5-00000호'];   // 운영사가 주류판매 자격을 승인한 업체만 주류 판매
         foreach ($vendors as $n => [$vname, $login, $bizNo, $rep, $bank, $stores]) {
             $vendor = Vendor::create([
                 'name' => $vname, 'state' => 'approved', 'approved_at' => now()->subMonth(),
                 'business_no' => $bizNo, 'mail_order_no' => '제2026-서울도봉-0'.($n + 101).'호',
                 'liquor_license_no' => $liquor[$login] ?? null, 'representative' => $rep,
+                'liquor_status' => isset($liquor[$login]) ? 'approved' : null, 'liquor_biz_type' => isset($liquor[$login]) ? '일반음식점' : null,
+                'liquor_checked_at' => isset($liquor[$login]) ? now()->subMonth() : null,
                 'address' => '서울특별시 도봉구 창동 서울아레나 F&B '.($n + 1).'구역',
                 'contact_phone' => '02-000-000'.($n + 1), 'contact_email' => "{$login}@siren.test", 'bank_name' => $bank,
                 'bank_account' => '000-0000-0000-00', 'account_holder' => $vname, 'commission_rate' => 8.5,

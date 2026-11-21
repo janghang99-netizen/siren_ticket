@@ -126,9 +126,23 @@
                     <input id="stock" name="stock" type="number" min="0" class="field num" value="{{ old('stock') }}" placeholder="비우면 무제한" :disabled="options.length > 0">
                 </div>
             @endif
+            @php($liquorOk = $vendor->canSellLiquor())
             <label class="flex items-start gap-2 text-sm">
-                <input type="checkbox" name="is_alcohol" value="1" class="mt-1" @checked(old('is_alcohol', $p?->is_alcohol))>
-                <span><b>주류</b><span class="block text-xs text-mist">팬은 성인 확인 후 주문하고, 매장은 건넬 때 신분증을 확인해야 해요. 주류판매 신고번호가 있어야 등록돼요.</span></span>
+                {{-- 승인 전에는 끄는 것만 가능 (이미 주류인 상품은 체크를 풀 수 있게 남겨 둔다) --}}
+                <input type="checkbox" name="is_alcohol" value="1" class="mt-1" @checked(old('is_alcohol', $p?->is_alcohol)) @disabled(! $liquorOk && ! $p?->is_alcohol)>
+                <span><b>주류</b><span class="block text-xs text-mist">팬은 성인 확인 후 주문하고, 매장은 건넬 때 신분증을 확인해야 해요.</span>
+                    @unless ($liquorOk)
+                        <span class="mt-1 block rounded-xl bg-pick px-3 py-2 text-xs">
+                            주류판매 자격: <b>{{ $vendor->liquorStatusLabel() }}</b> —
+                            {{ match ($vendor->liquor_status) {
+                                'pending' => '운영사가 서류를 확인하고 있어요. 승인되면 주류를 켤 수 있어요.',
+                                'rejected' => '반려됐어요. 서류를 고쳐 다시 신청해 주세요.',
+                                default => '주류는 영업형태(일반음식점·제과점 등)를 서류로 확인받은 업체만 팔 수 있어요.',
+                            } }}
+                            <a href="{{ route('partner.liquor') }}" class="row-link font-bold">주류판매 자격 신청 →</a>
+                        </span>
+                    @endunless
+                </span>
             </label>
             @error('is_alcohol')<p class="text-sm text-signal">{{ $message }}</p>@enderror
             <div>

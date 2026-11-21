@@ -526,9 +526,10 @@ class AdminController extends Controller
     public function vendorDocument(Vendor $vendor, string $type)
     {
         $path = $vendor->documents[$type] ?? null;
-        abort_unless($path && array_key_exists($type, Vendor::DOCUMENTS) && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);
+        $labels = Vendor::DOCUMENTS + ['liquor_permit' => '영업신고증(주류)'];   // 주류판매 자격 신청 때 낸 서류
+        abort_unless($path && array_key_exists($type, $labels) && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);
 
-        return \Illuminate\Support\Facades\Storage::disk('local')->download($path, $vendor->name.'_'.Vendor::DOCUMENTS[$type].'.'.pathinfo($path, PATHINFO_EXTENSION));
+        return \Illuminate\Support\Facades\Storage::disk('local')->download($path, $vendor->name.'_'.$labels[$type].'.'.pathinfo($path, PATHINFO_EXTENSION));
     }
 
     /** B1 운영사 판매 중지(제재) / 해제 */

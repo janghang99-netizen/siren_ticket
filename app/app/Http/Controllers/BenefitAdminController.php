@@ -9,6 +9,8 @@ use App\Models\Customer;
 use App\Models\Event;
 use App\Models\LedgerAnchor;
 use App\Models\Product;
+use App\Models\CouponIssue;
+use App\Models\StampCard;
 use App\Models\StampProgram;
 use App\Models\Store;
 use App\Services\Audit;
@@ -107,6 +109,46 @@ class BenefitAdminController extends Controller
         Audit::log('stamp.saved', $program, "관람 스탬프 설정: {$data['need_count']}개 → 티켓 ".number_format($data['reward_value']).'원 할인');
 
         return back()->with('status', '관람 스탬프 설정을 저장했어요.');
+    }
+
+    /**
+     * 회원별 스탬프 현황 (원본 admin/stamp_status.php 회원별 탭).
+     * 카드 한 장 = 고객 한 명 × 스탬프 프로그램 하나. 회원 이름·휴대폰으로, 매장(또는 관람 스탬프)으로 거른다.
+     */
+    public function stampCards(Request $request): View
+    {
+        $q = trim((string) $request->query('q'));
+        $digits = preg_replace('/\D/', '', $q);
+        $store = (string) $request->query('store');
+
+        $cards = StampCard::query()->select('stamp_cards.*')
+            // 받은 무료쿠폰 수: 이 프로그램의 보상 쿠폰을 이 고객이 받은 장수
+            ->addSelect(['rewards_count' => CouponIssue::selectRaw('count(*)')
+                ->whereColumn('coupon_issues.customer_id', 'stamp_cards.customer_id')
+                ->whereIn('coupon_issues.coupon_id', StampProgram::select('reward_coupon_id')->whereColumn('stamp_programs.id', 'stamp_cards.stamp_program_id')),
+            ])
+            // 최근 적립일: 혜택 원장의 스탬프 적립(earn) 마지막 시각
+            ->addSelect(['last_earned_at' => BenefitLedger::selectRaw('max(created_at)')
+                ->whereColumn('benefit_ledger.customer_id', 'stamp_cards.customer_id')
+                ->whereColumn('benefit_ledger.ref_id', 'stamp_cards.stamp_program_id')
+                ->where('benefit_ledger.kind', 'stamp')->where('benefit_ledger.type', 'earn'),
+            ])
+            ->with(['customer.member', 'program.store'])
+            ->when($q !== '', fn ($query) => $query->whereHas('customer', fn ($c) => $c->where(fn ($w) => $w
+                ->whereHas('member', fn ($m) => $m->where('name', 'like', '%'.$q.'%'))
+                ->when($digits !== '', fn ($w) => $w->orWhere('phone', 'like', '%'.$digits.'%')))))
+            ->when($store === 'platform', fn ($query) => $query->whereHas('program', fn ($p) => $p->where('owner', 'platform')))
+            ->when(ctype_digit($store), fn ($query) => $query->whereHas('program', fn ($p) => $p->where('store_id', (int) $store)))
+            ->orderByDesc('stamp_cards.updated_at')->orderByDesc('stamp_cards.id')
+            ->paginate(30)->withQueryString();
+
+        return view('admin.stamp-cards', [
+            'cards' => $cards,
+            'stores' => Store::whereIn('id', StampProgram::whereNotNull('store_id')->select('store_id'))->orderBy('name')->get(['id', 'name']),
+            'hasPlatform' => StampProgram::where('owner', 'platform')->exists(),
+            'cardCount' => StampCard::count(),
+            'customerCount' => StampCard::distinct()->count('customer_id'),
+        ]);
     }
 
     // ── 고객 (휴대폰 번호) ──
