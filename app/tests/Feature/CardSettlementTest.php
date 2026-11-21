@@ -213,6 +213,8 @@ class CardSettlementTest extends TestCase
     public function test_oneshot_settles_only_orders_past_due_date(): void
     {
         $this->vendor->update(['bank_name' => '테스트은행', 'bank_account' => '000-00-000000', 'account_holder' => '도봉빵']);
+        $this->assertSame('7', \App\Models\Setting::get('settle_due_days'));      // 기본값 = 원본 실서버 설정 (2026-11-21 5→7일)
+        \App\Models\Setting::put(['settle_due_days' => 5]);                       // 아래 날짜는 5일 기준
         $this->order('DUE-1', 10000, 'pos_card', '2026-11-15 10:00:00');          // 정산예정일 11-20
         $this->order('DUE-2', 7000, 'pos_card', '2026-11-16 23:00:00');           // 11-21 = 오늘 → 대상
         $this->order('WAIT-1', 3000, 'pos_card', '2026-11-17 01:00:00');          // 11-22 → 아직
@@ -264,6 +266,7 @@ class CardSettlementTest extends TestCase
         $this->assertSame('2026-11-12', $c['unfinal']);
         $this->assertSame(238482, $c['pay']);                                      // 실서버 확인값: 카드 263,080 → 238,482
 
+        \App\Models\Setting::put(['settle_due_days' => 5]);                       // 대상 주문일 11-06~11-16 (원본 5일 기준 확인값)
         $this->order('A-1', 263080, 'pos_card', '2026-11-06 10:00:00');
         $this->order('A-2', 1000, 'pos_card', '2026-11-16 10:00:00');
         $this->actingAs($this->admin)->get(route('admin.settlements.index'))->assertOk()
