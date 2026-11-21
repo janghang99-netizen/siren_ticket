@@ -77,6 +77,7 @@ class DadamdaOrderImporter
                     $existing->update([
                         'status' => $status,
                         'settled_at' => $this->settledAt($o, $status) ?? $existing->settled_at,
+                        'settle_due_on' => $existing->settle_due_on ?? $this->dueOn($o, $at),
                         'picked_up_at' => in_array($status, [OrderStatus::PickedUp, OrderStatus::Settled], true) ? ($existing->picked_up_at ?? $at) : $existing->picked_up_at,
                         'cancelled_at' => $status === OrderStatus::Cancelled ? ($existing->cancelled_at ?? now()) : $existing->cancelled_at,
                         'refunded_at' => $status === OrderStatus::Refunded ? ($existing->refunded_at ?? now()) : $existing->refunded_at,
@@ -131,6 +132,7 @@ class DadamdaOrderImporter
                     'cancelled_at' => $status === OrderStatus::Cancelled ? $at : null,
                     'refunded_at' => $status === OrderStatus::Refunded ? $at : null,
                     'settled_at' => $this->settledAt($o, $status),
+                    'settle_due_on' => $this->dueOn($o, $at),
                     'cancel_reason' => $status === OrderStatus::Cancelled ? mb_substr("원본 {$statusText}", 0, 50) : null,
                 ]);
                 $order->created_at = $at;
@@ -155,6 +157,19 @@ class DadamdaOrderImporter
     }
 
     /** 원본 정산일시 (주문내역의 정산완료 시각) — 정산 이관이 이 값으로 주문을 정확한 정산 회차에 묶는다 */
+    /**
+     * 원본 정산예정일(jungsan_schedule_date). JSON 에 'due'가 있으면 그 값, 없으면 원본 규칙으로 계산:
+     *  주문일 + 설정 "상품판매 정산예정일" — 2026-11-21 09:49 에 5일 → 7일로 바뀜 (그 전에 저장된 주문은 5일 그대로)
+     */
+    private function dueOn(array $o, Carbon $at): string
+    {
+        if (! empty($o['due']) && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $o['due']) && ! str_starts_with((string) $o['due'], '0000')) {
+            return substr((string) $o['due'], 0, 10);
+        }
+
+        return $at->copy()->startOfDay()->addDays($at->lt(Carbon::parse('2026-11-21 09:49:00', 'Asia/Seoul')) ? 5 : 7)->toDateString();
+    }
+
     private function settledAt(array $o, OrderStatus $status): ?Carbon
     {
         return $status === OrderStatus::Settled && ! empty($o['settled']) ? Carbon::parse((string) $o['settled'], 'Asia/Seoul') : null;

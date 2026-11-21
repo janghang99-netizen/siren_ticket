@@ -139,7 +139,7 @@
         @endif
         <p class="mt-2 text-xs text-mist">
             정산금액 = 총금액 − 적립금·업체쿠폰 − 수수료 − 부가세. 페이레터 카드 내역을 불러온 업체는 카드결제(승인 − 취소) − 이용료 {{ \App\Services\SettlementReport::pct((float) config('siren.card_settle_rate')) }}% − 부가세로 표시해요(현금·계좌이체는 매장 직접 수령이라 빠짐). 표시만 바뀌고 [정산완료] 처리는 같아요.
-            @if ($importedPending)<br>원본 다담다에서 옮겨 온 수령완료 주문 {{ number_format($importedPending) }}건은 원본 정산 기록을 따르므로 여기서 정산하지 않아요.@endif
+            @if ($importedPending)<br>원본 다담다에서 옮겨 온 수령완료 주문 {{ number_format($importedPending) }}건도 여기 포함돼요(정산예정일은 원본에 저장된 날). 원본에서 이미 정산했다면 [정산완료]를 누르지 마세요 — 같은 주문을 두 번 송금하게 돼요.@endif
         </p>
     </section>
 

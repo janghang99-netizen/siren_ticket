@@ -26,7 +26,7 @@ class SettlementService
 {
     /**
      * 원샷 판매자 정산 대기목록 (원본 admin/go_money.php mode=seller) — 업체별 수령완료·정산서 없는 주문 합계.
-     *  정산 처리([정산완료] = generate(주문일 기준, 업체))로 묶일 주문과 같은 기준으로 센다. 원본에서 옮겨 온 주문은 빠진다.
+     *  정산 처리([정산완료] = generate(주문일 기준, 업체))로 묶일 주문과 같은 기준으로 센다. 원본에서 옮겨 온 수령완료 주문도 포함(원샷은 원본 화면과 같게).
      *
      * @return Collection<int, array{vendor:Vendor, count:int, gross:int, coupon:int, mileage:int, commission:int, vat:int, payout:int, first:string, last:string}>
      */
@@ -34,7 +34,7 @@ class SettlementService
     {
         $vatRate = (float) Setting::get('commission_vat_rate');
 
-        return $this->oneshotQuery($from, $to)->where('created_at', '<', PgSettlementService::dueCutoff())   // 정산예정일이 지난 주문만
+        return PgSettlementService::whereDue($this->oneshotQuery($from, $to))   // 정산예정일이 지난 주문만
             ->get()->filter(fn (Order $o) => $o->store?->vendor_id)
             ->groupBy(fn (Order $o) => $o->store->vendor_id)
             ->map(function (Collection $g, $vid) use ($vatRate) {
@@ -52,32 +52,33 @@ class SettlementService
     }
 
     /**
-     * 정산예정일이 아직 안 된 수령완료 주문 — 업체별 줄 수·금액·가장 빠른 정산예정일 (원본 sp_notdue_list). 대기목록에서 빠지고 안내만 한다.
+     * 정산예정일이 아직 안 된 수령완료 주문 — 업체별 줄 수(상품 줄)·금액·가장 빠른 정산예정일 (원본 sp_notdue_list). 대기목록에서 빠지고 안내만 한다.
      *
-     * @return Collection<int, array{vendor:Vendor, count:int, amount:int, first_due:string}>
+     * @return Collection<int, array{vendor:Vendor, count:int, orders:int, amount:int, first_due:string}>
      */
     public function notDueByVendor(?string $from = null, ?string $to = null): Collection
     {
-        return $this->oneshotQuery($from, $to)->where('created_at', '>=', PgSettlementService::dueCutoff())
+        return PgSettlementService::whereNotDue($this->oneshotQuery($from, $to))->withCount('items')
             ->get()->filter(fn (Order $o) => $o->store?->vendor_id)
             ->groupBy(fn (Order $o) => $o->store->vendor_id)
-            ->map(fn (Collection $g, $vid) => ['vendor' => Vendor::find($vid), 'count' => $g->count(), 'amount' => (int) $g->sum('total_amount'),
-                'first_due' => PgSettlementService::dueOn($g->min('created_at'))])
+            ->map(fn (Collection $g, $vid) => ['vendor' => Vendor::find($vid), 'count' => (int) $g->sum('items_count'), 'orders' => $g->count(),
+                'amount' => (int) $g->sum('total_amount'), 'first_due' => $g->map(fn (Order $o) => PgSettlementService::orderDueOn($o))->min()])
             ->filter(fn ($r) => $r['vendor'])->sortBy(fn ($r) => $r['vendor']->name)->values();
     }
 
-    /** 원샷 판매자 정산이 보는 주문: 수령완료·정산서 없음·원본에서 옮겨 온 주문 제외, 주문일 기간 */
+    /** 원샷 판매자 정산이 보는 주문: 수령완료·정산서 없음(원본에서 옮겨 온 주문 포함), 주문일 기간 */
     private function oneshotQuery(?string $from, ?string $to): \Illuminate\Database\Eloquent\Builder
     {
         return Order::with('store:id,vendor_id')
-            ->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id')->whereNull('imported_from')
+            ->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from.' 00:00:00'))
             ->when($to, fn ($q) => $q->where('created_at', '<=', $to.' 23:59:59'));
     }
 
     /**
      * @param  string  $dateField  기간 기준: picked_up_at(수령일, 기본·자동 정산) / created_at(주문일, 원샷 판매자 정산)
-     * @param  bool  $dueOnly  정산예정일(주문일 + settle_due_days)이 지난 주문만 (원샷 판매자 정산 — 대기목록에 보인 주문만 정산)
+     * @param  bool  $dueOnly  원샷 판매자 정산: 정산예정일이 지난 주문만(대기목록에 보인 주문만 정산), 원본에서 옮겨 온 수령완료 주문도 포함.
+     *                         끄면(기간 정산·자동 정산) 옮겨 온 주문은 빠진다.
      * @return Collection<int, Settlement> 새로 만든 정산서 (대상 없으면 빈 컬렉션)
      */
     public function generate(CarbonInterface $from, CarbonInterface $to, ?int $vendorId = null, string $dateField = 'picked_up_at', bool $dueOnly = false): Collection
@@ -90,15 +91,13 @@ class SettlementService
         }
         $vatRate = (float) Setting::get('commission_vat_rate');
 
-        $cutoff = $dueOnly ? PgSettlementService::dueCutoff() : null;
-
-        return DB::transaction(function () use ($start, $end, $vendorId, $vatRate, $dateField, $cutoff) {
+        return DB::transaction(function () use ($start, $end, $vendorId, $vatRate, $dateField, $dueOnly) {
             $orders = Order::with('store:id,vendor_id')
                 ->where('status', OrderStatus::PickedUp->value)
                 ->whereNull('settlement_id')
-                ->whereNull('imported_from')   // 원본에서 옮겨 온 주문은 원본 정산 기록을 따른다
+                ->when(! $dueOnly, fn ($q) => $q->whereNull('imported_from'))   // 기간·자동 정산: 원본에서 옮겨 온 주문은 원본 정산 기록을 따른다
                 ->whereBetween($dateField, [$start, $end])
-                ->when($cutoff, fn ($q) => $q->where('created_at', '<', $cutoff))
+                ->when($dueOnly, fn ($q) => PgSettlementService::whereDue($q))
                 ->when($vendorId, fn ($q) => $q->whereHas('store', fn ($s) => $s->where('vendor_id', $vendorId)))
                 ->lockForUpdate()
                 ->get()

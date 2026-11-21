@@ -274,6 +274,30 @@ class PgSettlementService
         return Carbon::parse($orderedAt)->startOfDay()->addDays(max(0, (int) Setting::get('settle_due_days')))->toDateString();
     }
 
+    /** 주문 1건의 정산예정일 — 저장된 값(원본에서 옮겨 온 주문)이 있으면 그 값, 없으면 주문일 + 설정 일수 */
+    public static function orderDueOn(Order $o): string
+    {
+        return $o->settle_due_on ? $o->settle_due_on->toDateString() : self::dueOn($o->created_at);
+    }
+
+    /** 정산예정일이 지난(오늘 이하) 주문만 — 원본 sp_due_sql */
+    public static function whereDue($q)
+    {
+        $today = now()->toDateString();
+
+        return $q->where(fn ($w) => $w->where(fn ($x) => $x->whereNotNull('settle_due_on')->whereDate('settle_due_on', '<=', $today))
+            ->orWhere(fn ($x) => $x->whereNull('settle_due_on')->where('created_at', '<', self::dueCutoff())));
+    }
+
+    /** 정산예정일이 아직 안 된 주문만 (노란 상자) */
+    public static function whereNotDue($q)
+    {
+        $today = now()->toDateString();
+
+        return $q->where(fn ($w) => $w->where(fn ($x) => $x->whereNotNull('settle_due_on')->whereDate('settle_due_on', '>', $today))
+            ->orWhere(fn ($x) => $x->whereNull('settle_due_on')->where('created_at', '>=', self::dueCutoff())));
+    }
+
     /** @return array{0:float,1:float,2:float} 이용료·부가세·정산금액 (반올림 전 — 지급액은 round(card − fee − vat)) */
     public static function split(int|float $card, ?float $rate = null): array
     {
@@ -293,8 +317,7 @@ class PgSettlementService
     public function pendingWindow(Vendor $vendor, ?string $start = null, ?string $end = null): array
     {
         $storeIds = $vendor->stores()->pluck('id');
-        $waiting = Order::whereIn('store_id', $storeIds)->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id')
-            ->whereNull('imported_from')->where('created_at', '<', self::dueCutoff())
+        $waiting = self::whereDue(Order::whereIn('store_id', $storeIds)->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id'))
             ->when($start && self::isYmd($start), fn ($q) => $q->where('created_at', '>=', $start.' 00:00:00'))
             ->when($end && self::isYmd($end), fn ($q) => $q->where('created_at', '<=', $end.' 23:59:59'));
         $last = (clone $waiting)->max('created_at');

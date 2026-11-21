@@ -27,6 +27,7 @@ class Order extends Model
         'refunded_at' => 'datetime',
         'webhook_sent_at' => 'datetime',
         'settled_at' => 'datetime',
+        'settle_due_on' => 'date',   // 정산예정일 (원본에서 옮겨 온 주문만 저장값, 비면 주문일 + 설정 일수)
         'terms_agreed_at' => 'datetime',
         'adult_confirmed_at' => 'datetime',
         'requires_id_check' => 'boolean',

@@ -225,7 +225,7 @@ class CardSettlementTest extends TestCase
 
         $this->actingAs($this->admin)->get(route('admin.settlements.index'))->assertOk()
             ->assertSee('정산예정일이 아직 안 된 수령완료 주문')
-            ->assertSee('2</span>줄 · <span class="num">7,000</span>원 (가장 빠른 정산예정일 <span class="num">2026-11-22</span>)', false)
+            ->assertSee('<span class="num">7,000</span>원 (가장 빠른 정산예정일 <span class="num">2026-11-22</span>)', false)
             ->assertSee('주문일 2026-11-15 ~ 2026-11-16')->assertSee('17,000');
 
         $csv = $this->get(route('admin.settlements.oneshot.export'))->assertOk()->streamedContent();
@@ -245,6 +245,33 @@ class CardSettlementTest extends TestCase
         // 설정을 바꾸면 그 기준으로 (0일 = 수령완료 즉시 대상)
         \App\Models\Setting::put(['settle_due_days' => 0]);
         $this->assertSame(2, app(\App\Services\SettlementService::class)->pendingByVendor()->first()['count']);
+    }
+
+    /** 원본에서 옮겨 온 수령완료 주문도 원샷 대상 — 정산예정일은 원본 저장값(옛 주문 5일), 노란 상자 줄 수 = 상품 줄 */
+    public function test_imported_orders_use_stored_due_date_and_lines_count(): void
+    {
+        $bread = \App\Models\Product::create(['store_id' => $this->store->id, 'name' => '빵', 'price' => 1000]);
+        $imp = fn (string $no, int $amt, string $at, string $due, int $lines) => tap($this->order($no, $amt, 'pos_card', $at, 5, ['imported_from' => 'dadamda', 'settle_due_on' => $due]),
+            function (Order $o) use ($lines, $amt, $bread) {
+                for ($i = 0; $i < $lines; $i++) {
+                    $o->items()->create(['product_id' => $bread->id, 'name' => '빵', 'unit_price' => intdiv($amt, $lines), 'qty' => 1, 'line_total' => intdiv($amt, $lines), 'dine_option' => '포장']);
+                }
+            });
+        $imp('IMP-1', 10000, '2026-11-16 11:00:00', '2026-11-21', 2);   // 저장된 예정일 = 오늘 → 대상 (설정 7일이면 11-23 이지만 원본 값 그대로)
+        $imp('IMP-2', 6000, '2026-11-17 10:00:00', '2026-11-22', 3);    // 내일 → 노란 상자
+        $imp('IMP-3', 4000, '2026-11-20 10:00:00', '2026-11-27', 1);
+        $this->order('NEW-1', 5000, 'pos_card', '2026-11-10 10:00:00');  // 새 시스템 주문 = 주문일 + 7일 = 11-17 → 대상
+
+        $svc = app(\App\Services\SettlementService::class);
+        $this->assertSame(15000, $svc->pendingByVendor()->first()['gross']);
+        $nd = $svc->notDueByVendor()->first();
+        $this->assertSame([4, 2, 10000, '2026-11-22'], [$nd['count'], $nd['orders'], $nd['amount'], $nd['first_due']]);
+
+        $this->actingAs($this->admin)->post(route('admin.settlements.oneshot', $this->vendor))->assertRedirect();
+        $this->assertSame(15000, Settlement::firstOrFail()->gross_amount);
+        $this->assertEqualsCanonicalizing(['IMP-2', 'IMP-3'], Order::where('status', 5)->pluck('order_no')->all());
+        // 기간 정산(자동 정산 경로)은 옮겨 온 주문을 여전히 빼고 정산하지 않는다
+        $this->assertTrue($svc->generate(\Illuminate\Support\Carbon::parse('2026-11-01'), \Illuminate\Support\Carbon::parse('2026-11-30'))->isEmpty());
     }
 
     /** 원본 #6: 승인일 d 는 d 를 포함해 d+10일 이후에 조회한 기록이 있어야 확정 → 미확정 첫 날 경고 */
