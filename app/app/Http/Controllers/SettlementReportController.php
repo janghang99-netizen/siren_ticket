@@ -40,7 +40,19 @@ class SettlementReportController extends Controller
             }
         }
 
+        // 원샷 [보고서](from/to/src)로 열면 자동 대사 (원본 2026-11-21 #5·#6): 불러오기 칸·기록 표는 숨기고,
+        //  아직 확정 안 된 첫 승인일(그날 + 10일 이후 조회 기록 없음) ~ 묶음 끝을 날짜별로 다시 불러온 뒤 &synced=1 로 새로 고침.
+        //  이미 있는 줄은 중복 저장 안 됨. 완료된 옛 묶음은 모두 확정이라 조회하지 않는다.
+        $auto = $vendor && $from && $to && $src !== '';
+        $sync = null;
+        if ($auto && ! $request->has('synced') && $this->pg->clients()) {
+            $syncFrom = $this->pg->unfinalFrom($vendor, $from, $to);
+            $sync = $syncFrom !== '' ? ['from' => $syncFrom, 'to' => $to] : null;
+        }
+        $redo = $auto ? $request->fullUrlWithoutQuery(['synced', 'syncerr']) : '';
+
         return view('admin.settlement-report', [
+            'auto' => $auto, 'sync' => $sync, 'synced' => $request->has('synced'), 'syncErr' => max(0, $request->integer('syncerr')), 'redo' => $redo,
             'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
             'vendor' => $vendor, 'rate' => $rate, 'from' => $from, 'to' => $to, 'src' => $src,
             'report' => $report,

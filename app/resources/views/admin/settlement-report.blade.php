@@ -48,18 +48,31 @@
             <div class="rounded-3xl bg-pick/40 p-5 text-sm ring-1 ring-ink/5">
                 <b>{{ $src === 'done' ? '정산 완료목록' : '원샷 정산 대기목록' }}에서 연 보고서</b> — 승인일 <b class="num">{{ $from }} ~ {{ $to }}</b>
                 ({{ $src === 'done' ? '이미 정산 처리된 묶음' : '이번에 정산할 묶음' }}, 정산 화면의 정산금액과 같은 기간)
-                <p class="mt-1">
-                    @if ($plDone)
-                        이 기간의 페이레터 내역은 이미 다 불러와 있어요. 아래 보고서를 인쇄하거나 엑셀로 내려받아 제출하세요.
+                <p class="mt-1 font-bold">
+                    @if ($auto)
+                        {{-- 자동 대사 결과 (원본 #5) --}}
+                        @if ($sync)
+                            <span class="text-blue-700">페이레터 카드 결제 내역을 맞추는 중이에요… <span id="srSyncMsg" class="font-normal"></span></span>
+                        @elseif ($syncErr)
+                            <span class="text-signal">✕ 카드 결제 대사 일부 실패 ({{ $syncErr }}일)</span>
+                            <a class="btn-ghost ml-2 !px-3 !py-1 text-xs" href="{{ $redo }}">다시 맞추기</a>
+                        @elseif (! $clients && ! $synced)
+                            <span class="text-signal">페이레터 조회 키 설정이 없어 카드 결제를 자동으로 맞추지 못했어요</span> <span class="font-normal">(.env 의 PAYLETTER_*). 아래 보고서는 저장된 내역 기준이에요.</span>
+                        @else
+                            <span class="text-emerald-700">✓ 카드 결제 대사 완료</span> <span class="font-normal">— 이 기간 페이레터 승인·취소 내역이 모두 반영되었어요.</span>
+                        @endif
+                    @elseif ($plDone)
+                        <span class="font-normal">이 기간의 페이레터 내역은 이미 다 불러와 있어요. 아래 보고서를 인쇄하거나 엑셀로 내려받아 제출하세요.</span>
                     @else
-                        <b class="text-signal">페이레터 내역을 {{ $plFrom }} 부터 아직 안 불러왔어요.</b> 아래 [불러오기]를 먼저 누르세요 (날짜는 채워 두었어요).
+                        <b class="text-signal">페이레터 내역을 {{ $plFrom }} 부터 아직 안 불러왔어요.</b> <span class="font-normal">아래 [불러오기]를 먼저 누르세요 (날짜는 채워 두었어요).</span>
                     @endif
-                    @if ($src === 'pending')<br>제출 후 <a class="underline" href="{{ route('admin.settlements.index') }}">원샷 판매자 정산</a>에서 [정산완료]를 누르면, 완료목록의 [보고서]로 같은 보고서를 다시 볼 수 있어요.@endif
                 </p>
+                @if ($src === 'pending')<p class="mt-1">제출 후 <a class="underline" href="{{ route('admin.settlements.index') }}">원샷 판매자 정산</a>에서 [정산완료]를 누르면, 완료목록의 [보고서]로 같은 보고서를 다시 볼 수 있어요.</p>@endif
             </div>
         @endif
 
-        {{-- 페이레터 불러오기 (하루씩, 누적 저장) --}}
+        @unless ($auto)
+        {{-- 페이레터 불러오기 (하루씩, 누적 저장) — 기간 없이 연 경우만. 원샷 [보고서]로 열면 자동 대사라 숨긴다 --}}
         <div class="rounded-3xl border-2 border-dashed border-ink/15 bg-white p-5 text-sm">
             <p><b>{{ $report['store'] }}</b> — 페이레터에서 카드 결제 내역을 불러와 <b>누적 저장</b>해요. 이미 있는 줄은 다시 불러와도 중복 저장되지 않아요.</p>
             <div class="mt-3 flex flex-wrap items-end gap-2">
@@ -97,6 +110,7 @@
                 <p class="text-xs text-mist">삭제하면 그때 <b>새로 저장됐던 줄</b>이 지워져요. 지운 기간은 다시 불러오면 복구돼요.</p>
             @endif
         </div>
+        @endunless
 
         @if (! $report['rows'])
             <p class="text-sm text-mist">아직 저장된 결제 내역이 없어요. 위에서 페이레터에서 불러오기를 해 주세요.</p>
@@ -190,31 +204,56 @@
                 .then(r => r.json().catch(() => ({ ok: false, msg: '서버 응답 오류 (HTTP ' + r.status + ')' })))
                 .catch(() => ({ ok: false, msg: '통신 오류' }));
 
-            // 페이레터에서 불러오기: 날짜마다 1번씩 (한 번에 오래 걸리지 않게)
+            const days = (F, T) => { const a = []; for (let d = new Date(F + 'T00:00:00Z'); d <= new Date(T + 'T00:00:00Z'); d = new Date(d.getTime() + 864e5)) a.push(d.toISOString().slice(0, 10)); return a; };
+
+            // 페이레터에서 불러오기: 날짜마다 1번씩 (한 번에 오래 걸리지 않게). 수동 [불러오기]·자동 대사 공용 (원본 plFetch)
+            //  prog(day, k, n) = 진행 표시, 돌려주는 값 = {got, nw, other, partial, errs, errDays}
+            async function plFetch(F, T, label, prog) {
+                const list = days(F, T);
+                let loadId = null, got = 0, nw = 0, other = 0, partial = 0; const errs = [], bad = new Set();
+                for (let i = 0; i < list.length; i++) {
+                    prog(list[i], i + 1, list.length);
+                    const j = await send(loadUrl, 'POST', { vendor_id: vendorId, date: list[i], load_id: loadId, label });
+                    if (!j.ok) { errs.push(list[i] + ' ' + (j.msg || j.message || '실패')); bad.add(list[i]); continue; }
+                    loadId = j.load_id; got += j.got; nw += j.new; other += j.other || 0; partial += j.partial || 0;
+                    (j.errors || []).forEach(x => { errs.push(list[i] + ' ' + x); bad.add(list[i]); });
+                }
+                return { got, nw, other, partial, errs, errDays: bad.size };
+            }
+
             const go = document.getElementById('plGo'), msg = document.getElementById('plMsg');
             if (go) go.onclick = async () => {
                 const F = document.getElementById('plFrom').value, T = document.getElementById('plTo').value;
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(F) || !/^\d{4}-\d{2}-\d{2}$/.test(T) || F > T) { alert('결제일을 바르게 넣어 주세요.'); return; }
-                const days = [];
-                for (let d = new Date(F + 'T00:00:00Z'); d <= new Date(T + 'T00:00:00Z'); d = new Date(d.getTime() + 864e5)) days.push(d.toISOString().slice(0, 10));
-                if (days.length > 93 && !confirm(days.length + '일치를 불러와요. 시간이 걸릴 수 있어요. 계속할까요?')) return;
+                const n = days(F, T).length;
+                if (n > 93 && !confirm(n + '일치를 불러와요. 시간이 걸릴 수 있어요. 계속할까요?')) return;
                 go.disabled = true;
                 const label = '페이레터 불러오기 ' + F + ' ~ ' + T;
-                let loadId = null, got = 0, nw = 0, other = 0, partial = 0; const errs = [];
-                for (let i = 0; i < days.length; i++) {
-                    msg.textContent = days[i] + ' 불러오는 중… (' + (i + 1) + '/' + days.length + ')';
-                    const j = await send(loadUrl, 'POST', { vendor_id: vendorId, date: days[i], load_id: loadId, label });
-                    if (!j.ok) { errs.push(days[i] + ' ' + (j.msg || j.message || '실패')); continue; }
-                    loadId = j.load_id; got += j.got; nw += j.new; other += j.other || 0; partial += j.partial || 0;
-                    (j.errors || []).forEach(x => errs.push(days[i] + ' ' + x));
-                }
-                let m = label + '\n가져온 줄 ' + got + ' · 새로 저장 ' + nw + ' (이미 있던 줄 ' + (got - nw) + ')';
-                if (other) m += '\n다른 업체 온라인 결제 ' + other + '줄은 제외';
-                if (partial) m += '\n부분취소 ' + partial + '줄은 건너뜀 — 해당 날짜는 페이레터 관리자 화면에서 확인해 주세요';
-                if (errs.length) m += '\n\n오류:\n' + errs.slice(0, 8).join('\n');
+                const r = await plFetch(F, T, label, (day, k, n) => { msg.textContent = day + ' 불러오는 중… (' + k + '/' + n + ')'; });
+                let m = label + '\n가져온 줄 ' + r.got + ' · 새로 저장 ' + r.nw + ' (이미 있던 줄 ' + (r.got - r.nw) + ')';
+                if (r.other) m += '\n다른 업체 온라인 결제 ' + r.other + '줄은 제외';
+                if (r.partial) m += '\n부분취소 ' + r.partial + '줄은 건너뜀 — 해당 날짜는 페이레터 관리자 화면에서 확인해 주세요';
+                if (r.errs.length) m += '\n\n오류:\n' + r.errs.slice(0, 8).join('\n');
                 alert(m);
                 location.reload();
             };
+
+            // 원샷 [보고서]로 연 경우: 자동 대사 — 화면 전체 로딩을 띄우고 확정 안 된 날만 불러온 뒤 &synced=1(실패 있으면 &syncerr=N)로 새로 고침
+            const SR_SYNC = @json($sync);
+            if (SR_SYNC) {
+                const ov = document.createElement('div');
+                ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,.88);display:flex;align-items:center;justify-content:center;';
+                ov.innerHTML = '<div style="text-align:center;font-size:16px;color:#1e3a8a;line-height:1.8;"><b>카드 결제 내역을 맞추는 중입니다…</b><br><span id="srSyncOv" style="font-size:14px;color:#555;"></span><br><span style="font-size:12px;color:#888;">페이레터 ' + SR_SYNC.from + ' ~ ' + SR_SYNC.to + ' 조회 · 창을 닫지 마세요</span></div>';
+                document.body.appendChild(ov);
+                const o = document.getElementById('srSyncOv'), s = document.getElementById('srSyncMsg');
+                plFetch(SR_SYNC.from, SR_SYNC.to, '원샷 보고서 자동 대사 ' + SR_SYNC.from + ' ~ ' + SR_SYNC.to, (day, k, n) => {
+                    o.textContent = day + ' (' + k + '/' + n + ')'; if (s) s.textContent = day + ' (' + k + '/' + n + ')';
+                }).then(r => {
+                    const u = new URL(location.href); u.searchParams.delete('synced'); u.searchParams.delete('syncerr');
+                    u.searchParams.set('synced', '1'); if (r.errDays) u.searchParams.set('syncerr', r.errDays);
+                    location.replace(u.toString());
+                });
+            }
             document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
                 if (!confirm('이때 저장된 줄을 삭제할까요? (같은 기간을 다시 불러오면 복구돼요)')) return;
                 const j = await send(b.dataset.del, 'DELETE');

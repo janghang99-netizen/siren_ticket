@@ -340,6 +340,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])-
 
     Route::get('/settlements', 'settlements')->name('settlements.index');
     Route::post('/settlements', 'settlementGenerate')->name('settlements.generate');
+    Route::get('/settlements/oneshot/export', 'settlementOneshotExport')->name('settlements.oneshot.export');   // 원샷 대기목록 엑셀 (판매자 계좌 포함 — 운영사만)
     Route::post('/settlements/oneshot/{vendor}', 'settlementOneshot')->name('settlements.oneshot');   // 원샷 판매자 정산 [정산완료]
     // 판매자 정산 보고서 (카드결제·PG 기준) — 페이레터 내역 불러오기·삭제·CSV (원본 openmarket_settle_report.php)
     Route::get('/settlements/report', [\App\Http\Controllers\SettlementReportController::class, 'show'])->name('settlements.report');

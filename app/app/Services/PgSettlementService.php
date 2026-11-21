@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
+use App\Models\Setting;
 use App\Models\Settlement;
 use App\Models\Store;
 use App\Models\Vendor;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -109,6 +111,8 @@ class PgSettlementService
             'rows_new' => $load->rows_new + $new,
             'approved_from' => $load->approved_from && $load->approved_from <= $minDay ? $load->approved_from : $minDay,
             'approved_to' => $load->approved_to && $load->approved_to >= $day ? $load->approved_to : $day,
+            'queried_from' => $load->queried_from && $load->queried_from <= $day ? $load->queried_from : $day,   // 확정 판정용: 실제로 조회한 날
+            'queried_to' => $load->queried_to && $load->queried_to >= $day ? $load->queried_to : $day,
             'updated_at' => now(),
         ]);
 
@@ -201,11 +205,13 @@ class PgSettlementService
     /**
      * 승인일 $from~$to 의 카드 합계와 정산금액 (원본 sp_card_settle). 이 업체가 페이레터를 불러온 적이 없으면 ok=false → 화면은 기존 계산 그대로.
      *
-     * @return array{ok:bool, from:string, to:string, n:int, card:int, fee:int, vat:int, pay:int, loaded_to:string, short:bool}
+     *  short = 아직 확정 안 된 승인일이 있음(unfinal = 그 첫 날) → "○○ 이후 카드 결제가 덜 반영됐을 수 있음 → [보고서]로 대사"
+     *
+     * @return array{ok:bool, from:string, to:string, n:int, card:int, fee:int, vat:int, pay:int, loaded_to:string, short:bool, unfinal:string}
      */
     public function cardSettle(Vendor $vendor, string $from, string $to, ?float $rate = null): array
     {
-        $o = ['ok' => false, 'from' => $from, 'to' => $to, 'n' => 0, 'card' => 0, 'fee' => 0, 'vat' => 0, 'pay' => 0, 'loaded_to' => '', 'short' => false];
+        $o = ['ok' => false, 'from' => $from, 'to' => $to, 'n' => 0, 'card' => 0, 'fee' => 0, 'vat' => 0, 'pay' => 0, 'loaded_to' => '', 'short' => false, 'unfinal' => ''];
         if (! self::isYmd($from) || ! self::isYmd($to)) {
             return $o;
         }
@@ -217,8 +223,55 @@ class PgSettlementService
         $card = (int) (clone $q)->sum('amount');
         [$fee, $vat, $pay] = self::split($card, $rate);
 
+        $unfinal = $this->unfinalFrom($vendor, $from, $to);
+
         return ['ok' => true, 'n' => (int) $q->count(), 'card' => $card, 'fee' => (int) round($fee), 'vat' => (int) round($vat),
-            'pay' => (int) round($pay), 'short' => $o['loaded_to'] < $to] + $o;
+            'pay' => (int) round($pay), 'unfinal' => $unfinal, 'short' => $unfinal !== ''] + $o;
+    }
+
+    /** 승인일 d 는 d 를 포함해 조회한 기록이 d + 이 일수 이후에 있어야 확정 (원본 SP_PL_LAG — 실측: 단말기 결제가 최대 5일 늦게 조회됨) */
+    public const PL_LAG = 10;
+
+    /**
+     * $from~$to 중 아직 확정 안 된 첫 승인일 ('' = 모두 확정). 이 날부터 다시 불러오면 된다(이미 있는 줄은 중복 저장 안 됨). 원본 sp_unfinal_from.
+     *  "어디까지 불러왔나"가 아니라 "언제 조회했나"로 판단: 페이레터 결제는 며칠 늦게 조회에 잡힌다.
+     */
+    public function unfinalFrom(Vendor $vendor, string $from, string $to): string
+    {
+        if (! self::isYmd($from) || ! self::isYmd($to) || $from > $to) {
+            return '';
+        }
+        $ups = DB::table('settle_pg_loads')->where('vendor_id', $vendor->id)
+            ->whereNotNull('queried_from')->where('queried_to', '>=', $from)->where('queried_from', '<=', $to)
+            ->get(['queried_from', 'queried_to', 'created_at'])
+            ->map(fn ($u) => [substr((string) $u->queried_from, 0, 10), substr((string) $u->queried_to, 0, 10), substr((string) $u->created_at, 0, 10)]);
+        for ($d = Carbon::parse($from), $e = Carbon::parse($to); $d->lte($e); $d->addDay()) {
+            $day = $d->toDateString();
+            $need = $d->copy()->addDays(self::PL_LAG)->toDateString();
+            if (! $ups->contains(fn ($u) => $u[0] <= $day && $day <= $u[1] && $u[2] >= $need)) {
+                return $day;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * 정산예정일 기준 — 이 시각 전에 주문된 수령완료 주문만 원샷 판매자 정산 대상 (원본 sp_due_sql).
+     *  정산예정일 = 주문일 + 설정 "상품판매 정산예정일"(settle_due_days, 기본 5일). 정산예정일 ≤ 오늘 ⇔ 주문일 ≤ 오늘 − N일.
+     *  그 사이에 늦게 잡히는 페이레터 카드 결제가 들어올 시간을 번다.
+     */
+    public static function dueCutoff(?CarbonInterface $today = null): Carbon
+    {
+        $n = max(0, (int) Setting::get('settle_due_days'));
+
+        return Carbon::parse($today ?? now())->startOfDay()->subDays($n - 1);
+    }
+
+    /** 주문일로 본 정산예정일 (Y-m-d) */
+    public static function dueOn(CarbonInterface $orderedAt): string
+    {
+        return Carbon::parse($orderedAt)->startOfDay()->addDays(max(0, (int) Setting::get('settle_due_days')))->toDateString();
     }
 
     /** @return array{0:float,1:float,2:float} 이용료·부가세·정산금액 (반올림 전 — 지급액은 round(card − fee − vat)) */
@@ -233,14 +286,17 @@ class PgSettlementService
     /**
      * 정산 대기(수령완료) 묶음의 승인일 기간 (원본 sp_pending_window).
      *  시작 = 정산완료 주문의 마지막 주문일 + 1 (이전 정산 없으면 첫 주문일과 PG 첫 승인일 중 빠른 날), 부분정산 시작일이 있으면 그 날
-     *  끝 = 이번 묶음 마지막 주문일
+     *  끝 = 이번 묶음(정산예정일이 지난 대상 주문) 마지막 주문일
      *
      * @return array{0:string,1:string} 주문이 없으면 ['', '']
      */
-    public function pendingWindow(Vendor $vendor, ?string $start = null): array
+    public function pendingWindow(Vendor $vendor, ?string $start = null, ?string $end = null): array
     {
         $storeIds = $vendor->stores()->pluck('id');
-        $waiting = Order::whereIn('store_id', $storeIds)->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id');
+        $waiting = Order::whereIn('store_id', $storeIds)->where('status', OrderStatus::PickedUp->value)->whereNull('settlement_id')
+            ->whereNull('imported_from')->where('created_at', '<', self::dueCutoff())
+            ->when($start && self::isYmd($start), fn ($q) => $q->where('created_at', '>=', $start.' 00:00:00'))
+            ->when($end && self::isYmd($end), fn ($q) => $q->where('created_at', '<=', $end.' 23:59:59'));
         $last = (clone $waiting)->max('created_at');
         if (! $last) {
             return ['', ''];

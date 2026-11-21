@@ -13,6 +13,7 @@ class Setting extends Model
         'default_settlement_day' => '1',          // 월요일
         'default_payout_delay_days' => '3',
         'commission_vat_rate' => '10',            // 수수료 부가세 %
+        'settle_due_days' => '5',                 // 상품판매 정산예정일 = 주문일 + N일 (원본 HAPPY_CONFIG calculate_date). 원샷 판매자 정산은 이 날이 지난 주문만
         // 마일리지 (원본 HAPPY_CONFIG point_use_cut · CONF percent_point 대응)
         'mileage_min_use' => '1000',              // 최소 사용액
         'mileage_use_max_rate' => '100',          // 결제액 중 마일리지로 낼 수 있는 최대 %

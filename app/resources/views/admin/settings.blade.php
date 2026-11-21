@@ -104,6 +104,10 @@
                 <label class="label" for="d-delay">지급일 (정산 후)</label>
                 <input id="d-delay" name="defaults[default_payout_delay_days]" type="number" min="0" max="30" class="field num" value="{{ old('defaults.default_payout_delay_days', $settings['default_payout_delay_days']) }}" required>
             </div>
+            <div>
+                <label class="label" for="d-due">상품판매 정산예정일 (주문일 + 일)</label>
+                <input id="d-due" name="defaults[settle_due_days]" type="number" min="0" max="60" class="field num" value="{{ old('defaults.settle_due_days', $settings['settle_due_days']) }}" required>
+            </div>
         </div>
         <p class="mt-3 text-xs text-mist">입점계약 제7조 기준: 판매금액의 8.5%(부가세 별도), 정산주기 2주. 정산 대상은 수령완료(구매확정) 주문이고, 취소·환불 주문에는 수수료가 없어요.</p>
     </section>

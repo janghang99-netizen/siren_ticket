@@ -217,12 +217,13 @@ class PolicyTest extends TestCase
     {
         $this->actingAs($this->admin)->put(route('admin.settings.save'), [
             'defaults' => ['default_commission_rate' => 7, 'default_settlement_cycle' => 'monthly', 'default_settlement_day' => 10, 'default_payout_delay_days' => 5, 'commission_vat_rate' => 10,
-                'mileage_min_use' => 1000, 'mileage_use_max_rate' => 100, 'mileage_product_max_rate' => 10, 'ticket_mileage_rate' => 1],
+                'mileage_min_use' => 1000, 'mileage_use_max_rate' => 100, 'mileage_product_max_rate' => 10, 'ticket_mileage_rate' => 1, 'settle_due_days' => 7],
             'vendors' => [$this->vendor->id => ['commission_rate' => 9, 'settlement_cycle' => 'weekly', 'settlement_day' => 5, 'payout_delay_days' => 2]],
             'stores' => [$this->store->id => ['commission_rate' => 6.5]],
         ])->assertRedirect();
 
         $this->assertSame('7', \App\Models\Setting::get('default_commission_rate'));
+        $this->assertSame('7', \App\Models\Setting::get('settle_due_days'));
         $this->assertSame('weekly', $this->vendor->fresh()->settlement_cycle);
         $this->assertEquals(6.5, (float) $this->store->fresh()->commission_rate);
     }

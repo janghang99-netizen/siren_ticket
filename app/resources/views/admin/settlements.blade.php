@@ -44,8 +44,22 @@
                 <div><label class="label" for="s_date">주문일 시작 (부분정산)</label><input id="s_date" type="date" name="s_date" value="{{ $sDate }}" class="field num !py-2"></div>
                 <div><label class="label" for="e_date">끝</label><input id="e_date" type="date" name="e_date" value="{{ $eDate }}" class="field num !py-2"></div>
                 <button class="btn-ghost !py-2.5 text-sm">주문건 검색</button>
+                @if ($pending->isNotEmpty())
+                    <a href="{{ route('admin.settlements.oneshot.export', array_filter(['s_date' => $sDate, 'e_date' => $eDate])) }}" class="btn-ghost !py-2.5 text-sm">엑셀 다운로드</a>
+                @endif
             </form>
         </div>
+
+        @if ($notDue->isNotEmpty())
+            {{-- 정산예정일이 아직 안 된 수령완료 주문 (원본 sp_notdue_html) — 대상이 없어도 보여 준다 --}}
+            <div class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-ink">
+                <b>정산예정일이 아직 안 된 수령완료 주문</b> — 아래 목록(정산 대상)에서 빠져 있고, 정산예정일이 되면 자동으로 올라와요.<br>
+                @foreach ($notDue as $n)
+                    · {{ $n['vendor']->name }} : <span class="num">{{ number_format($n['count']) }}</span>줄 · <span class="num">{{ number_format($n['amount']) }}</span>원 (가장 빠른 정산예정일 <span class="num">{{ $n['first_due'] }}</span>)<br>
+                @endforeach
+                <span class="text-mist">정산예정일 = 주문일 + 기본설정 "상품판매 정산예정일"({{ $dueDays }}일). 늦게 잡히는 카드 결제가 반영될 시간을 두기 위함이에요.</span>
+            </div>
+        @endif
 
         @if ($pending->isEmpty())
             <div class="rounded-3xl bg-white px-6 py-10 text-center text-sm text-mist ring-1 ring-ink/5">업체에게 정산할 내역이 없어요.</div>

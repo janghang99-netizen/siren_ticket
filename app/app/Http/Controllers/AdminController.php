@@ -290,8 +290,9 @@ class AdminController extends Controller
         $eDate = \App\Services\PgSettlementService::isYmd($request->query('e_date')) ? $request->query('e_date') : null;
 
         // 원샷 판매자 정산 대기목록 (원본 go_money.php). 페이레터를 불러온 업체는 카드결제 기준으로 표시만 덮어쓴다
-        $pending = $service->pendingByVendor($sDate, $eDate)->map(function (array $r) use ($pg, $sDate) {
-            [$from, $to] = $pg->pendingWindow($r['vendor'], $sDate);
+        //  정산예정일이 지난 주문만 대상, 아직 안 된 주문은 노란 상자로 안내 (원본 2026-11-21 #7)
+        $pending = $service->pendingByVendor($sDate, $eDate)->map(function (array $r) use ($pg, $sDate, $eDate) {
+            [$from, $to] = $pg->pendingWindow($r['vendor'], $sDate, $eDate);
             $r['card'] = $pg->cardSettle($r['vendor'], $from, $to);
 
             return $r;
@@ -311,6 +312,8 @@ class AdminController extends Controller
             'settlements' => $settlements,
             'cards' => $cards,
             'pending' => $pending,
+            'notDue' => $service->notDueByVendor($sDate, $eDate),
+            'dueDays' => (int) \App\Models\Setting::get('settle_due_days'),
             'sDate' => $sDate, 'eDate' => $eDate,
             'importedPending' => (clone $unsettled)->whereNotNull('imported_from')->count(),
             'unsettledCount' => (clone $unsettled)->count(),
@@ -325,7 +328,7 @@ class AdminController extends Controller
         $data = $request->validate(['s_date' => ['nullable', 'date_format:Y-m-d'], 'e_date' => ['nullable', 'date_format:Y-m-d']]);
         $from = Carbon::parse($data['s_date'] ?? '2000-01-01');
         $to = Carbon::parse($data['e_date'] ?? now()->toDateString());
-        $made = $service->generate($from, $to, $vendor->id, 'created_at');
+        $made = $service->generate($from, $to, $vendor->id, 'created_at', dueOnly: true);   // 대기목록에 보인(정산예정일 지난) 주문만
         foreach ($made as $s) {
             \App\Services\Audit::log('settlement.generated', $s, '원샷 정산서 #'.$s->id.' 생성 (주문일 '.$from->toDateString().'~'.$to->toDateString().') 지급액 '.number_format($s->payout_amount).'원');
         }
@@ -333,6 +336,34 @@ class AdminController extends Controller
         return back()->with('status', $made->isEmpty()
             ? "{$vendor->name}: 정산할 수령완료 주문이 없어요."
             : "{$vendor->name} 정산서를 만들었어요. 지급액 ".number_format($made->sum('payout_amount')).'원 — 송금 후 지급 완료로 표시해 주세요.');
+    }
+
+    /** 원샷 판매자 정산 대기목록 엑셀 (원본 go_money_excel.php) — 대기목록과 같은 대상(정산예정일 지난 주문)·같은 금액. 계좌가 들어 있어 운영사만 */
+    public function settlementOneshotExport(Request $request, SettlementService $service, \App\Services\PgSettlementService $pg): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $sDate = \App\Services\PgSettlementService::isYmd($request->query('s_date')) ? $request->query('s_date') : null;
+        $eDate = \App\Services\PgSettlementService::isYmd($request->query('e_date')) ? $request->query('e_date') : null;
+        $rows = $service->pendingByVendor($sDate, $eDate)->map(function (array $r) use ($pg, $sDate, $eDate) {
+            [$from, $to] = $pg->pendingWindow($r['vendor'], $sDate, $eDate);
+            $c = $pg->cardSettle($r['vendor'], $from, $to);
+            $v = $r['vendor'];
+
+            return [$v->name, $v->bank_name, $v->bank_account, $v->account_holder, $r['first'].' ~ '.$r['last'], $r['count'],
+                $c['ok'] ? $c['card'] : $r['gross'], $r['mileage'] + $r['coupon'],
+                $c['ok'] ? $c['fee'] : $r['commission'], $c['ok'] ? $c['vat'] : $r['vat'], $c['ok'] ? $c['pay'] : $r['payout'],
+                $c['ok'] ? '카드결제 기준 (승인일 '.$c['from'].' ~ '.$c['to'].')'.($c['short'] ? ' · '.$c['unfinal'].' 이후 카드 결제가 덜 반영됐을 수 있음' : '') : '주문 기준'];
+        });
+        \App\Services\Audit::log('settlement.oneshot_export', null, '원샷 판매자 정산 엑셀 ('.($sDate ?: '처음').' ~ '.($eDate ?: '오늘').', '.$rows->count().'개 업체)');
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['업체', '은행', '계좌번호', '예금주', '주문일', '건수', '총금액', '적립금·업체쿠폰', '수수료(공급가액)', '부가세', '정산금액', '기준']);
+            foreach ($rows as $row) {
+                fputcsv($out, $row);
+            }
+            fclose($out);
+        }, '원샷판매자정산_'.now()->format('Ymd').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function settlementGenerate(Request $request, SettlementService $service): RedirectResponse
@@ -679,6 +710,7 @@ class AdminController extends Controller
             'defaults.default_settlement_day' => ['required', 'integer', 'min:1', 'max:28'],
             'defaults.default_payout_delay_days' => ['required', 'integer', 'min:0', 'max:30'],
             'defaults.commission_vat_rate' => ['required', 'numeric', 'min:0', 'max:20'],
+            'defaults.settle_due_days' => ['sometimes', 'integer', 'min:0', 'max:60'],   // 상품판매 정산예정일 (원샷 판매자 정산)
             'defaults.mileage_min_use' => ['required', 'integer', 'min:0', 'max:100000'],
             'defaults.mileage_use_max_rate' => ['required', 'integer', 'min:0', 'max:100'],
             'defaults.mileage_product_max_rate' => ['required', 'integer', 'min:0', 'max:50'],

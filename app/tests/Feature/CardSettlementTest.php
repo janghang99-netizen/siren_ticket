@@ -29,6 +29,7 @@ class CardSettlementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-21 12:00:00'));   // 정산예정일·확정 판정이 오늘 기준이라 날짜 고정
         $this->admin = User::factory()->create(['role' => 'super_admin']);
         $this->vendor = Vendor::create(['name' => '도봉빵 (Do BON PAIN)', 'state' => 'approved', 'commission_rate' => 8.5]);
         $this->store = Store::create(['vendor_id' => $this->vendor->id, 'code' => 'dobonpang', 'name' => '도봉빵', 'commission_rate' => 8.5]);
@@ -119,6 +120,7 @@ class CardSettlementTest extends TestCase
         $load = DB::table('settle_pg_loads')->find($res['load_id']);
         $this->assertSame('2026-11-10', substr($load->approved_from, 0, 10));
         $this->assertSame('2026-11-12', substr($load->approved_to, 0, 10));
+        $this->assertSame(['2026-11-12', '2026-11-12'], [substr($load->queried_from, 0, 10), substr($load->queried_to, 0, 10)]);   // 확정 판정용 조회 범위
 
         // 다시 불러와도 중복 저장 없음
         $this->postJson(route('admin.settlements.pg-load'), ['vendor_id' => $this->vendor->id, 'date' => '2026-11-12'])->assertJson(['got' => 3, 'new' => 0]);
@@ -207,10 +209,115 @@ class CardSettlementTest extends TestCase
             ->assertSee(number_format((int) round(33000 - 33000 * 0.085 * 1.1)))->assertSee(number_format($s->payout_amount));
     }
 
-    public function test_vendor_cannot_open_report(): void
+    /** 원본 #7: 원샷 판매자 정산 = 정산예정일(주문일 + 5일)이 지난 수령완료 주문만 — 대기목록·엑셀·[정산완료] 같은 대상, 나머지는 노란 상자 */
+    public function test_oneshot_settles_only_orders_past_due_date(): void
+    {
+        $this->vendor->update(['bank_name' => '테스트은행', 'bank_account' => '000-00-000000', 'account_holder' => '도봉빵']);
+        $this->order('DUE-1', 10000, 'pos_card', '2026-11-15 10:00:00');          // 정산예정일 11-20
+        $this->order('DUE-2', 7000, 'pos_card', '2026-11-16 23:00:00');           // 11-21 = 오늘 → 대상
+        $this->order('WAIT-1', 3000, 'pos_card', '2026-11-17 01:00:00');          // 11-22 → 아직
+        $this->order('WAIT-2', 4000, 'pos_card', '2026-11-19 09:00:00');          // 11-24 → 아직
+
+        $this->assertSame('2026-11-17 00:00:00', PgSettlementService::dueCutoff()->toDateTimeString());
+        $this->assertSame(['2026-11-15', '2026-11-16'], app(PgSettlementService::class)->pendingWindow($this->vendor));   // [보고서] 끝 = 대상 주문의 마지막 주문일
+
+        $this->actingAs($this->admin)->get(route('admin.settlements.index'))->assertOk()
+            ->assertSee('정산예정일이 아직 안 된 수령완료 주문')
+            ->assertSee('2</span>줄 · <span class="num">7,000</span>원 (가장 빠른 정산예정일 <span class="num">2026-11-22</span>)', false)
+            ->assertSee('주문일 2026-11-15 ~ 2026-11-16')->assertSee('17,000');
+
+        $csv = $this->get(route('admin.settlements.oneshot.export'))->assertOk()->streamedContent();
+        $this->assertStringContainsString('000-00-000000', $csv);
+        $this->assertStringContainsString(',17000,', $csv);                       // 엑셀도 대상(17,000)만
+        $this->assertStringNotContainsString('24000', $csv);
+
+        $this->post(route('admin.settlements.oneshot', $this->vendor))->assertRedirect();
+        $s = Settlement::firstOrFail();
+        $this->assertSame(2, $s->order_count);
+        $this->assertSame(17000, $s->gross_amount);
+        $this->assertEqualsCanonicalizing(['WAIT-1', 'WAIT-2'], Order::where('status', 5)->pluck('order_no')->all());   // 정산예정일 전 주문은 그대로
+
+        $this->get(route('admin.settlements.index'))->assertOk()
+            ->assertSee('업체에게 정산할 내역이 없어요')->assertSee('정산예정일이 아직 안 된 수령완료 주문');   // 대상이 없어도 노란 상자
+
+        // 설정을 바꾸면 그 기준으로 (0일 = 수령완료 즉시 대상)
+        \App\Models\Setting::put(['settle_due_days' => 0]);
+        $this->assertSame(2, app(\App\Services\SettlementService::class)->pendingByVendor()->first()['count']);
+    }
+
+    /** 원본 #6: 승인일 d 는 d 를 포함해 d+10일 이후에 조회한 기록이 있어야 확정 → 미확정 첫 날 경고 */
+    public function test_late_payletter_rows_need_confirmed_query(): void
+    {
+        $pg = app(PgSettlementService::class);
+        $load = fn (string $f, string $t, string $at) => DB::table('settle_pg_loads')->insert(['vendor_id' => $this->vendor->id, 'label' => 'q', 'approved_from' => $f, 'approved_to' => $t,
+            'queried_from' => $f, 'queried_to' => $t, 'created_at' => $at, 'updated_at' => $at]);
+        $load('2026-06-01', '2026-11-20', '2026-11-21 01:09:00');
+        $load('2026-11-06', '2026-11-20', '2026-11-21 09:09:00');
+
+        $this->assertSame('2026-11-12', $pg->unfinalFrom($this->vendor, '2026-11-06', '2026-11-16'));   // 11-12 + 10 = 11-22 > 조회일 11-21
+        $this->assertSame('', $pg->unfinalFrom($this->vendor, '2026-06-09', '2026-11-05'));             // 완료된 옛 묶음은 모두 확정
+        $this->assertSame('2026-11-21', $pg->unfinalFrom($this->vendor, '2026-11-21', '2026-11-21'));   // 조회 안 한 날
+
+        $this->pg('2026-11-10', 263080);
+        $c = $pg->cardSettle($this->vendor, '2026-11-06', '2026-11-16');
+        $this->assertTrue($c['short']);
+        $this->assertSame('2026-11-12', $c['unfinal']);
+        $this->assertSame(238482, $c['pay']);                                      // 실서버 확인값: 카드 263,080 → 238,482
+
+        $this->order('A-1', 263080, 'pos_card', '2026-11-06 10:00:00');
+        $this->order('A-2', 1000, 'pos_card', '2026-11-16 10:00:00');
+        $this->actingAs($this->admin)->get(route('admin.settlements.index'))->assertOk()
+            ->assertSee('2026-11-12 이후 카드 결제가 덜 반영됐을 수 있음 → [보고서]로 대사');
+
+        // 12-01 에 다시 조회하면 모두 확정
+        $load('2026-11-06', '2026-11-30', '2026-12-01 09:00:00');
+        $this->assertSame('', $pg->unfinalFrom($this->vendor, '2026-11-06', '2026-11-16'));
+    }
+
+    /** 원본 #5·#6: 원샷 [보고서]로 열면 수동 불러오기 칸 없이 미확정 첫 날 ~ 끝을 자동 대사 */
+    public function test_report_opened_from_oneshot_auto_reconciles(): void
+    {
+        DB::table('settle_pg_loads')->insert(['vendor_id' => $this->vendor->id, 'label' => 'q', 'approved_from' => '2026-11-01', 'approved_to' => '2026-11-20',
+            'queried_from' => '2026-11-01', 'queried_to' => '2026-11-20', 'created_at' => '2026-11-21 01:00:00', 'updated_at' => '2026-11-21 01:00:00']);
+        $this->pg('2026-11-08', 5000);
+        $url = fn (array $q = []) => route('admin.settlements.report', ['vendor' => $this->vendor->id, 'from' => '2026-11-06', 'to' => '2026-11-16', 'src' => 'pending'] + $q);
+
+        $this->actingAs($this->admin)->get($url())->assertOk()
+            ->assertSee('"from":"2026-11-12","to":"2026-11-16"', false)               // 자동 대사 범위 = 미확정 첫 날 ~ 끝
+            ->assertSee('카드 결제 내역을 맞추는 중')->assertDontSee('id="plGo"', false)->assertDontSee('저장 일시');
+        $this->get($url(['synced' => 1]))->assertOk()->assertSee('✓ 카드 결제 대사 완료')->assertSee('const SR_SYNC = null', false);
+        $this->get($url(['synced' => 1, 'syncerr' => 2]))->assertOk()->assertSee('✕ 카드 결제 대사 일부 실패 (2일)')->assertSee('다시 맞추기');
+        // 완료된 옛 묶음(모두 확정)은 조회 없이 바로 완료
+        $this->get(route('admin.settlements.report', ['vendor' => $this->vendor->id, 'from' => '2026-11-01', 'to' => '2026-11-05', 'src' => 'done']))
+            ->assertOk()->assertSee('const SR_SYNC = null', false)->assertSee('✓ 카드 결제 대사 완료');
+        // 기간 없이 열면 예전처럼 수동 불러오기·기록 표
+        $this->get(route('admin.settlements.report', ['vendor' => $this->vendor->id]))->assertOk()->assertSee('id="plGo"', false)->assertSee('저장 일시');
+        // 조회 키가 없으면 안내
+        config(['siren.payletter' => ['url' => '', 'clients' => []]]);
+        $this->get($url())->assertOk()->assertSee('페이레터 조회 키 설정이 없어')->assertSee('const SR_SYNC = null', false);
+    }
+
+    /** 원본 #7 보안: 원샷 엑셀이 로그인 없이 계좌·정산금액을 내려줬음 → 이관 앱의 정산 엑셀·보고서·불러오기는 운영사만 */
+    public function test_settlement_exports_and_loads_require_super_admin(): void
     {
         $vendorUser = User::factory()->create(['role' => 'vendor', 'vendor_id' => $this->vendor->id]);
-        $this->actingAs($vendorUser)->get(route('admin.settlements.report'))->assertForbidden();
+        $gets = [route('admin.settlements.index'), route('admin.settlements.oneshot.export'), route('admin.settlements.report', ['vendor' => $this->vendor->id]),
+            route('admin.settlements.report.export', ['vendor' => $this->vendor->id])];
+
+        foreach ($gets as $u) {
+            $this->get($u)->assertRedirect(route('login'));
+        }
+        $this->post(route('admin.settlements.oneshot', $this->vendor))->assertRedirect(route('login'));
+        $this->postJson(route('admin.settlements.pg-load'), ['vendor_id' => $this->vendor->id, 'date' => '2026-11-12'])->assertUnauthorized();
+        $this->deleteJson(route('admin.settlements.pg-load.destroy', [$this->vendor, 1]))->assertUnauthorized();
+
+        $this->actingAs($vendorUser);
+        foreach ($gets as $u) {
+            $this->get($u)->assertForbidden();
+        }
+        $this->post(route('admin.settlements.oneshot', $this->vendor))->assertForbidden();
         $this->postJson(route('admin.settlements.pg-load'), ['vendor_id' => $this->vendor->id, 'date' => '2026-11-12'])->assertForbidden();
+        $this->deleteJson(route('admin.settlements.pg-load.destroy', [$this->vendor, 1]))->assertForbidden();
+        $this->assertSame(0, Settlement::count());
     }
 }
