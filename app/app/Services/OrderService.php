@@ -93,6 +93,10 @@ class OrderService
             }
 
             $hasAlcohol = collect($lines)->contains(fn ($l) => $l[0]->is_alcohol);
+            // 주류판매 자격이 승인되지 않은(반려된) 업체 매장의 주류는 받지 않는다
+            if ($hasAlcohol && ! $store->vendor?->canSellLiquor()) {
+                throw new OrderException('이 매장은 지금 주류를 팔 수 없어요. 주류를 빼고 주문해 주세요.', 'liquor_not_allowed');
+            }
             if ($hasAlcohol && $channel === 'online' && ! $adultConfirmed) {
                 throw new OrderException('주류는 만 19세 이상만 주문할 수 있어요. 성인 확인에 동의해 주세요.', 'adult_required');
             }
