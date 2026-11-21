@@ -124,6 +124,21 @@ class Member extends Authenticatable
         return strlen($p) > 7 ? substr($p, 0, 3).str_repeat('*', strlen($p) - 7).substr($p, -4) : $p;
     }
 
+    /** 홍길동 → 홍*동, 홍길 → 홍*, 남궁민수 → 남**수 */
+    public function maskedName(): string
+    {
+        $n = (string) $this->name;
+        $len = mb_strlen($n);
+        if ($len <= 1) {
+            return $n;
+        }
+        if ($len === 2) {
+            return mb_substr($n, 0, 1).'*';
+        }
+
+        return mb_substr($n, 0, 1).str_repeat('*', $len - 2).mb_substr($n, -1);
+    }
+
     public function maskedEmail(): ?string
     {
         if (! $this->email) {

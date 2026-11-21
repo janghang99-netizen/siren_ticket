@@ -7,6 +7,8 @@
 @endsection
 
 @section('content')
+    @include('admin.partials.coupon-tabs')
+
     {{-- 공연 관람 스탬프 (운영사 프로그램) --}}
     <section class="mb-5 rounded-3xl bg-white p-5 ring-1 ring-ink/5">
         <h2 class="font-bold">공연 관람 스탬프 <span class="text-xs font-normal text-mist">공연이 끝나면 티켓 1매당 1개 · 다 모으면 티켓 할인 쿠폰</span></h2>

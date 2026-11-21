@@ -214,6 +214,7 @@ Route::prefix('partner')->name('partner.')->middleware(['auth', 'can:vendor'])->
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'can:super-admin'])->controller(\App\Http\Controllers\BenefitAdminController::class)->group(function () {
     Route::get('/coupons', 'coupons')->name('coupons.index');
     Route::get('/coupons/new', 'couponCreate')->name('coupons.create');
+    Route::get('/coupons/stamps', 'stampCards')->name('coupons.stamps');   // 회원별 스탬프 현황
     Route::post('/coupons', 'couponStore')->name('coupons.store');
     Route::get('/coupons/{coupon}', 'coupon')->whereNumber('coupon')->name('coupons.show');
     Route::get('/coupons/{coupon}/edit', 'couponEdit')->name('coupons.edit');
