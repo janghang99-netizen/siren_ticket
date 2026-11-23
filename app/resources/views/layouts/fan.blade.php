@@ -80,7 +80,11 @@
                 </dl>
             </details>
             @endif
-            <p>@if ($ticketing){{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 @else{{ $site['company_info_visible'] === '1' ? $site['company_name'] : $site['brand_name'] }}은(는) @endif통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+            @if ($site['company_info_visible'] === '1')
+                <p>@if ($ticketing){{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 @else{{ $site['company_name'] }}은(는) @endif통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+            @else
+                <p class="font-semibold text-ink/70">이 사이트는 샘플 사이트입니다.</p>
+            @endif
             <p id="translate-notice" class="mt-2" hidden>번역은 이해를 돕기 위한 것이며, 약관·환불 규정은 한국어 원문이 우선합니다.</p>
         </footer>
 

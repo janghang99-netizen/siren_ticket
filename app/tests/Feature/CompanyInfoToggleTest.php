@@ -24,7 +24,10 @@ class CompanyInfoToggleTest extends TestCase
 
         auth('web')->logout();
         $this->get(route('policy', 'terms'))->assertOk()
-            ->assertDontSee('231-88-02240')->assertDontSee('태라글로벌')->assertDontSee('효령로');
+            ->assertDontSee('231-88-02240')->assertDontSee('태라글로벌')->assertDontSee('효령로')
+            ->assertSee('이 사이트는 샘플 사이트입니다.');
+        $this->get(route('home'))->assertOk()->assertSee('이 사이트는 샘플 사이트입니다.')
+            ->assertDontSee('통신판매중개자')->assertDontSee('다담다은(는)');
 
         $this->actingAs($admin, 'web')->put(route('admin.settings.site'), $site + ['company_info_visible' => '1'])->assertRedirect();
         auth('web')->logout();

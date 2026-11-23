@@ -96,7 +96,11 @@
                     @if ($site['company_email'])<div class="flex gap-1.5"><dt>이메일</dt><dd class="text-ink/70">{{ $site['company_email'] }}</dd></div>@endif
                 </dl>
                 @endif
-                <p class="mt-3 max-w-3xl">{{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+                @if ($site['company_info_visible'] === '1')
+                    <p class="mt-3 max-w-3xl">{{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+                @else
+                    <p class="mt-3 font-semibold text-ink/70">이 사이트는 샘플 사이트입니다.</p>
+                @endif
             </div>
             <nav class="translation-links notranslate flex h-fit items-center self-start rounded-full bg-white p-0.5 text-[11px] font-bold ring-1 ring-ink/10" translate="no" aria-label="언어 Language">
                 @foreach (['ko' => 'KO', 'en' => 'EN', 'ja' => '日本語', 'zh-CN' => '中文'] as $code => $label)
