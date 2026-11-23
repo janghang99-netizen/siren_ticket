@@ -69,11 +69,11 @@
             </div>
             <p class="mt-2 text-[11px] text-white/40">
                 @if ($pending) 블록체인 기록을 보내는 중이에요. 잠시 뒤 다시 열어 보세요.
-                @else 다담다가 아닌 카이아 공식 탐색기(Kaiascan)에서 누구나 같은 기록을 확인할 수 있어요.
+                @else 이 사이트가 아닌 카이아 공식 탐색기(Kaiascan)에서 누구나 같은 기록을 확인할 수 있어요.
                 @endif
             </p>
         @else
-            <p class="mt-2 text-[11px] text-white/45">이 티켓은 다담다 서버에 기록돼요 (블록체인 기록을 쓰지 않는 환경). 위조 방지·1회 입장은 똑같이 적용돼요.</p>
+            <p class="mt-2 text-[11px] text-white/45">이 티켓은 이 사이트 서버에 기록돼요 (블록체인 기록을 쓰지 않는 환경). 위조 방지·1회 입장은 똑같이 적용돼요.</p>
         @endif
         <a href="{{ route('about.blockchain') }}" class="mt-2 inline-block text-[11px] font-semibold text-white/60 underline underline-offset-2 hover:text-white">블록체인 티켓이란?</a>
     </div>

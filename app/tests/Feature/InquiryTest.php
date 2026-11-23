@@ -62,7 +62,7 @@ class InquiryTest extends TestCase
 
         $this->assertCount(1, $this->sent);
         $this->assertSame($me->phone, $this->sent[0][0]);
-        $this->assertStringContainsString('[다담다] 1:1 문의에 답변이 달렸어요', $this->sent[0][1]);
+        $this->assertStringContainsString('[SIREN Ticket] 1:1 문의에 답변이 달렸어요', $this->sent[0][1]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'inquiry.answer']);
 
         $this->get(route('inquiries.show', $q))->assertOk()->assertSee('지금 나왔어요');

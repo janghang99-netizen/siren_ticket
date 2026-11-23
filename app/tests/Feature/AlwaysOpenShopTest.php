@@ -61,9 +61,9 @@ class AlwaysOpenShopTest extends TestCase
 
     public function test_brand_business_info_and_pickup_board_qr(): void
     {
-        // 화면 이름 '다담다' + 하단 사업자 정보 (통신판매중개자 고지)
+        // 화면 이름 기본값 'SIREN Ticket' + 하단 사업자 정보 (통신판매중개자 고지)
         $home = $this->get(route('home'))->assertOk();
-        $home->assertSee('<title>홈 · 다담다</title>', false)->assertDontSee('SIREN')
+        $home->assertSee('<title>홈 · SIREN Ticket</title>', false)->assertSee('SIREN Ticket 매장 주문')->assertDontSee('다담다')
             ->assertSee('231-88-02240')->assertSee('2021-서울서초-3972')->assertSee('통신판매중개자');
 
         // 전광판: 이 매장 상시 주문 QR

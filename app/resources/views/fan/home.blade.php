@@ -56,7 +56,7 @@
     @else
         {{-- ① 상시 매장 주문 (원본 다담다 홈: 먼저 주문하고 빠른 픽업) --}}
         <section class="fandom-soft relative mt-2 overflow-hidden rounded-[28px] px-5 pb-5 pt-6 shadow-[0_24px_60px_-28px_rgba(23,19,43,.35)] animate-rise">
-            <span class="eyebrow !text-ink/50">다담다 매장 주문</span>
+            <span class="eyebrow !text-ink/50">{{ $site['brand_name'] }} 매장 주문</span>
             <h1 class="mt-3 text-[34px] font-black leading-[1.08] tracking-tight">먼저 주문하고<br>빠른 픽업!</h1>
             <p class="mt-2 text-sm font-medium text-ink/65">줄 서지 말고 미리 주문하고, 번호가 노랗게 뜨면 받아 가세요.</p>
             <a href="{{ $listUrl }}" class="btn-ink mt-5 w-full">매장 {{ $stores->count() }}곳 보고 주문하기</a>

@@ -21,7 +21,7 @@ class Setting extends Model
         'ticket_mileage_rate' => '1',             // 공연 관람 적립 (티켓 결제액의 %, 운영사 부담)
         'ticketing_enabled' => '0',               // 공연 티켓 판매 기능 (끄면 예매·내 티켓·공연장 좌석표 메뉴가 숨는다 — 다담다 이관 기본값: 끔)
         // 화면 이름 · 운영사 사업자 정보 (화면 하단 표시 — 전자상거래법 통신판매중개자 고지). 기본값은 원본 다담다 하단 공개 정보.
-        'brand_name' => '다담다',
+        'brand_name' => 'SIREN Ticket',
         'company_name' => '주식회사 태라글로벌',
         'company_ceo' => '한명아',
         'company_reg_no' => '231-88-02240',
@@ -44,7 +44,7 @@ class Setting extends Model
     /** 화면 이름 (문자·메일 머리말 등) */
     public static function brand(): string
     {
-        return static::get('brand_name') ?: '다담다';
+        return static::get('brand_name') ?: 'SIREN Ticket';
     }
 
     /** 공연 티켓 판매 기능을 쓰는지 (슈퍼관리자 설정에서 켜고 끈다) */

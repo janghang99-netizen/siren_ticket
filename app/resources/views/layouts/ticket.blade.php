@@ -7,7 +7,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="theme-color" content="#0E0C15">
     @include('partials.theme-init')
-    <title>@yield('title', $site['brand_name']) · {{ $site['brand_name'] }} 티켓</title>
+    {{-- 화면 이름에 이미 'Ticket/티켓'이 있으면 ' 티켓'을 또 붙이지 않는다 (SIREN Ticket 티켓 방지) --}}
+    @php($tixName = preg_match('/ticket|티켓/iu', $site['brand_name']) ? $site['brand_name'] : $site['brand_name'].' 티켓')
+    <title>@yield('title', $site['brand_name']) · {{ $tixName }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&display=swap" rel="stylesheet">
@@ -19,7 +21,7 @@
     @php($genre = trim($__env->yieldContent('genre')))
     <header class="sticky top-0 z-40 border-b border-ink/[.06] bg-white/90 backdrop-blur-xl">
         <div class="tix-wrap flex h-16 items-center gap-4 lg:h-[72px] lg:gap-8">
-            <a href="{{ route('home') }}" class="flex shrink-0 items-center gap-2" aria-label="{{ $site['brand_name'] }} 티켓 홈">
+            <a href="{{ route('home') }}" class="flex shrink-0 items-center gap-2" aria-label="{{ $tixName }} 홈">
                 @include('partials.brand-logo', ['h' => 46])
                 <span class="theme-keep rounded-md bg-ink px-1.5 py-0.5 font-display text-[10px] font-bold tracking-wider text-pick ring-1 ring-white/10 lg:text-[11px]">TICKET</span>
             </a>

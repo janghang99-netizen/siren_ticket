@@ -28,7 +28,7 @@
     <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div>
                 <label class="label" for="site-brand_name">화면 이름</label>
-                <input id="site-brand_name" name="brand_name" class="field" value="{{ old('brand_name', $site['brand_name']) }}" placeholder="다담다" required>
+                <input id="site-brand_name" name="brand_name" class="field" value="{{ old('brand_name', $site['brand_name']) }}" placeholder="SIREN Ticket" required>
                 @error('brand_name')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
             <div>

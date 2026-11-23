@@ -132,7 +132,7 @@ class NftTicketTest extends TestCase
 
         // 블록체인(카이아)에 기록된 토큰: 발행·입장 기록, NFT 보기, 내 지갑 기록 — 공식 탐색기 링크
         if ($t->token->network === 'local') {
-            $this->get(route('tickets'))->assertSee('다담다 서버에 기록돼요');
+            $this->get(route('tickets'))->assertSee('이 사이트 서버에 기록돼요');
         }
         $t->token->update(['network' => 'kaia-kairos', 'contract' => '0xabc', 'mint_tx' => '0xmint1', 'used_tx' => '0xused1', 'used_at' => now(), 'status' => 'used']);
         $base = rtrim(config('siren.nft.kaia.explorer'), '/');
