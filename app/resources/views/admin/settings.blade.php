@@ -67,6 +67,10 @@
                 @error('company_email')<p class="mt-1 text-sm text-signal">{{ $message }}</p>@enderror
             </div>
     </div>
+    <label class="mt-4 flex items-start gap-2 text-sm">
+        <input type="checkbox" name="company_info_visible" value="1" class="mt-0.5" @checked(old('company_info_visible', $site['company_info_visible']) === '1')>
+        <span><b>화면 하단에 사업자 정보 보이기</b> <span class="text-mist">— 개발·시연 서버에서는 끄세요. 실제 서비스에서는 전자상거래법 고지라 켜 두어야 해요.</span></span>
+    </label>
     <button class="btn-ink mt-4 !py-2.5 text-sm">사업자 정보 저장</button>
 </form>
 

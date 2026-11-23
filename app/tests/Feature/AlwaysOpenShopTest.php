@@ -73,7 +73,7 @@ class AlwaysOpenShopTest extends TestCase
         // 운영사가 사업자 정보를 고치면 바로 반영
         $admin = \App\Models\User::factory()->create(['role' => 'super_admin']);
         $this->actingAs($admin)->put(route('admin.settings.site'), [
-            'brand_name' => '다담다', 'company_name' => '주식회사 태라글로벌', 'company_phone' => '02-000-0000', 'company_email' => 'help@example.com',
+            'brand_name' => '다담다', 'company_name' => '주식회사 태라글로벌', 'company_phone' => '02-000-0000', 'company_email' => 'help@example.com', 'company_info_visible' => '1',
         ])->assertSessionHasNoErrors();
         $this->get(route('home'))->assertSee('02-000-0000')->assertSee('help@example.com');
     }

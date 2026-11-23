@@ -85,6 +85,7 @@
                     <a href="{{ route('inquiries.index') }}">1:1 문의</a>
                     <a href="{{ route('partner.apply') }}">매장 입점 신청</a>
                 </nav>
+                @if ($site['company_info_visible'] === '1')
                 <dl class="mt-4 flex flex-wrap gap-x-4 gap-y-0.5">
                     <div class="flex gap-1.5"><dt>상호</dt><dd class="text-ink/70">{{ $site['company_name'] }}</dd></div>
                     @if ($site['company_ceo'])<div class="flex gap-1.5"><dt>대표</dt><dd class="text-ink/70">{{ $site['company_ceo'] }}</dd></div>@endif
@@ -94,6 +95,7 @@
                     @if ($site['company_phone'])<div class="flex gap-1.5"><dt>고객센터</dt><dd class="num text-ink/70">{{ $site['company_phone'] }}</dd></div>@endif
                     @if ($site['company_email'])<div class="flex gap-1.5"><dt>이메일</dt><dd class="text-ink/70">{{ $site['company_email'] }}</dd></div>@endif
                 </dl>
+                @endif
                 <p class="mt-3 max-w-3xl">{{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
             </div>
             <nav class="translation-links notranslate flex h-fit items-center self-start rounded-full bg-white p-0.5 text-[11px] font-bold ring-1 ring-ink/10" translate="no" aria-label="언어 Language">

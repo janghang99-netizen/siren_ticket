@@ -66,6 +66,7 @@
                 <a href="{{ route('partner.apply') }}">매장 입점 신청</a>
             </nav>
             {{-- 운영사 사업자 정보 (원본 다담다 하단과 같은 항목 — 운영사 설정에서 고친다) --}}
+            @if ($site['company_info_visible'] === '1')
             <details class="mb-2">
                 <summary class="cursor-pointer font-semibold text-ink/70">{{ $site['company_name'] }} 사업자 정보</summary>
                 <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
@@ -78,7 +79,8 @@
                     @if ($site['company_email'])<dt>이메일</dt><dd>{{ $site['company_email'] }}</dd>@endif
                 </dl>
             </details>
-            <p>@if ($ticketing){{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 @else{{ $site['company_name'] }}은(는) @endif통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
+            @endif
+            <p>@if ($ticketing){{ $site['brand_name'] }}은(는) 공연 좌석 티켓을 직접 판매하며, 매장 상품에 대해서는 @else{{ $site['company_info_visible'] === '1' ? $site['company_name'] : $site['brand_name'] }}은(는) @endif통신판매중개자로서 거래 당사자가 아닙니다. 매장 상품의 정보·품질·수령에 대한 책임은 각 판매자에게 있습니다.</p>
             <p id="translate-notice" class="mt-2" hidden>번역은 이해를 돕기 위한 것이며, 약관·환불 규정은 한국어 원문이 우선합니다.</p>
         </footer>
 

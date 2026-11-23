@@ -29,10 +29,11 @@ class Setting extends Model
         'company_address' => '서울특별시 서초구 효령로51길 18 남승빌딩 2층',
         'company_phone' => '02-310-9840',
         'company_email' => '',
+        'company_info_visible' => '1',            // 화면 하단 사업자 정보 보이기 (개발·시연 서버에서는 끈다 — 실서비스는 법적 고지라 켜 둔다)
     ];
 
     /** 화면 이름·사업자 정보 키 (운영사 설정 '사업자 정보' 카드) */
-    public const SITE_KEYS = ['brand_name', 'company_name', 'company_ceo', 'company_reg_no', 'company_mail_order_no', 'company_address', 'company_phone', 'company_email'];
+    public const SITE_KEYS = ['brand_name', 'company_name', 'company_ceo', 'company_reg_no', 'company_mail_order_no', 'company_address', 'company_phone', 'company_email', 'company_info_visible'];
 
     /** @return array<string, string> 화면 이름·사업자 정보 (요청마다 한 번) */
     public static function site(): array

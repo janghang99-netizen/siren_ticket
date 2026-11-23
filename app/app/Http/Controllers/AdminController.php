@@ -697,6 +697,7 @@ class AdminController extends Controller
             'company_phone' => ['nullable', 'string', 'max:30'],
             'company_email' => ['nullable', 'email', 'max:120'],
         ], ['brand_name.required' => '화면 이름을 적어 주세요.', 'company_name.required' => '상호를 적어 주세요.']);
+        $data['company_info_visible'] = $request->boolean('company_info_visible') ? '1' : '0';
         \App\Models\Setting::put(array_map(fn ($v) => (string) $v, $data));
         \App\Services\Audit::log('settings.site', null, '화면 이름·사업자 정보 저장');
 
