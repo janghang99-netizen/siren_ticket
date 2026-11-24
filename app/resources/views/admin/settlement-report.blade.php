@@ -112,90 +112,48 @@
         </div>
         @endunless
 
-        @if (! $report['rows'])
-            <p class="text-sm text-mist">아직 저장된 결제 내역이 없어요. 위에서 페이레터에서 불러오기를 해 주세요.</p>
-        @else
-            <form method="GET" class="flex flex-wrap items-end gap-2 rounded-3xl bg-white p-4 ring-1 ring-ink/5">
-                <input type="hidden" name="vendor" value="{{ $vendor->id }}"><input type="hidden" name="rate" value="{{ $rate }}">
-                @if ($src)<input type="hidden" name="src" value="{{ $src }}">@endif
-                <div><label class="label" for="from">승인일</label><input id="from" type="date" name="from" value="{{ $report['S'] }}" class="field num !py-2"></div>
-                <div><label class="label" for="to">~</label><input id="to" type="date" name="to" value="{{ $report['E'] }}" class="field num !py-2"></div>
-                <button class="btn-ink !py-2.5 text-sm">기간 적용</button>
-                <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report', ['vendor' => $vendor->id, 'rate' => $rate]) }}">전체 기간</a>
+        @php $s = $report['sections']; @endphp
+        <form method="GET" class="flex flex-wrap items-end gap-2 rounded-3xl bg-white p-4 ring-1 ring-ink/5">
+            <input type="hidden" name="vendor" value="{{ $vendor->id }}"><input type="hidden" name="rate" value="{{ $rate }}">
+            @if ($src)<input type="hidden" name="src" value="{{ $src }}">@endif
+            <div><label class="label" for="from">기간</label><input id="from" type="date" name="from" value="{{ $report['S'] }}" class="field num !py-2"></div>
+            <div><label class="label" for="to">~</label><input id="to" type="date" name="to" value="{{ $report['E'] }}" class="field num !py-2"></div>
+            <button class="btn-ink !py-2.5 text-sm">기간 적용</button>
+            <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report', ['vendor' => $vendor->id, 'rate' => $rate]) }}">전체 기간</a>
+            @if ($s)
                 <button type="button" class="btn-ghost !py-2.5 text-sm" onclick="window.print()">보고서 인쇄</button>
-                @if ($report['sections'])
-                    <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report.export', ['vendor' => $vendor->id, 'rate' => $rate, 'from' => $report['S'], 'to' => $report['E'], 'src' => $src]) }}">엑셀 다운로드</a>
+                <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report.export', ['vendor' => $vendor->id, 'rate' => $rate, 'from' => $report['S'], 'to' => $report['E'], 'src' => $src]) }}">엑셀 다운로드</a>
+            @endif
+            <span class="text-xs text-mist">저장된 카드 승인일: <span class="num">{{ $report['min'] ?: '-' }} ~ {{ $report['max'] ?: '-' }}</span> ({{ number_format($report['rows']) }}줄)</span>
+        </form>
+
+        {{-- 보고서 = 원본 데이터 3구역을 가공 없이 그대로 (원본 2026-11-24판: 짝 맞추기·추정 없음) --}}
+        <div id="srReport" class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
+            @if (! $s)
+                <p class="text-sm text-mist">이 업체에는 아직 주문도 카드 결제 내역도 없어요.</p>
+            @else
+                <p class="text-lg font-black">{{ $report['store'] }} 정산 보고서</p>
+                <p class="sr-sub">기간 {{ $report['S'] }} ~ {{ $report['E'] }} (1·2 = 다담다 주문일, 3 = 카드 승인일) · 작성일 {{ now()->toDateString() }}</p>
+
+                <h3>1. 다담다 결제내역</h3>
+                <p class="sr-sub">다담다 POS·온라인 주문 기록 그대로입니다. 결제수단은 주문할 때 POS에서 고른 값입니다.</p>
+                @include('admin.partials.report-table', ['head' => ['결제수단', '건수', '금액'], 'rows' => $s['s1']['sum'], 'cls' => [count($s['s1']['sum']) - 1 => 'tot']])
+                @include('admin.partials.report-table', ['head' => ['주문일시', '주문번호', '결제수단', '금액'], 'rows' => $s['s1']['rows'], 'cls' => []])
+
+                <h3>2. 다담다 정산내역</h3>
+                <p class="sr-sub">위 주문의 원샷 판매자 정산 처리 기록 그대로입니다. 정산완료 = 원샷 정산 처리됨, 미정산 = 수령완료 상태로 정산예정일이 지나면 원샷 대기목록에 올라옴, 수령 전 = 아직 수령완료 전.</p>
+                @include('admin.partials.report-table', ['head' => ['상태', '건수', '금액'], 'rows' => $s['s2']['sum'], 'cls' => [count($s['s2']['sum']) - 1 => 'tot']])
+                @if ($s['s2']['byJd'])
+                    @include('admin.partials.report-table', ['head' => ['원샷 정산 처리일', '건수', '정산완료 금액'], 'rows' => $s['s2']['byJd'], 'cls' => []])
                 @endif
-                <span class="text-xs text-mist">저장된 승인일: <span class="num">{{ $report['min'] }} ~ {{ $report['max'] }}</span> ({{ number_format($report['rows']) }}줄)</span>
-            </form>
+                @include('admin.partials.report-table', ['head' => ['주문일시', '주문번호', '금액', '상태', '정산 처리일', '정산예정일'], 'rows' => $s['s2']['rows'], 'cls' => []])
 
-            @php $s = $report['sections']; $pct = \App\Services\SettlementReport::pct($rate); @endphp
-            <div id="srReport" class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
-                @if (! $s)
-                    <p class="text-sm text-mist">선택한 기간에 승인 내역이 없어요. 위에서 페이레터에서 불러오기를 먼저 해 주세요.</p>
-                @else
-                    <p class="text-lg font-black">{{ $report['store'] }} 정산 보고서</p>
-                    <p class="sr-sub">승인일 {{ $report['S'] }} ~ {{ $report['E'] }} · 페이레터 PG 카드결제 기준 · 이용료 {{ $pct }}% + 부가세 {{ \App\Services\SettlementReport::pct($report['vat']) }}% · 작성일 {{ now()->toDateString() }}</p>
-
-                    <h3>{{ $report['done'] ? '정산 송금 완료 내역' : '정산 내역' }}</h3>
-                    @include('admin.partials.report-table', ['head' => ['구분', '줄 수', '금액'], 'rows' => $s['sum'][0], 'cls' => $s['sum'][1]])
-
-                    <h3>일자별 정산 (구매일 · 결제방법 · 정산일)</h3>
-                    @include('admin.partials.report-table', ['head' => ['구매일', '결제방법', '정산일 (PG 입금일)', '건수', '결제금액 (취소 반영)', "이용료 {$pct}%", '부가세', '정산금액'], 'rows' => $s['day'][0], 'cls' => $s['day'][1]])
-                    <p class="sr-sub">카드 = PG 결제내역(구매일은 카드 승인일, 건수는 승인·취소 줄 수) · 현금·이체 = POS 기록(구매일은 주문일, 건수는 주문 수) — 매장이 직접 받는 돈이라 이용료·정산 대상이 아니에요. {{ $s['payLab'] }}은 카드 합계 기준이고, 일자별 금액은 날짜마다 반올림해 보여 줘 줄을 더하면 몇 원 다를 수 있어요.</p>
-
-                    @if ($s['direct'][0])
-                        <h3>매장 직접 수령 — 현금·계좌이체 (참고, {{ count($s['direct'][0]) }}건 · {{ number_format($s['direct'][1]) }}원)</h3>
-                        <p class="sr-sub">매장이 직접 받는 돈이라 이용료·정산 대상이 아니에요. POS에서 고른 결제수단 기준이에요.</p>
-                        @include('admin.partials.report-table', ['head' => ['주문일시', '결제수단', '금액', '주문번호'], 'rows' => $s['direct'][0], 'cls' => []])
-                    @endif
-                    @if ($s['wrong'][0])
-                        <h3>현금·계좌이체로 주문했지만 카드로 결제된 건 ({{ count($s['wrong'][0]) }}건 · {{ number_format($s['wrong'][1]) }}원)</h3>
-                        <p class="sr-sub">POS에는 현금·계좌이체로 입력됐지만 PG에 같은 금액의 카드 승인(±3일)이 있어 카드 결제로 본 건이에요. 위 정산 내역(카드)에 이미 포함돼 있고, 매장 직접 수령 목록에서는 뺐어요.</p>
-                        @include('admin.partials.report-table', ['head' => ['주문일시', 'POS 결제수단', '카드 승인일', '금액', '주문번호'], 'rows' => $s['wrong'][0], 'cls' => []])
-                    @endif
-
-                    <h3>EIS 매출표와의 차이 (참고)</h3>
-                    <p class="sr-sub">EIS 매출표는 주문 기록(수령완료·정산완료, <b>주문일</b> 기준, 현금·계좌이체 포함)이고, 이 보고서는 PG에 실제로 승인된 <b>카드 결제</b>(승인일 기준)예요. 그래서 두 숫자는 원래 다르며, 차이는 아래와 같아요.</p>
-                    @include('admin.partials.report-table', ['head' => ['구분', '금액'], 'rows' => $s['bridge'][0], 'cls' => $s['bridge'][1]])
-                    @include('admin.partials.report-table', ['head' => ['월', '주문 (EIS 기준)', '그중 현금·계좌이체', '카드 주문', 'PG 카드결제', '차이 (카드 주문 − PG)'], 'rows' => $s['month'][0], 'cls' => $s['month'][1]])
-                    <p class="sr-sub">EIS 화면 값이 위 "주문 합계"보다 적다면, EIS가 아직 다 불러오지 못한 주문이 있는 거예요(EIS에서 전체기간 다시 불러오기).</p>
-                    @if ($s['pgOnly'][0])
-                        <h3>POS 주문 없이 카드로만 받은 결제 ({{ count($s['pgOnly'][0]) }}건 · {{ number_format($s['pgOnly'][1]) }}원)</h3>
-                        <p class="sr-sub">카드단말기(또는 온라인)로 결제됐지만 같은 금액의 주문이 없는 건이에요. 정산(카드)에는 포함되고 EIS 매출에는 없어요. 단말기로 받은 결제도 POS에 주문을 찍으면 맞춰져요.</p>
-                        @include('admin.partials.report-table', ['head' => ['PG 승인일', '구분', '금액', '주문번호(온라인)'], 'rows' => $s['pgOnly'][0], 'cls' => []])
-                    @endif
-                    @if ($s['sysOnly'][0])
-                        <h3>POS에 카드로 입력했지만 카드 승인이 없는 주문 ({{ count($s['sysOnly'][0]) }}건 · {{ number_format($s['sysOnly'][1]) }}원)</h3>
-                        <p class="sr-sub">POS에는 카드로 찍혔지만 같은 금액의 카드 승인을 찾지 못한 주문이에요. 단말기에서 다른 금액으로 나눠 받았거나 결제수단을 잘못 고른 경우일 수 있어요. EIS 매출에는 있고 정산(카드)에는 없어요.</p>
-                        @include('admin.partials.report-table', ['head' => ['주문일시', 'POS 결제수단', '금액', '주문번호'], 'rows' => $s['sysOnly'][0], 'cls' => []])
-                    @endif
-                    @if ($s['split'][0])
-                        <h3>한 주문을 카드 여러 번으로 나눠 결제한 건 ({{ count($s['split'][0]) }}건 · {{ number_format($s['split'][1]) }}원)</h3>
-                        <p class="sr-sub">POS 주문 1건을 카드단말기에서 2~3번에 나눠 승인한 건이에요. 합계가 같아 정산·EIS 차이는 없어요.</p>
-                        @include('admin.partials.report-table', ['head' => ['주문일시', 'POS 주문 금액', '카드 승인 (승인일 금액)', '주문번호'], 'rows' => $s['split'][0], 'cls' => []])
-                    @endif
-                @endif
-            </div>
-
-            {{-- 원샷 정산 처리 현황 (인쇄 제외, 관리자 확인용) --}}
-            @php $os = $report['oneshot']; @endphp
-            <div class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
-                <h3 class="font-bold">원샷 정산 처리 현황 (주문일 {{ $report['S'] }} ~ {{ $report['E'] }})</h3>
-                <p class="sr-sub">송금한 뒤 <a class="underline" href="{{ route('admin.settlements.index') }}">원샷 판매자 정산</a>에서 [정산완료]를 누르면 주문이 정산완료로 바뀌어요. 정산 화면의 정산금액도 이 보고서와 같은 카드결제 기준(같은 승인일 기간)이에요.</p>
-                @include('admin.partials.report-table', ['head' => ['구분', '주문 수', '금액 (주문 기록)', '비고'], 'rows' => [
-                    ['정산 처리됨 (정산완료)', $os['done']['n'], $os['done']['amt'], $os['done']['note']],
-                    ['아직 정산 처리 안 됨 (수령완료)', $os['wait']['n'], $os['wait']['amt'], $os['wait']['note']],
-                ], 'cls' => []])
-                @if ($os['wait']['n'])
-                    <p class="text-sm font-bold text-signal">이 기간에 정산 처리 안 된 주문이 {{ $os['wait']['n'] }}건 있어요. 송금을 마쳤다면 원샷 판매자 정산에서 처리해 주세요.</p>
-                @elseif ($os['done']['n'])
-                    <p class="text-sm font-bold text-emerald-600">이 기간 주문은 모두 정산 처리됐어요.</p>
-                @else
-                    <p class="text-sm text-mist">이 기간에 수령완료·정산완료 주문이 없어요.</p>
-                @endif
-            </div>
-        @endif
+                <h3>3. PG사(페이레터) 정산내역</h3>
+                <p class="sr-sub">페이레터에서 불러온 카드 승인·취소 내역 그대로입니다(승인일 기준). 정산금액은 이 카드결제 합계에서 이용료 {{ \App\Services\SettlementReport::pct($rate) }}%와 부가세를 뺀 금액입니다. "원샷 정산"은 그 승인일이 원샷 정산 처리된 묶음 기간에 들어 있는지입니다.@unless ($s['s3']['hasS']) 페이레터 거래내역 조회에는 PG 입금일이 없어 입금일 칸은 표시하지 않습니다.@endunless</p>
+                @include('admin.partials.report-table', ['head' => ['구분', '줄 수', '금액'], 'rows' => $s['s3']['sum'], 'cls' => $s['s3']['cls']])
+                @include('admin.partials.report-table', ['head' => $s['s3']['head'], 'rows' => $s['s3']['rows'], 'cls' => []])
+            @endif
+        </div>
 
         <script>
         (function () {

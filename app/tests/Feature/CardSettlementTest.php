@@ -142,40 +142,56 @@ class CardSettlementTest extends TestCase
             ->assertStatus(422)->assertJson(['ok' => false]);
     }
 
-    public function test_report_matches_orders_to_card_approvals(): void
+    /** 원본 2026-11-24판: 보고서 = 원본 데이터 3구역을 가공 없이 그대로 (짝 맞추기·재분류·입금일 추정 없음) */
+    public function test_report_lists_three_raw_sections(): void
     {
-        $this->order('ON-1', 12000, 'card', '2026-11-10 09:00:00');               // 온라인 = 주문번호+금액
-        $this->order('POS-1', 4500, 'pos_card', '2026-11-09 10:00:00');           // 단말기 = 같은 금액, 1일 차이
-        $this->order('POS-2', 9000, 'pos_card', '2026-11-11 10:00:00');           // 카드 2번으로 나눠 결제 (4000+5000)
-        $this->order('CASH-1', 6000, 'pos_cash', '2026-11-11 12:00:00');          // 현금 입력, 실제는 카드 (±3일)
-        $this->order('CASH-2', 3000, 'pos_transfer', '2026-11-11 13:00:00');      // 매장 직접 수령
-        $this->order('POS-3', 2000, 'pos_card', '2026-11-11 14:00:00');           // 카드 승인 없음
+        $this->order('OLD-1', 10000, 'pos_card', '2026-11-03 10:00:00', 6, ['settled_at' => '2026-11-05 09:00:00']);
+        $this->order('ON-1', 12000, 'card', '2026-11-10 09:00:00');
+        $this->order('CASH-1', 6000, 'pos_cash', '2026-11-11 12:00:00');
+        $this->order('PREP-1', 3000, 'pos_card', '2026-11-12 13:00:00', 3);     // 수령 전
+        $this->order('OUT-1', 9999, 'pos_card', '2026-11-20 10:00:00');          // 기간 밖
+        Settlement::create(['vendor_id' => $this->vendor->id, 'period_start' => '2026-11-01', 'period_end' => '2026-11-04', 'order_count' => 1,
+            'gross_amount' => 10000, 'commission_amount' => 0, 'payout_amount' => 10000]);
+        Order::where('order_no', 'OLD-1')->update(['settlement_id' => Settlement::first()->id]);
+        $this->pg('2026-11-02', 10000);                                          // 완료 묶음 기간(첫 PG 승인일 ~ 마지막 주문일) 안
         $this->pg('2026-11-10', 12000, false, 'ON-1');
-        $this->pg('2026-11-10', 4500);
-        $this->pg('2026-11-11', 4000);
-        $this->pg('2026-11-11', 5000);
-        $this->pg('2026-11-13', 6000);
-        $this->pg('2026-11-11', 777);                                             // 주문 없는 카드 결제
         $this->pg('2026-11-11', 1500);
-        $this->pg('2026-11-11', -1500);                                           // 같은 날 취소 → 상쇄
+        $this->pg('2026-11-11', -1500);
 
-        $r = app(SettlementReport::class)->build($this->vendor, '2026-11-09', '2026-11-13', 8.5);
+        $r = app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-13', 8.5);
         $s = $r['sections'];
         $this->assertSame('도봉빵', $r['store']);   // 상호 끝 괄호 제거
-        $this->assertSame(32277, $s['card']);
-        $this->assertSame((int) round(32277 - 32277 * 0.085 * 1.1), $s['pay']);
-        $this->assertSame([['2026-11-11 12:00', '현장 현금', '2026-11-13', 6000, 'CASH-1']], $s['wrong'][0]);
-        $this->assertSame([['2026-11-11 13:00', '현장 계좌이체', 3000, 'CASH-2']], $s['direct'][0]);
-        $this->assertSame([['2026-11-11', '카드단말기', 777, '']], $s['pgOnly'][0]);
-        $this->assertSame([['2026-11-11 14:00', '현장 카드단말기', 2000, 'POS-3']], $s['sysOnly'][0]);
-        $this->assertSame('POS-2', $s['split'][0][0][3]);
-        $this->assertSame(32277, end($s['bridge'][0])[1]);
+        // 1. 결제내역 = 주문 그대로 (기간 밖 제외)
+        $this->assertSame(['합계', 4, 31000], end($s['s1']['sum']));
+        $this->assertSame(['2026-11-11 12:00', 'CASH-1', '현장 현금', 6000], $s['s1']['rows'][2]);
+        // 2. 정산내역 = 상태·처리일·정산예정일
+        $this->assertSame([['정산완료', 1, 10000], ['미정산 (수령완료)', 2, 18000], ['수령 전', 1, 3000], ['합계', 4, 31000]], $s['s2']['sum']);
+        $this->assertSame([['2026-11-05 09:00', 1, 10000]], $s['s2']['byJd']);
+        $this->assertSame(['2026-11-10 09:00', 'ON-1', 12000, '미정산 (수령완료)', '', '2026-11-17'], $s['s2']['rows'][1]);
+        // 3. PG 정산내역 = 승인·취소 그대로 + 원샷 정산 여부 + 정산금액
+        $this->assertSame([['승인', 3, 23500], ['취소', 1, -1500], ['카드결제 합계 (승인 − 취소)', 4, 22000]], array_slice($s['s3']['sum'], 0, 3));
+        $this->assertSame((int) round(22000 - 22000 * 0.085 * 1.1), $s['s3']['pay']);
+        $this->assertSame('정산완료 2026-11-05 09:00', end($s['s3']['rows'][0]));
+        $this->assertSame('미정산', end($s['s3']['rows'][1]));
+        $this->assertSame('ON-1', $s['s3']['rows'][1][5]);
+        $this->assertSame('지급할 정산금액', $s['s3']['payLab']);
+        $this->assertSame('정산 송금 완료 금액', app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-04', 8.5, 'done')['sections']['s3']['payLab']);
 
-        $this->actingAs($this->admin)->get(route('admin.settlements.report', ['vendor' => $this->vendor->id, 'from' => '2026-11-09', 'to' => '2026-11-13']))
-            ->assertOk()->assertSee('도봉빵 정산 보고서')->assertSee('현금·계좌이체로 주문했지만 카드로 결제된 건')->assertSee('원샷 정산 처리 현황');
-        $csv = $this->get(route('admin.settlements.report.export', ['vendor' => $this->vendor->id, 'from' => '2026-11-09', 'to' => '2026-11-13']))
-            ->assertOk()->streamedContent();
-        $this->assertStringContainsString('지급할 정산금액', $csv);
+        $this->actingAs($this->admin)->get(route('admin.settlements.report', ['vendor' => $this->vendor->id, 'from' => '2026-11-01', 'to' => '2026-11-13']))
+            ->assertOk()->assertSee('도봉빵 정산 보고서')->assertSee('1. 다담다 결제내역')->assertSee('2. 다담다 정산내역')->assertSee('3. PG사(페이레터) 정산내역');
+        $res = $this->get(route('admin.settlements.report.export', ['vendor' => $this->vendor->id, 'from' => '2026-11-01', 'to' => '2026-11-13']))->assertOk();
+        $this->assertStringContainsString('spreadsheetml', $res->headers->get('Content-Type'));
+        $tmp = tempnam(sys_get_temp_dir(), 'x');
+        file_put_contents($tmp, $res->getContent());
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($tmp) === true);
+        $wb = $zip->getFromName('xl/workbook.xml');
+        foreach (['1.다담다결제내역', '2.다담다정산내역', '3.PG정산내역'] as $sheet) {
+            $this->assertStringContainsString($sheet, $wb);
+        }
+        $this->assertStringContainsString('지급할 정산금액', $zip->getFromName('xl/worksheets/sheet3.xml'));
+        $zip->close();
+        @unlink($tmp);
     }
 
     public function test_oneshot_pending_list_shows_card_basis_and_settles_vendor(): void

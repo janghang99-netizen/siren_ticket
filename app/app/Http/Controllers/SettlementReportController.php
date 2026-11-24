@@ -63,49 +63,31 @@ class SettlementReportController extends Controller
         ]);
     }
 
-    /** 보고서 표를 엑셀에서 열리는 CSV(UTF-8 BOM)로 */
-    public function export(Request $request): StreamedResponse
+    /** 보고서를 xlsx 로 — 시트 3개: 1.다담다결제내역 / 2.다담다정산내역 / 3.PG정산내역 (원본 downloadXlsx 와 같은 구성) */
+    public function export(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         [$vendor, $rate, $from, $to, $src] = $this->params($request);
         abort_unless($vendor, 404);
         $r = $this->reports->build($vendor, $from, $to, $rate, $src);
-        abort_unless($r['sections'], 404, '이 기간에 카드 결제 내역이 없어요.');
+        abort_unless($r['sections'], 404, '보고서 기간이 없어요.');
         $s = $r['sections'];
-        $pct = SettlementReport::pct($rate);
-        $num = fn ($v) => is_int($v) || is_float($v) ? (int) round($v) : $v;
-        $blocks = [
-            [[$r['store'].' 정산 보고서'], ['승인일', $r['S'].' ~ '.$r['E']], ['기준', "PG 카드결제 · 이용료 {$pct}% + 부가세 ".SettlementReport::pct($r['vat']).'%'], ['작성일', now()->toDateString()]],
-            [['정산 내역'], ['구분', '줄 수', '금액'], ...$s['sum'][0]],
-            [['일자별'], ['구매일', '결제방법', '정산일(PG 입금일)', '건수', '결제금액(취소 반영)', "이용료 {$pct}%", '부가세', '정산금액'], ...$s['day'][0]],
+        $info = [[$r['store'].' 정산 보고서'], ['기간', $r['S'].' ~ '.$r['E']], ['작성일', now()->toDateString()], []];
+        $sheets = [
+            '1.다담다결제내역' => [...$info, ['결제수단', '건수', '금액'], ...$s['s1']['sum'], [], ['주문일시', '주문번호', '결제수단', '금액'], ...$s['s1']['rows']],
+            '2.다담다정산내역' => [...$info, ['상태', '건수', '금액'], ...$s['s2']['sum'], [],
+                ...($s['s2']['byJd'] ? [['원샷 정산 처리일', '건수', '정산완료 금액'], ...$s['s2']['byJd'], []] : []),
+                ['주문일시', '주문번호', '금액', '상태', '정산 처리일', '정산예정일'], ...$s['s2']['rows']],
+            '3.PG정산내역' => [...$info, ['구분', '줄 수', '금액'], ...$s['s3']['sum'], [], $s['s3']['head'], ...$s['s3']['rows']],
         ];
-        if ($s['direct'][0]) {
-            $blocks[] = [['매장 직접 수령 — 현금·계좌이체 (참고, 정산 대상 아님)'], ['주문일시', '결제수단', '금액', '주문번호'], ...$s['direct'][0], ['합계', '', $s['direct'][1], '']];
-        }
-        if ($s['wrong'][0]) {
-            $blocks[] = [['현금·계좌이체로 주문했지만 카드로 결제된 건 (정산내역 카드에 이미 포함)'], ['주문일시', 'POS 결제수단', '카드 승인일', '금액', '주문번호'], ...$s['wrong'][0], ['합계', '', '', $s['wrong'][1], '']];
-        }
-        $blocks[] = [['EIS 매출표와의 차이'], ['구분', '금액'], ...$s['bridge'][0]];
-        $blocks[] = [['월별'], ['월', '주문(EIS 기준)', '그중 현금·계좌이체', '카드 주문', 'PG 카드결제', '차이(카드 주문−PG)'], ...$s['month'][0]];
-        foreach ([['pgOnly', 'POS 주문 없이 카드로만 받은 결제', ['PG 승인일', '구분', '금액', '주문번호(온라인)']],
-            ['sysOnly', 'POS에 카드로 입력했지만 카드 승인이 없는 주문', ['주문일시', 'POS 결제수단', '금액', '주문번호']],
-            ['split', '한 주문을 카드 여러 번으로 나눠 결제한 건 (금액 차이 없음)', ['주문일시', 'POS 주문 금액', '카드 승인 (승인일 금액)', '주문번호']]] as [$k, $title, $head]) {
-            if ($s[$k][0]) {
-                $blocks[] = [[$title.' ('.count($s[$k][0]).'건)'], $head, ...$s[$k][0]];
-            }
-        }
-        $name = '정산보고서_'.preg_replace('/[\\\\\/:*?"<>|]/u', '_', $r['store']).'_'.$r['S'].'_'.$r['E'].'.csv';
+        $bin = \App\Services\SimpleXlsx::make($sheets, [
+            '1.다담다결제내역' => [18, 26, 18, 12], '2.다담다정산내역' => [18, 26, 12, 18, 18, 12], '3.PG정산내역' => [12, 12, 10, 12, 14, 26, 24],
+        ]);
+        $name = '정산보고서_'.preg_replace('/[\\\\\/:*?"<>|]/u', '_', $r['store']).'_'.$r['S'].'_'.$r['E'].'.xlsx';
 
-        return response()->streamDownload(function () use ($blocks, $num) {
-            $out = fopen('php://output', 'w');
-            fwrite($out, "\xEF\xBB\xBF");
-            foreach ($blocks as $block) {
-                foreach ($block as $row) {
-                    fputcsv($out, array_map($num, $row));
-                }
-                fputcsv($out, []);
-            }
-            fclose($out);
-        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        return response($bin, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => \Symfony\Component\HttpFoundation\HeaderUtils::makeDisposition('attachment', $name, 'settlement-report.xlsx'),
+        ]);
     }
 
     /** 페이레터 하루치 불러오기 — 화면이 날짜마다 1번씩 부른다(타임아웃 방지) */
