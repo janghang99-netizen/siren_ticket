@@ -63,25 +63,20 @@ class SettlementReportController extends Controller
         ]);
     }
 
-    /** 보고서를 xlsx 로 — 시트 3개: 1.다담다결제내역 / 2.다담다정산내역 / 3.PG정산내역 (원본 downloadXlsx 와 같은 구성) */
+    /** 보고서를 xlsx 로 — 시트 1개: 종합 요약 + 대사 결과 + 결제·정산 내역 (원본 downloadXlsx 와 같은 구성) */
     public function export(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         [$vendor, $rate, $from, $to, $src] = $this->params($request);
         abort_unless($vendor, 404);
         $r = $this->reports->build($vendor, $from, $to, $rate, $src);
-        abort_unless($r['sections'], 404, '보고서 기간이 없어요.');
-        $s = $r['sections'];
-        $info = [[$r['store'].' 정산 보고서'], ['기간', $r['S'].' ~ '.$r['E']], ['작성일', now()->toDateString()], []];
-        $sheets = [
-            '1.다담다결제내역' => [...$info, ['결제수단', '건수', '금액'], ...$s['s1']['sum'], [], ['주문일시', '주문번호', '결제수단', '금액'], ...$s['s1']['rows']],
-            '2.다담다정산내역' => [...$info, ['상태', '건수', '금액'], ...$s['s2']['sum'], [],
-                ...($s['s2']['byJd'] ? [['원샷 정산 처리일', '건수', '정산완료 금액'], ...$s['s2']['byJd'], []] : []),
-                ['주문일시', '주문번호', '금액', '상태', '정산 처리일', '정산예정일'], ...$s['s2']['rows']],
-            '3.PG정산내역' => [...$info, ['구분', '줄 수', '금액'], ...$s['s3']['sum'], [], $s['s3']['head'], ...$s['s3']['rows']],
-        ];
-        $bin = \App\Services\SimpleXlsx::make($sheets, [
-            '1.다담다결제내역' => [18, 26, 18, 12], '2.다담다정산내역' => [18, 26, 12, 18, 18, 12], '3.PG정산내역' => [12, 12, 10, 12, 14, 26, 24],
-        ]);
+        abort_unless($r['report'], 404, '보고서 기간이 없어요.');
+        $x = $r['report'];
+        $P = fn (array $rows) => SettlementReport::plain($rows);
+        $sheet = [[$r['store'].' 정산 보고서'], ['기간', $r['S'].' ~ '.$r['E']], ['작성일', now()->toDateString()], [],
+            ['종합 요약'], $x['smHead'], ...$P($x['sm']), [],
+            ['대사 결과'], $x['chkHead'], ...$P($x['chk']), [],
+            ['결제·정산 내역'], $P([$x['head']])[0], ...$P($x['rows'])];
+        $bin = \App\Services\SimpleXlsx::make(['정산보고서' => $sheet], ['정산보고서' => [17, 18, 8, 26, 13, 13, 14]]);
         $name = '정산보고서_'.preg_replace('/[\\\\\/:*?"<>|]/u', '_', $r['store']).'_'.$r['S'].'_'.$r['E'].'.xlsx';
 
         return response($bin, 200, [

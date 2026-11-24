@@ -16,11 +16,24 @@
     .sr-t tr.grand td { background: #ecfdf5; font-weight: 700; font-size: 15px; }
     #srReport h3 { font-size: 15px; font-weight: 700; margin: 22px 0 8px; padding-left: 8px; border-left: 4px solid #4f46e5; }
     .sr-sub { color: #6b7280; font-size: 12px; margin-bottom: 8px; line-height: 1.7; }
+    .sr-t td.sr-ok { color: #059669; font-weight: 700; white-space: nowrap; }
+    .sr-t td.sr-mute { color: #9ca3af; }
+    .sr-t td.sr-bad { color: #dc2626; font-weight: 700; }
+    .sr-one td, .sr-one th { font-size: 12px; padding: 5px 6px; white-space: nowrap; }
+    .sr-one .sr-no { white-space: pre-line; }
+    .sr-one.hide-no .sr-no { display: none; }
+    .sr-one tr.dtop td { border-top: 2px solid #9ca3af; }
+    .sr-one tr.dsum td { background: #f9fafb; color: #374151; font-weight: 600; }
+    .sr-chk td { font-size: 12px; line-height: 1.6; }
+    .sr-help th { width: 230px; text-align: left; font-weight: 600; }
+    .sr-help td, .sr-help th { font-size: 12px; line-height: 1.6; }
     @media print {
         body * { visibility: hidden; }
         #srReport, #srReport * { visibility: visible; }
         #srReport { position: absolute; left: 0; top: 0; width: 100%; }
-        @page { margin: 12mm; }
+        @page { size: A4 portrait; margin: 10mm; }
+        .sr-one td, .sr-one th { font-size: 10.5px; padding: 3px 5px; }
+        #srReport .overflow-x-auto { overflow: visible; }
     }
 </style>
 
@@ -93,7 +106,7 @@
                     · <span class="text-signal">이 업체 매장의 카드단말기 가맹점이 없어 단말기 결제는 불러오지 않아요 (PAYLETTER_TERMINAL_STORE)</span>
                 @endif
                 <br>· 온라인 결제는 이 업체 주문번호인 것만, 단말기 결제는 그 매장 것 전부 저장해요. 부분취소는 건너뛰어요.
-                <br>· 페이레터 조회에는 PG 입금일이 없어 일자별 표의 정산일은 "-"로 나와요.
+                <br>· 결제 시각도 함께 저장해요. 보고서는 같은 날 같은 금액 카드 승인이 여럿이면 다담다 결제 시각과 가장 가까운 것을 붙여요.
             </p>
             @if ($loads->isNotEmpty())
                 <table class="sr-t mt-3 w-full text-xs">
@@ -112,46 +125,44 @@
         </div>
         @endunless
 
-        @php $s = $report['sections']; @endphp
+        @php $r = $report['report']; @endphp
         <form method="GET" class="flex flex-wrap items-end gap-2 rounded-3xl bg-white p-4 ring-1 ring-ink/5">
             <input type="hidden" name="vendor" value="{{ $vendor->id }}"><input type="hidden" name="rate" value="{{ $rate }}">
             @if ($src)<input type="hidden" name="src" value="{{ $src }}">@endif
-            <div><label class="label" for="from">기간</label><input id="from" type="date" name="from" value="{{ $report['S'] }}" class="field num !py-2"></div>
+            <div><label class="label" for="from">승인일</label><input id="from" type="date" name="from" value="{{ $report['S'] }}" class="field num !py-2"></div>
             <div><label class="label" for="to">~</label><input id="to" type="date" name="to" value="{{ $report['E'] }}" class="field num !py-2"></div>
             <button class="btn-ink !py-2.5 text-sm">기간 적용</button>
             <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report', ['vendor' => $vendor->id, 'rate' => $rate]) }}">전체 기간</a>
-            @if ($s)
+            @if ($r)
                 <button type="button" class="btn-ghost !py-2.5 text-sm" onclick="window.print()">보고서 인쇄</button>
                 <a class="btn-ghost !py-2.5 text-sm" href="{{ route('admin.settlements.report.export', ['vendor' => $vendor->id, 'rate' => $rate, 'from' => $report['S'], 'to' => $report['E'], 'src' => $src]) }}">엑셀 다운로드</a>
+                <button type="button" class="btn-ghost !py-2.5 text-sm" id="srNoBtn">번호 닫기</button>
             @endif
-            <span class="text-xs text-mist">저장된 카드 승인일: <span class="num">{{ $report['min'] ?: '-' }} ~ {{ $report['max'] ?: '-' }}</span> ({{ number_format($report['rows']) }}줄)</span>
+            <span class="text-xs text-mist">저장된 승인일: <span class="num">{{ $report['min'] ?: '-' }} ~ {{ $report['max'] ?: '-' }}</span> ({{ number_format($report['rows']) }}줄)</span>
         </form>
 
-        {{-- 보고서 = 원본 데이터 3구역을 가공 없이 그대로 (원본 2026-11-24판: 짝 맞추기·추정 없음) --}}
+        {{-- 보고서 = 종합 요약 → 대사 결과 → 결제·정산 내역(한 표) → 표 읽는 법 (원본 최종판 a4fec1b2) --}}
         <div id="srReport" class="rounded-3xl bg-white p-6 ring-1 ring-ink/5">
-            @if (! $s)
+            @if (! $r)
                 <p class="text-sm text-mist">이 업체에는 아직 주문도 카드 결제 내역도 없어요.</p>
             @else
                 <p class="text-lg font-black">{{ $report['store'] }} 정산 보고서</p>
-                <p class="sr-sub">기간 {{ $report['S'] }} ~ {{ $report['E'] }} (1·2 = 다담다 주문일, 3 = 카드 승인일) · 작성일 {{ now()->toDateString() }}</p>
+                <p class="sr-sub">기간 {{ $report['S'] }} ~ {{ $report['E'] }} · 작성일 {{ now()->toDateString() }}</p>
 
-                <h3>1. 다담다 결제내역</h3>
-                <p class="sr-sub">다담다 POS·온라인 주문 기록 그대로입니다. 결제수단은 주문할 때 POS에서 고른 값입니다.</p>
-                @include('admin.partials.report-table', ['head' => ['결제수단', '건수', '금액'], 'rows' => $s['s1']['sum'], 'cls' => [count($s['s1']['sum']) - 1 => 'tot']])
-                @include('admin.partials.report-table', ['head' => ['주문일시', '주문번호', '결제수단', '금액'], 'rows' => $s['s1']['rows'], 'cls' => []])
+                <h3>종합 요약</h3>
+                @include('admin.partials.report-table', ['head' => $r['smHead'], 'rows' => $r['sm'], 'cls' => $r['smCls']])
 
-                <h3>2. 다담다 정산내역</h3>
-                <p class="sr-sub">위 주문의 원샷 판매자 정산 처리 기록 그대로입니다. 정산완료 = 원샷 정산 처리됨, 미정산 = 수령완료 상태로 정산예정일이 지나면 원샷 대기목록에 올라옴, 수령 전 = 아직 수령완료 전.</p>
-                @include('admin.partials.report-table', ['head' => ['상태', '건수', '금액'], 'rows' => $s['s2']['sum'], 'cls' => [count($s['s2']['sum']) - 1 => 'tot']])
-                @if ($s['s2']['byJd'])
-                    @include('admin.partials.report-table', ['head' => ['원샷 정산 처리일', '건수', '정산완료 금액'], 'rows' => $s['s2']['byJd'], 'cls' => []])
-                @endif
-                @include('admin.partials.report-table', ['head' => ['주문일시', '주문번호', '금액', '상태', '정산 처리일', '정산예정일'], 'rows' => $s['s2']['rows'], 'cls' => []])
+                <h3>대사 결과</h3>
+                @include('admin.partials.report-table', ['head' => $r['chkHead'], 'rows' => $r['chk'], 'cls' => [], 'tcls' => 'sr-chk'])
+                <p class="sr-sub">정산금액 = 페이레터 카드결제 합계 − 이용료 {{ \App\Services\SettlementReport::pct($rate) }}% − 부가세(이용료의 {{ \App\Services\SettlementReport::pct($report['vat']) }}%). 승인했다가 취소되어 0원이 된 결제는 차이를 만들지 않으므로 위 "다담다결제 합계 − EIS 매출" 내용에 넣지 않았습니다.</p>
 
-                <h3>3. PG사(페이레터) 정산내역</h3>
-                <p class="sr-sub">페이레터에서 불러온 카드 승인·취소 내역 그대로입니다(승인일 기준). 정산금액은 이 카드결제 합계에서 이용료 {{ \App\Services\SettlementReport::pct($rate) }}%와 부가세를 뺀 금액입니다. "원샷 정산"은 그 승인일이 원샷 정산 처리된 묶음 기간에 들어 있는지입니다.@unless ($s['s3']['hasS']) 페이레터 거래내역 조회에는 PG 입금일이 없어 입금일 칸은 표시하지 않습니다.@endunless</p>
-                @include('admin.partials.report-table', ['head' => ['구분', '줄 수', '금액'], 'rows' => $s['s3']['sum'], 'cls' => $s['s3']['cls']])
-                @include('admin.partials.report-table', ['head' => $s['s3']['head'], 'rows' => $s['s3']['rows'], 'cls' => []])
+                <h3>결제·정산 내역</h3>
+                @include('admin.partials.report-table', ['head' => $r['head'], 'rows' => $r['rows'], 'cls' => $r['cls'], 'tcls' => 'sr-one'])
+
+                <h3>표 읽는 법</h3>
+                <div class="overflow-x-auto"><table class="sr-t sr-help w-full">
+                    @foreach ($r['help'] as $h)<tr><th>{{ $h[0] }}</th><td>{{ $h[1] }}</td></tr>@endforeach
+                </table></div>
             @endif
         </div>
 
@@ -212,6 +223,9 @@
                     location.replace(u.toString());
                 });
             }
+            // 번호 칸 열기/닫기 (원본 [번호 닫기])
+            const nb = document.getElementById('srNoBtn');
+            if (nb) nb.onclick = () => { const t = document.querySelector('#srReport table.sr-one'); if (!t) return; t.classList.toggle('hide-no'); nb.textContent = t.classList.contains('hide-no') ? '번호 열기' : '번호 닫기'; };
             document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
                 if (!confirm('이때 저장된 줄을 삭제할까요? (같은 기간을 다시 불러오면 복구돼요)')) return;
                 const j = await send(b.dataset.del, 'DELETE');

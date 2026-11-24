@@ -475,3 +475,50 @@ Artisan::command('tickets:demo-plan
         $production->update(['venue' => $venue->name, 'venue_id' => $venue->id]);
     }
 })->purpose('샘플 공연장 도면(엔드 무대 아레나)을 만들고, 작품 회차에 적용한다');
+
+// 정산 보고서: 결제 시각(evt_time)이 비어 있는 페이레터 줄을 다시 불러와 채운다 (2026-11-24 칸 추가 전에 저장된 줄).
+//  이미 있는 줄은 중복 저장되지 않고 비어 있는 시각만 채워진다. 키는 .env 의 PAYLETTER_* (출력하지 않음).
+//  취소 줄은 취소한 날 조회에 나올 수 있어 끝 날짜 + 10일까지 조회한다 (페이레터 반영 지연 LAG 와 같은 폭).
+Artisan::command('settlement:pg-fill-time
+    {--store= : 매장 코드 (그 매장의 업체)}
+    {--dry : 조회할 날짜만 보여 주기}', function (\App\Services\PgSettlementService $pg) {
+    $store = \App\Models\Store::where('code', (string) $this->option('store'))->first();
+    if (! $store || ! $store->vendor) {
+        $this->error('매장 코드를 --store= 로 주세요 (예: --store=arena1).');
+
+        return 1;
+    }
+    $vendor = $store->vendor;
+    $q = \Illuminate\Support\Facades\DB::table('settle_pg_rows')->where('vendor_id', $vendor->id)->where('evt_time', '');
+    $empty = (clone $q)->count();
+    if (! $empty) {
+        $this->info("{$vendor->name}: 결제 시각이 비어 있는 줄이 없어요.");
+
+        return 0;
+    }
+    $from = (string) (clone $q)->min('approved_on');
+    $to = min(\Illuminate\Support\Carbon::parse((string) (clone $q)->max('approved_on'))->addDays(10)->toDateString(), now()->subDay()->toDateString());
+    $this->line("{$vendor->name}: 시각 없는 줄 {$empty}줄 · 조회 {$from} ~ {$to}");
+    if ($this->option('dry')) {
+        return 0;
+    }
+    if (! $pg->clients()) {
+        $this->error('페이레터 조회 키 설정이 없어요 (.env 의 PAYLETTER_*).');
+
+        return 1;
+    }
+    $loadId = null;
+    $errs = 0;
+    for ($d = \Illuminate\Support\Carbon::parse(substr($from, 0, 10)); $d->toDateString() <= $to; $d->addDay()) {
+        $r = $pg->loadDay($vendor, $d->toDateString(), $loadId, "결제 시각 보충 {$from} ~ {$to}");
+        if (! $r['ok'] || $r['errors']) {
+            $errs++;
+            $this->warn('  '.$d->toDateString().' '.($r['msg'] ?? implode(' / ', $r['errors'])));
+        }
+        $loadId = $r['load_id'] ?? $loadId;
+    }
+    $left = (clone $q)->count();
+    $this->info("채움 ".($empty - $left)."줄 · 아직 빈 줄 {$left}줄 · 실패한 날 {$errs}일");
+
+    return 0;
+})->purpose('정산 보고서용 페이레터 결제 시각(evt_time)이 빈 줄을 다시 불러와 채운다');

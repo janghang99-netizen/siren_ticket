@@ -159,6 +159,8 @@ class PgSettlementService
             'order_no' => (string) ($x['order_no'] ?? ''),
             'status' => $st === '0' ? '승인' : '취소',
             'amount' => $st === '0' ? $amount : -$amount,
+            // 결제 시각 (원본 evt_time): 승인 줄 = 승인 시각, 취소 줄 = 취소 시각(없으면 승인 시각)
+            'evt_time' => substr($st === '1' && trim((string) ($x['cancel_date'] ?? '')) !== '' ? (string) $x['cancel_date'] : (string) ($x['transaction_date'] ?? ''), 0, 19),
         ];
     }
 
@@ -175,13 +177,18 @@ class PgSettlementService
             $tid = trim((string) ($r['tid'] ?? ''));
             $status = (string) ($r['status'] ?? '');
             $ukey = $tid !== '' ? "{$tid}|{$status}|{$amount}" : trim((string) ($r['approval_no'] ?? ''))."|{$day}|{$status}|{$amount}";
+            $et = preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/', trim((string) ($r['evt_time'] ?? ''))) ? substr(trim((string) $r['evt_time']), 0, 19) : '';
             $new += DB::table('settle_pg_rows')->insertOrIgnore([
                 'load_id' => $loadId, 'vendor_id' => $vendorId, 'ukey' => mb_substr($ukey, 0, 190),
                 'tid' => mb_substr($tid, 0, 80), 'approval_no' => mb_substr((string) ($r['approval_no'] ?? ''), 0, 60),
                 'approved_on' => $day, 'settled_on' => $r['settled_on'] ?? null, 'kind' => ($r['kind'] ?? '') === 'terminal' ? 'terminal' : 'online',
                 'pg_code' => mb_substr((string) ($r['pg_code'] ?? ''), 0, 40), 'order_no' => mb_substr((string) ($r['order_no'] ?? ''), 0, 80),
-                'status' => mb_substr($status, 0, 10), 'amount' => $amount, 'created_at' => now(), 'updated_at' => now(),
+                'status' => mb_substr($status, 0, 10), 'amount' => $amount, 'evt_time' => $et, 'created_at' => now(), 'updated_at' => now(),
             ]);
+            // 이미 있던 줄은 결제 시각이 비어 있을 때만 채운다 (다시 불러오면 예전 줄에도 시각이 들어감 — 원본과 같음)
+            if ($et !== '') {
+                DB::table('settle_pg_rows')->where('vendor_id', $vendorId)->where('ukey', mb_substr($ukey, 0, 190))->where('evt_time', '')->update(['evt_time' => $et]);
+            }
         }
 
         return $new;

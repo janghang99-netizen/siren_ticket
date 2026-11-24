@@ -46,11 +46,11 @@ class CardSettlementTest extends TestCase
             'status' => $status, 'pay_method' => $pay, 'total_amount' => $amount, 'commission_rate' => 8.5, 'created_at' => $at, 'picked_up_at' => $at] + $extra);
     }
 
-    private function pg(string $day, int $amount, bool $terminal = true, string $orderNo = '', string $tid = ''): void
+    private function pg(string $day, int $amount, bool $terminal = true, string $orderNo = '', string $tid = '', string $tm = '', string $appr = ''): void
     {
         app(PgSettlementService::class)->insertRows($this->vendor->id, null, [[
             'tid' => $tid ?: 'T'.(++$this->seq), 'approved_on' => $day, 'kind' => $terminal ? 'terminal' : 'online',
-            'order_no' => $orderNo, 'status' => $amount > 0 ? '승인' : '취소', 'amount' => $amount,
+            'order_no' => $orderNo, 'status' => $amount > 0 ? '승인' : '취소', 'amount' => $amount, 'evt_time' => $tm, 'approval_no' => $appr,
         ]]);
         DB::table('settle_pg_loads')->updateOrInsert(['vendor_id' => $this->vendor->id, 'label' => 'test'], ['approved_to' => '2026-12-31', 'created_at' => now(), 'updated_at' => now()]);
     }
@@ -103,7 +103,7 @@ class CardSettlementTest extends TestCase
                 'online2' => [],
                 'term1' => [
                     ['tid' => 'K1', 'cid' => 'B1', 'transaction_date' => '2026-11-12 11:00:00', 'status_code' => '0', 'amount' => '7000', 'order_no' => '', 'pgcode' => 'terminal'],
-                    ['tid' => 'K0', 'cid' => 'B0', 'transaction_date' => '2026-11-10 11:00:00', 'status_code' => '1', 'amount' => '3000', 'order_no' => '', 'pgcode' => 'terminal'],
+                    ['tid' => 'K0', 'cid' => 'B0', 'transaction_date' => '2026-11-10 11:00:00', 'cancel_date' => '2026-11-12 08:30:00', 'status_code' => '1', 'amount' => '3000', 'order_no' => '', 'pgcode' => 'terminal'],
                     ['tid' => 'K9', 'cid' => 'B9', 'transaction_date' => '2026-11-12 12:00:00', 'status_code' => '2', 'amount' => '500', 'order_no' => '', 'pgcode' => 'terminal'],
                 ],
             };
@@ -122,9 +122,15 @@ class CardSettlementTest extends TestCase
         $this->assertSame('2026-11-12', substr($load->approved_to, 0, 10));
         $this->assertSame(['2026-11-12', '2026-11-12'], [substr($load->queried_from, 0, 10), substr($load->queried_to, 0, 10)]);   // 확정 판정용 조회 범위
 
-        // 다시 불러와도 중복 저장 없음
+        // 결제 시각: 승인 줄 = 승인 시각, 취소 줄 = 취소 시각
+        $this->assertSame('2026-11-12 11:00:00', DB::table('settle_pg_rows')->where('tid', 'K1')->value('evt_time'));
+        $this->assertSame('2026-11-12 08:30:00', DB::table('settle_pg_rows')->where('tid', 'K0')->value('evt_time'));
+        DB::table('settle_pg_rows')->where('tid', 'K1')->update(['evt_time' => '']);   // 칸 추가 전에 저장된 줄 흉내
+
+        // 다시 불러와도 중복 저장 없음 · 비어 있던 결제 시각만 채움
         $this->postJson(route('admin.settlements.pg-load'), ['vendor_id' => $this->vendor->id, 'date' => '2026-11-12'])->assertJson(['got' => 3, 'new' => 0]);
         $this->assertSame(3, DB::table('settle_pg_rows')->count());
+        $this->assertSame('2026-11-12 11:00:00', DB::table('settle_pg_rows')->where('tid', 'K1')->value('evt_time'));
 
         // 단말기 가맹점은 그 매장 업체에서만 부른다
         $other = Vendor::create(['name' => '다른 업체']);
@@ -142,54 +148,109 @@ class CardSettlementTest extends TestCase
             ->assertStatus(422)->assertJson(['ok' => false]);
     }
 
-    /** 원본 2026-11-24판: 보고서 = 원본 데이터 3구역을 가공 없이 그대로 (짝 맞추기·재분류·입금일 추정 없음) */
-    public function test_report_lists_three_raw_sections(): void
+    /** 원본 최종판(a4fec1b2): 종합 요약 → 대사 결과 → 결제·정산 내역 한 표(주문 1건 1줄 + 페이레터 연결) → 표 읽는 법 */
+    public function test_report_reconciles_orders_with_payletter_in_one_table(): void
     {
-        $this->order('OLD-1', 10000, 'pos_card', '2026-11-03 10:00:00', 6, ['settled_at' => '2026-11-05 09:00:00']);
-        $this->order('ON-1', 12000, 'card', '2026-11-10 09:00:00');
+        $settled = ['settled_at' => '2026-11-05 09:00:00'];
+        $this->order('OLD-1', 10000, 'pos_card', '2026-11-03 10:00:00', 6, $settled);
+        $this->order('CASH-0', 2000, 'pos_cash', '2026-11-03 11:00:00', 6, $settled);       // 정산완료 현금 = 송금 없음
+        $this->order('ON-1', 12000, '카카오페이', '2026-11-10 09:00:00');
+        $this->order('C-1', 5000, 'pos_card', '2026-11-10 14:00:00');                         // 같은 금액 승인 2건 → 가까운 시각
         $this->order('CASH-1', 6000, 'pos_cash', '2026-11-11 12:00:00');
-        $this->order('PREP-1', 3000, 'pos_card', '2026-11-12 13:00:00', 3);     // 수령 전
-        $this->order('OUT-1', 9999, 'pos_card', '2026-11-20 10:00:00');          // 기간 밖
-        Settlement::create(['vendor_id' => $this->vendor->id, 'period_start' => '2026-11-01', 'period_end' => '2026-11-04', 'order_count' => 1,
-            'gross_amount' => 10000, 'commission_amount' => 0, 'payout_amount' => 10000]);
-        Order::where('order_no', 'OLD-1')->update(['settlement_id' => Settlement::first()->id]);
-        $this->pg('2026-11-02', 10000);                                          // 완료 묶음 기간(첫 PG 승인일 ~ 마지막 주문일) 안
-        $this->pg('2026-11-10', 12000, false, 'ON-1');
-        $this->pg('2026-11-11', 1500);
-        $this->pg('2026-11-11', -1500);
+        $this->order('X-1', 8000, '카카오페이', '2026-11-11 09:59:00', 14);                   // 환불 — 주문 목록(2~6)에는 없음
+        $this->order('D-1', 4000, 'pos_card', '2026-11-12 10:00:00');                         // (가) 다음 날 결제
+        $this->order('S-1', 9000, 'pos_card', '2026-11-12 11:00:00');                         // (나) 2건 나눠 결제
+        $this->order('J-1', 2500, 'pos_card', '2026-11-12 12:00:00');                         // (다) 2건 합쳐 결제
+        $this->order('J-2', 3500, 'pos_card', '2026-11-12 12:30:00');
+        $this->order('PREP-1', 3000, 'pos_card', '2026-11-12 13:00:00', 3);                   // 수령 전 · 승인 없음
+        $this->order('OUT-1', 9999, 'pos_card', '2026-11-20 10:00:00');                       // 기간 밖
+        Settlement::create(['vendor_id' => $this->vendor->id, 'period_start' => '2026-11-01', 'period_end' => '2026-11-04', 'order_count' => 2,
+            'gross_amount' => 12000, 'commission_amount' => 0, 'payout_amount' => 12000]);
+        Order::whereIn('order_no', ['OLD-1', 'CASH-0'])->update(['settlement_id' => Settlement::first()->id]);
+        $this->pg('2026-11-03', 10000, true, 'T000000001', '', '2026-11-03 10:01:00', 'A-OLD');
+        $this->pg('2026-11-10', 12000, false, 'ON-1', '', '2026-11-10 09:00:30');
+        $this->pg('2026-11-10', 5000, true, '', '', '2026-11-10 09:00:00', 'A-FAR');
+        $this->pg('2026-11-10', 5000, true, '', '', '2026-11-10 13:58:00', 'A-NEAR');
+        $this->pg('2026-11-11', 8000, false, 'X-1', 'X1', '2026-11-11 10:00:00');
+        $this->pg('2026-11-11', -8000, false, 'X-1', 'X1', '2026-11-11 11:00:00');
+        $this->pg('2026-11-11', 1500, true, '', '', '2026-11-11 15:00:00');
+        $this->pg('2026-11-11', -1500, true, '', '', '2026-11-11 15:05:00');
+        $this->pg('2026-11-13', 4000, true, '', '', '2026-11-13 09:00:00');
+        $this->pg('2026-11-12', 2000, true, '', '', '2026-11-12 11:00:00');
+        $this->pg('2026-11-12', 7000, true, '', '', '2026-11-12 11:01:00');
+        $this->pg('2026-11-12', 6000, true, '', '', '2026-11-12 12:31:00');
 
-        $r = app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-13', 8.5);
-        $s = $r['sections'];
-        $this->assertSame('도봉빵', $r['store']);   // 상호 끝 괄호 제거
-        // 1. 결제내역 = 주문 그대로 (기간 밖 제외)
-        $this->assertSame(['합계', 4, 31000], end($s['s1']['sum']));
-        $this->assertSame(['2026-11-11 12:00', 'CASH-1', '현장 현금', 6000], $s['s1']['rows'][2]);
-        // 2. 정산내역 = 상태·처리일·정산예정일
-        $this->assertSame([['정산완료', 1, 10000], ['미정산 (수령완료)', 2, 18000], ['수령 전', 1, 3000], ['합계', 4, 31000]], $s['s2']['sum']);
-        $this->assertSame([['2026-11-05 09:00', 1, 10000]], $s['s2']['byJd']);
-        $this->assertSame(['2026-11-10 09:00', 'ON-1', 12000, '미정산 (수령완료)', '', '2026-11-17'], $s['s2']['rows'][1]);
-        // 3. PG 정산내역 = 승인·취소 그대로 + 원샷 정산 여부 + 정산금액
-        $this->assertSame([['승인', 3, 23500], ['취소', 1, -1500], ['카드결제 합계 (승인 − 취소)', 4, 22000]], array_slice($s['s3']['sum'], 0, 3));
-        $this->assertSame((int) round(22000 - 22000 * 0.085 * 1.1), $s['s3']['pay']);
-        $this->assertSame('정산완료 2026-11-05 09:00', end($s['s3']['rows'][0]));
-        $this->assertSame('미정산', end($s['s3']['rows'][1]));
-        $this->assertSame('ON-1', $s['s3']['rows'][1][5]);
-        $this->assertSame('지급할 정산금액', $s['s3']['payLab']);
-        $this->assertSame('정산 송금 완료 금액', app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-04', 8.5, 'done')['sections']['s3']['payLab']);
+        $b = app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-13', 8.5);
+        $r = $b['report'];
+        $this->assertSame('도봉빵', $b['store']);   // 상호 끝 괄호 제거
+        $P = fn ($rows) => SettlementReport::plain($rows);
+        $row = function (string $no, string $st = '승인') use ($r, $P) {
+            foreach ($P($r['rows']) as $x) {
+                if (str_starts_with((string) $x[3], $no) && $x[2] === $st) {
+                    return $x;
+                }
+            }
+            $this->fail("줄 없음: {$no} {$st}");
+        };
+
+        // 종합 요약
+        $sm = array_column($P($r['sm']), null, 0);
+        $this->assertSame(['카드 승인', 9, 37000, 10000, 27000, 40500], $sm['카드 승인']);
+        $this->assertSame(['카드 취소', 1, '-', '-', '-', -1500], $sm['카드 취소']);
+        $this->assertSame(['온라인 승인', 2, 20000, 0, 12000, 20000], $sm['온라인 승인']);
+        $this->assertSame(['온라인 취소', 1, -8000, '-', '-', -8000], $sm['온라인 취소']);
+        $this->assertSame(['현금', 2, 8000, 2000, 6000, '-'], $sm['현금']);
+        $this->assertSame(['합계', 15, 57000, 12000, 45000, 51000], $sm['합계']);
+        $this->assertSame(['EIS 매출 (수령완료·정산완료 주문)', 9, 54000, '', '', ''], $sm['EIS 매출 (수령완료·정산완료 주문)']);
+        $this->assertSame((int) round(51000 - 51000 * 0.085 * 1.1), $r['pay']);
+        $last = fn ($b) => $P($b['report']['sm'])[count($b['report']['sm']) - 1][4];
+        $this->assertSame('지급할 정산금액', $last($b));
+        $this->assertSame('정산 송금 완료 금액', $last(app(SettlementReport::class)->build($this->vendor, '2026-11-01', '2026-11-04', 8.5, 'done')));
+
+        // 대사 결과
+        $chk = $P($r['chk']);
+        $this->assertSame(['1건', 3000], array_slice($chk[0], 1, 2));     // 승인 없는 카드 주문 = PREP-1
+        $this->assertSame(['3줄', 5000], array_slice($chk[1], 1, 2));     // POS에 없는 카드 결제 = 09:00 5,000 + 1,500 승인·취소
+        $this->assertSame(['3건', 19000], array_slice($chk[2], 1, 2));    // 하루 차이 1 · 나눠 1 · 합쳐 1
+        $this->assertStringContainsString('하루 차이 1건 · 나눠 결제 1건 · 합쳐 결제 1건', $chk[2][3]);
+        $this->assertSame(['1건', 3000], array_slice($chk[3], 1, 2));     // 다담다 − EIS = PREP-1 (환불 X-1 은 승인−취소 0원이라 빠짐)
+        $this->assertStringContainsString('2026-11-12 13:00 카드 3,000원 (아직 수령완료 전)', $chk[3][3]);
+
+        // 내역 표 (7칸)
+        $this->assertSame(['결제일', '결제종류', '상태', "구매번호\n결제번호\n승인번호", '다담다결제 / EIS', '원샷 처리일', '페이레터 정산'], $P([$r['head']])[0]);
+        $this->assertSame(['2026-11-03 10:00', '카드', '승인', "OLD-1\n결제 T000000001\n승인 A-OLD", 10000, '2026-11-05', 10000], $row('OLD-1'));
+        $this->assertSame('2026-11-05 (송금 없음)', $row('CASH-0')[5]);
+        $this->assertSame('-', $row('CASH-0')[6]);
+        $this->assertSame(['온라인(카카오페이)', 12000, '', 12000], [$row('ON-1')[1], $row('ON-1')[4], $row('ON-1')[5], $row('ON-1')[6]]);
+        $this->assertSame("C-1\n승인 A-NEAR", $row('C-1')[3]);                                 // 같은 날 같은 금액 중 가장 가까운 시각
+        $this->assertSame(['2026-11-10 09:00', '카드', '승인', '승인 A-FAR', 'POS에 없음', '', 5000], $row('승인 A-FAR'));
+        $this->assertSame(['2026-11-11 10:00', '온라인(카카오페이)', '승인', 'X-1', '8,000 (EIS 제외)', '', 8000], $row('X-1'));
+        $this->assertSame(['2026-11-11 11:00', '온라인(카카오페이)', '취소', 'X-1', '-8,000 (EIS 제외)', '', -8000], $row('X-1', '취소'));
+        $this->assertSame('4,000 (11-13 결제)', $row('D-1')[6]);
+        $this->assertSame('9,000 (나눠 결제 2건)', $row('S-1')[6]);
+        $this->assertSame('6,000 (2건 합쳐 결제)', $row('J-1')[6]);
+        $this->assertSame('합쳐 결제 (12:00 줄에 포함)', $row('J-2')[6]);
+        $this->assertSame(['3,000 (EIS 제외)', '승인 없음 (현금·이체 추정)'], [$row('PREP-1')[4], $row('PREP-1')[6]]);
+        // 줄 순서: 11-11 = 환불 승인 → 그 취소 → 현금 → 단말기 승인 → 그 취소 → 소계
+        $d11 = array_values(array_filter($P($r['rows']), fn ($x) => str_starts_with((string) $x[0], '2026-11-11')));
+        $this->assertSame([['승인', 8000], ['취소', -8000], ['승인', '-'], ['승인', 1500], ['취소', -1500], ['', 0]], array_map(fn ($x) => [$x[2], $x[6]], $d11));
+        $this->assertSame('2026-11-11 소계', $d11[5][0]);
+        $this->assertNotContains('OUT-1', array_map(fn ($x) => strtok((string) $x[3], "\n"), $P($r['rows'])));
 
         $this->actingAs($this->admin)->get(route('admin.settlements.report', ['vendor' => $this->vendor->id, 'from' => '2026-11-01', 'to' => '2026-11-13']))
-            ->assertOk()->assertSee('도봉빵 정산 보고서')->assertSee('1. 다담다 결제내역')->assertSee('2. 다담다 정산내역')->assertSee('3. PG사(페이레터) 정산내역');
+            ->assertOk()->assertSee('도봉빵 정산 보고서')->assertSeeInOrder(['종합 요약', '대사 결과', '결제·정산 내역', '표 읽는 법'])
+            ->assertSee('id="srNoBtn"', false)->assertSee('승인 없음 (현금·이체 추정)');
         $res = $this->get(route('admin.settlements.report.export', ['vendor' => $this->vendor->id, 'from' => '2026-11-01', 'to' => '2026-11-13']))->assertOk();
         $this->assertStringContainsString('spreadsheetml', $res->headers->get('Content-Type'));
         $tmp = tempnam(sys_get_temp_dir(), 'x');
         file_put_contents($tmp, $res->getContent());
         $zip = new \ZipArchive;
         $this->assertTrue($zip->open($tmp) === true);
-        $wb = $zip->getFromName('xl/workbook.xml');
-        foreach (['1.다담다결제내역', '2.다담다정산내역', '3.PG정산내역'] as $sheet) {
-            $this->assertStringContainsString($sheet, $wb);
+        $this->assertSame(1, substr_count($zip->getFromName('xl/workbook.xml'), '<sheet '));   // 시트 1개
+        $xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        foreach (['종합 요약', '대사 결과', '결제·정산 내역', '지급할 정산금액', '6,000 (2건 합쳐 결제)'] as $t) {
+            $this->assertStringContainsString($t, $xml);
         }
-        $this->assertStringContainsString('지급할 정산금액', $zip->getFromName('xl/worksheets/sheet3.xml'));
         $zip->close();
         @unlink($tmp);
     }
