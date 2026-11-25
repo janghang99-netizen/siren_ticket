@@ -111,6 +111,8 @@
             </nav>
         </div>
         <p id="translate-notice" class="tix-wrap pb-6 text-[11px] text-mist" hidden>번역은 이해를 돕기 위한 것이며, 약관·환불 규정은 한국어 원문이 우선합니다.</p>
+        {{-- 휴대폰: 고정 하단 메뉴에 언어 버튼·푸터 끝이 가려지지 않게 그 높이만큼 비운다 --}}
+        <div class="pb-28 lg:hidden" aria-hidden="true"></div>
     </footer>
 
     {{-- 휴대폰 하단 메뉴 (넓은 화면은 상단 메뉴로) --}}
