@@ -28,10 +28,15 @@
         document.cookie = n + '=' + v + exp + '; path=/; SameSite=Lax';
     }
     function clearGoogtrans() {
-        var past = '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/', h = location.hostname;
+        // 구글 위젯은 googtrans 를 상위 도메인(.mycafe24.com 등)에도 심는다. 그것까지 지우지 않으면
+        // 옛 언어 쿠키가 남아 두 번째 전환부터 먹지 않는다 → 호스트와 모든 상위 도메인에서 지운다.
+        var past = '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/', parts = location.hostname.split('.');
         document.cookie = 'googtrans' + past;
-        document.cookie = 'googtrans' + past + '; domain=' + h;
-        document.cookie = 'googtrans' + past + '; domain=.' + h;
+        for (var i = 0; i < parts.length - 1; i++) {
+            var d = parts.slice(i).join('.');
+            document.cookie = 'googtrans' + past + '; domain=' + d;
+            document.cookie = 'googtrans' + past + '; domain=.' + d;
+        }
     }
 
     // 지금 언어: googtrans 쿠키 (/ko/en) 기준
